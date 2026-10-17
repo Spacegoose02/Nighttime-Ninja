@@ -132,3 +132,11 @@ test('admins can unlock people', async () => {
   await req('POST', `/api/admin/users/${kid.id}/security`, { disabled: true }, { cookie: admin.cookie! });
   assert.equal((await req('POST', '/api/auth/login', { username: reset.body.username, password: reset.body.tempPassword })).status, 403);
 });
+
+test('the app launcher can check the server from another origin', async () => {
+  const { req } = await setup();
+  const r = await req('GET', '/api/health', undefined, { origin: 'https://localhost' });
+  assert.equal(r.headers['access-control-allow-origin'], '*');
+  const other = await req('GET', '/api/auth/config', undefined, { origin: 'https://localhost' });
+  assert.equal(other.headers['access-control-allow-origin'], undefined, 'only the health check is open to other origins');
+});

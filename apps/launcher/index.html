@@ -48,8 +48,14 @@
     }
 
     async function go(url) {
-      const res = await fetch(url + '/api/health', { cache: 'no-store' }).catch(() => null);
-      if (!res || !res.ok) throw new Error("Couldn't reach a Nighttime Ninja server there.");
+      let res = await fetch(url + '/api/health', { cache: 'no-store' }).catch(() => null);
+      if (!res) {
+        // Servers older than 0.2.3 don't allow this check from the app; if the address answers at all, try it anyway.
+        res = await fetch(url + '/api/health', { cache: 'no-store', mode: 'no-cors' }).catch(() => null);
+        if (!res) throw new Error("Couldn't reach " + url + ". Check the address, and that this device can open it in a browser.");
+      } else if (!res.ok) {
+        throw new Error(url + " answered, but it doesn't look like a Nighttime Ninja server (" + res.status + ").");
+      }
       localStorage.setItem(KEY, url);
       location.href = url + '/';
     }

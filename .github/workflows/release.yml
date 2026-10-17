@@ -43,6 +43,9 @@ jobs:
       - name: Create the Android project
         working-directory: web
         run: npx cap add android && npx cap sync android
+      - name: Add the raccoon app icon and splash screen
+        working-directory: web
+        run: npx capacitor-assets generate --android --iconBackgroundColor "#2f7d4f" --iconBackgroundColorDark "#2f7d4f" --splashBackgroundColor "#f3f7f2" --splashBackgroundColorDark "#0f1612"
       - name: Build APK
         working-directory: web/android
         run: ./gradlew assembleDebug
