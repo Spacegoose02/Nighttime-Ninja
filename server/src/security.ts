@@ -180,7 +180,8 @@ export function installHardening(app: FastifyInstance): void {
 
   app.addHook('onSend', async (req, reply, payload) => {
     reply.header('x-content-type-options', 'nosniff');
-    reply.header('referrer-policy', 'same-origin');
+    // YouTube's player refuses to play (error 153) unless it can see which site embeds it, so send the origin cross-site.
+    reply.header('referrer-policy', 'strict-origin-when-cross-origin');
     reply.header('x-frame-options', 'DENY');
     reply.header('permissions-policy', 'camera=(self), microphone=(), geolocation=(), publickey-credentials-get=(self), publickey-credentials-create=(self)');
     reply.header('cross-origin-opener-policy', 'same-origin');
