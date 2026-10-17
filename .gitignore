@@ -21,3 +21,4 @@ web/ios/
 *.pem
 *.p12
 apps/desktop/launcher/
+!apps/desktop/build/
