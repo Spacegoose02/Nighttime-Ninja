@@ -23,7 +23,7 @@ const NAV = [
   { to: '/shopping', ico: '🛒', label: 'Shopping' },
   { to: '/plan', ico: '📅', label: 'Meal Plan' },
   { to: '/deals', ico: '🏷️', label: 'Deals' },
-  { to: '/feed', ico: '📺', label: 'Watch' },
+  { to: '/feed', ico: '📺', label: 'Feed' },
   { to: '/settings', ico: '⚙️', label: 'Settings' },
 ];
 

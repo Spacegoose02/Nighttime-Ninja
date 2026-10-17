@@ -15,7 +15,7 @@
 - **Sign in with Google** (OIDC), a simple name-only sign-in for trusted home networks, and **pairing codes** for tablets.
 - **US measurements**: metric amounts and °C are shown as cups, ounces, pounds and °F (or switch to metric).
 - **Deals**: live prices and sales from the Kroger API, plus one-tap search, weekly ads and coupons for Walmart, Food Lion, Kroger, BJ's, Sam's Club and more.
-- **Watch**: follow cooks' YouTube channels, blogs or any RSS feed and watch new videos in the app.
+- **Feed**: follow cooks' YouTube channels, blogs or any RSS feed and watch new videos in the app.
 - **Home Assistant**: token-based API with a summary sensor and a shopping-list service.
 - **Themes and raccoons**: six themes and eight raccoon chef avatars.
 - **Runs everywhere**: Docker (with an Unraid template), the browser, an Android APK, and a Windows EXE.

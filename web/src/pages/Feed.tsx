@@ -33,7 +33,7 @@ export function Feed() {
   return (
     <div className="stack">
       <div className="topbar">
-        <h1>Watch</h1>
+        <h1>Feed</h1>
         <button onClick={() => setManage(!manage)}>{manage ? 'Done' : 'Manage cooks'}</button>
       </div>
       <form className="row" onSubmit={(e) => { e.preventDefault(); void follow(); }}>
