@@ -5,6 +5,7 @@
   "description": "Nighttime Ninja desktop app",
   "author": "Nighttime Ninja contributors",
   "license": "MIT",
+  "repository": "github:Spacegoose02/Nighttime-Ninja",
   "main": "main.cjs",
   "scripts": {
     "copy-launcher": "node -e \"require('fs').cpSync('../launcher','launcher',{recursive:true})\"",
