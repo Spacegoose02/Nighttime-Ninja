@@ -1,0 +1,13 @@
+{
+  "name": "Nighttime Ninja",
+  "short_name": "Ninja",
+  "description": "Self-hosted kitchen manager: recipes, inventory, shopping lists and meal plans.",
+  "start_url": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#f3f7f2",
+  "theme_color": "#2f7d4f",
+  "icons": [
+    { "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}
