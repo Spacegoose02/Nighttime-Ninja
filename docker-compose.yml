@@ -1,0 +1,16 @@
+services:
+  nighttime-ninja:
+    image: ghcr.io/spacegoose02/nighttime-ninja:latest
+    # To build from this folder instead of pulling: comment out "image" and uncomment "build".
+    # build: .
+    container_name: nighttime-ninja
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./data:/data
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      PUBLIC_URL: ${PUBLIC_URL:-http://localhost:8080}

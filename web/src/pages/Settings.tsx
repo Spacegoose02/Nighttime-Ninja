@@ -168,6 +168,7 @@ function HomeSettings() {
         <>
           <h3>Home Assistant and automations</h3>
           <p className="small muted" style={{ margin: 0 }}>Create a token, then follow docs/home-assistant.md in the project to add sensors and a shopping-list service.</p>
+          <p className="small" style={{ margin: 0 }}>API address for this home: <code style={{ wordBreak: 'break-all' }}>{location.origin}{base}</code></p>
           <form className="row" onSubmit={async (e) => {
             e.preventDefault();
             const el = e.currentTarget.elements.namedItem('tn') as HTMLInputElement;

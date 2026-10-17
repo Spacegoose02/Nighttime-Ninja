@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Nighttime Ninja</title>
+  <style>
+    :root { color-scheme: light dark; --bg: #f3f7f2; --card: #fff; --text: #17261c; --muted: #5d6f62; --primary: #2f7d4f; --border: #d3e2d0; }
+    @media (prefers-color-scheme: dark) { :root { --bg: #0f1612; --card: #17211b; --text: #e5efe7; --muted: #9fb3a6; --primary: #4fbf7d; --border: #2c3d32; } }
+    * { box-sizing: border-box; }
+    body { margin: 0; min-height: 100vh; display: grid; place-items: center; background: var(--bg); color: var(--text); font: 18px/1.45 system-ui, sans-serif; padding: 24px; }
+    .card { background: var(--card); border: 1px solid var(--border); border-radius: 22px; padding: 28px; width: min(460px, 100%); text-align: center; display: flex; flex-direction: column; gap: 14px; }
+    input, button { font: inherit; min-height: 52px; border-radius: 14px; border: 1px solid var(--border); padding: 0 16px; width: 100%; background: var(--card); color: var(--text); }
+    button { background: var(--primary); color: #fff; border: none; font-weight: 700; }
+    button.ghost { background: transparent; color: var(--primary); }
+    .muted { color: var(--muted); font-size: 0.9rem; }
+    .error { color: #c0392b; }
+    img { width: 110px; height: 110px; margin: 0 auto; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <img src="icon.svg" alt="" />
+    <h1 style="margin:0">Nighttime Ninja</h1>
+    <div id="connecting" hidden>
+      <p>Opening <strong id="target"></strong>…</p>
+      <button class="ghost" id="change">Use a different server</button>
+    </div>
+    <form id="setup" hidden>
+      <p class="muted">Enter the address of your Nighttime Ninja server, like http://192.168.1.20:8080 or https://kitchen.example.com</p>
+      <input id="url" type="url" inputmode="url" autocomplete="url" placeholder="http://192.168.1.20:8080" required />
+      <button>Connect</button>
+      <p class="error" id="error"></p>
+      <p class="muted">Tip: to sign in on this device, open Settings on a computer that's already signed in, tap "Pair a device", and enter the code here.</p>
+    </form>
+  </div>
+  <script>
+    const KEY = 'nn-server-url';
+    const saved = localStorage.getItem(KEY);
+    const setup = document.getElementById('setup');
+    const connecting = document.getElementById('connecting');
+    let timer;
+
+    function normalize(raw) {
+      let s = raw.trim().replace(/\/+$/, '');
+      if (!/^https?:\/\//i.test(s)) s = 'http://' + s;
+      return new URL(s).origin;
+    }
+
+    async function go(url) {
+      const res = await fetch(url + '/api/health', { cache: 'no-store' }).catch(() => null);
+      if (!res || !res.ok) throw new Error("Couldn't reach a Nighttime Ninja server there.");
+      localStorage.setItem(KEY, url);
+      location.href = url + '/';
+    }
+
+    function showSetup(msg) {
+      clearTimeout(timer);
+      connecting.hidden = true;
+      setup.hidden = false;
+      document.getElementById('url').value = localStorage.getItem(KEY) || '';
+      document.getElementById('error').textContent = msg || '';
+    }
+
+    document.getElementById('change').onclick = () => showSetup();
+    setup.onsubmit = async (e) => {
+      e.preventDefault();
+      try { await go(normalize(document.getElementById('url').value)); }
+      catch (err) { document.getElementById('error').textContent = err.message; }
+    };
+
+    if (saved && !location.search.includes('change')) {
+      connecting.hidden = false;
+      document.getElementById('target').textContent = saved;
+      timer = setTimeout(() => go(saved).catch((err) => showSetup(err.message)), 1200);
+    } else {
+      showSetup();
+    }
+  </script>
+</body>
+</html>

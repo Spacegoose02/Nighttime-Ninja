@@ -1,0 +1,26 @@
+<?xml version="1.0"?>
+<Container version="2">
+  <Name>NighttimeNinja</Name>
+  <Repository>ghcr.io/spacegoose02/nighttime-ninja:latest</Repository>
+  <Registry>https://github.com/Spacegoose02/Nighttime-Ninja/pkgs/container/nighttime-ninja</Registry>
+  <Network>bridge</Network>
+  <Privileged>false</Privileged>
+  <Support>https://github.com/Spacegoose02/Nighttime-Ninja/issues</Support>
+  <Project>https://github.com/Spacegoose02/Nighttime-Ninja</Project>
+  <Overview>Nighttime Ninja is a self-hosted, tablet-first kitchen manager: recipes, pantry inventory with history, shopping lists, a 7-day meal plan with a Google Calendar feed, store deals, cooking video feeds, Home Assistant support and one-click import from KitchenOwl. Sign in with Google or locally, and share a home with your family.</Overview>
+  <Category>HomeAutomation: Productivity: Tools:</Category>
+  <WebUI>http://[IP]:[PORT:8080]/</WebUI>
+  <TemplateURL>https://raw.githubusercontent.com/Spacegoose02/Nighttime-Ninja/main/unraid/nighttime-ninja.xml</TemplateURL>
+  <Icon>https://raw.githubusercontent.com/Spacegoose02/Nighttime-Ninja/main/web/public/icon.png</Icon>
+  <ExtraParams>--restart unless-stopped</ExtraParams>
+  <Requires>Optional: a Google OAuth client for Google sign-in, and Kroger API keys for live prices.</Requires>
+  <Config Name="Web UI port" Target="8080" Default="8080" Mode="tcp" Description="Port for the web app" Type="Port" Display="always" Required="true" Mask="false">8080</Config>
+  <Config Name="Data" Target="/data" Default="/mnt/user/appdata/nighttime-ninja" Mode="rw" Description="Database, photos and the generated session secret" Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/nighttime-ninja</Config>
+  <Config Name="Public URL" Target="PUBLIC_URL" Default="http://[IP]:8080" Mode="" Description="The address people use to open the app, e.g. https://kitchen.example.com. Needed for Google sign-in and calendar links." Type="Variable" Display="always" Required="true" Mask="false">http://192.168.1.10:8080</Config>
+  <Config Name="Google client ID" Target="GOOGLE_CLIENT_ID" Default="" Mode="" Description="Optional. Turns on Google sign-in. Redirect URI: PUBLIC_URL/api/auth/google/callback" Type="Variable" Display="always" Required="false" Mask="false"></Config>
+  <Config Name="Google client secret" Target="GOOGLE_CLIENT_SECRET" Default="" Mode="" Description="Optional. Goes with the Google client ID." Type="Variable" Display="always" Required="false" Mask="true"></Config>
+  <Config Name="Allow local sign-in" Target="ALLOW_LOCAL_LOGIN" Default="" Mode="" Description="true lets people sign in with just a name (trusted home networks only). Defaults to true when Google sign-in is not set up, false when it is." Type="Variable" Display="advanced" Required="false" Mask="false"></Config>
+  <Config Name="Session secret" Target="SESSION_SECRET" Default="" Mode="" Description="Optional. Leave empty to generate one automatically in the data folder." Type="Variable" Display="advanced" Required="false" Mask="true"></Config>
+  <Config Name="Kroger client ID" Target="KROGER_CLIENT_ID" Default="" Mode="" Description="Optional. From developer.kroger.com, for live prices and sales." Type="Variable" Display="advanced" Required="false" Mask="false"></Config>
+  <Config Name="Kroger client secret" Target="KROGER_CLIENT_SECRET" Default="" Mode="" Description="Optional. Goes with the Kroger client ID." Type="Variable" Display="advanced" Required="false" Mask="true"></Config>
+</Container>
