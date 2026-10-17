@@ -16,6 +16,13 @@ export function Login() {
     setError(null);
     try {
       await api(path, { body });
+      // If the browser refused the sign-in cookie, say so instead of silently staying on this screen
+      // (retrying would then fail, because pairing codes only work once).
+      const ok = await api('/api/me').then(() => true, () => false);
+      if (!ok) {
+        setError("The server accepted you, but this browser didn't keep the sign-in. If the server uses https, open it with its https address.");
+        return;
+      }
       await refresh();
     } catch (e) {
       setError((e as Error).message);

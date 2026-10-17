@@ -26,6 +26,9 @@ const port = Number(process.env.PORT || 8080);
 export const config = {
   port,
   host: process.env.HOST || '0.0.0.0',
+  // Only believe X-Forwarded-* headers from proxies on this machine or the local network, so nobody on the
+  // internet can fake their address or protocol. Set TRUST_PROXY to a list of IPs/CIDRs to change it.
+  trustProxy: (process.env.TRUST_PROXY || 'loopback,linklocal,uniquelocal').split(',').map((s) => s.trim()).filter(Boolean),
   publicUrl: (process.env.PUBLIC_URL || `http://localhost:${port}`).replace(/\/$/, ''),
   dataDir: path.resolve(process.env.DATA_DIR || './data'),
   sessionSecret: process.env.SESSION_SECRET && process.env.SESSION_SECRET !== 'change-me'

@@ -135,3 +135,17 @@ test('KitchenOwl export file import', async () => {
   const recipes = (await call(a, 'GET', `${base}/recipes`)).body;
   assert.equal(recipes[0].title, 'Chili');
 });
+
+test('pairing a device signs it in once', async () => {
+  const { login, call, app } = await setup();
+  const a = await login('Pairer');
+  const { body } = await call(a, 'POST', '/api/auth/pair-code', {});
+  const res = await app.inject({ method: 'POST', url: '/api/auth/pair', payload: { code: body.code.toLowerCase() } });
+  assert.equal(res.statusCode, 200, res.body);
+  const cookie = res.cookies.find((c) => c.name === 'nn_session')!;
+  assert.equal(cookie.secure, undefined, 'plain-http requests must get a cookie the browser will keep');
+  const me = await call({ cookie: `nn_session=${cookie.value}` }, 'GET', '/api/me');
+  assert.equal(me.body.user.name, 'Pairer');
+  const again = await app.inject({ method: 'POST', url: '/api/auth/pair', payload: { code: body.code } });
+  assert.equal(again.statusCode, 400);
+});

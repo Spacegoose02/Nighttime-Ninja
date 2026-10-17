@@ -36,13 +36,13 @@ declare module 'fastify' {
   }
 }
 
-const cookieOpts = {
-  path: '/',
-  httpOnly: true,
-  sameSite: 'lax' as const,
-  secure: config.publicUrl.startsWith('https://'),
-  signed: true,
-};
+/**
+ * Cookies are only marked Secure when this request really came in over HTTPS. Basing it on PUBLIC_URL broke
+ * sign-in for anyone reaching an https server by its plain-http LAN address (the browser silently dropped the cookie).
+ */
+function cookieOpts(reply: FastifyReply) {
+  return { path: '/', httpOnly: true, sameSite: 'lax' as const, secure: reply.request.protocol === 'https', signed: true };
+}
 
 export function createSession(db: DatabaseSync, userId: string): string {
   const id = randomToken();
@@ -52,7 +52,7 @@ export function createSession(db: DatabaseSync, userId: string): string {
 }
 
 function setSessionCookie(reply: FastifyReply, sessionId: string): void {
-  reply.setCookie(SESSION_COOKIE, sessionId, { ...cookieOpts, maxAge: SESSION_DAYS * 86400 });
+  reply.setCookie(SESSION_COOKIE, sessionId, { ...cookieOpts(reply), maxAge: SESSION_DAYS * 86400 });
 }
 
 /** Finds an existing user or creates one. The very first account on a server becomes its admin. */
@@ -178,7 +178,7 @@ export function registerAuthRoutes(app: FastifyInstance, db: DatabaseSync): void
       state,
       prompt: 'select_account',
     });
-    reply.setCookie('nn_oidc', JSON.stringify({ verifier, state }), { ...cookieOpts, maxAge: 600 });
+    reply.setCookie('nn_oidc', JSON.stringify({ verifier, state }), { ...cookieOpts(reply), maxAge: 600 });
     return reply.redirect(url.href);
   });
 

@@ -18,7 +18,7 @@ import { integrationRoutes } from './routes/integrations.ts';
 import { kitchenOwlRoutes } from './routes/kitchenowl.ts';
 
 export async function buildApp(db: DatabaseSync, opts: { logger?: boolean; serveWeb?: boolean } = {}): Promise<FastifyInstance> {
-  const app = Fastify({ logger: opts.logger ?? false, bodyLimit: 5 * 1024 * 1024, trustProxy: true });
+  const app = Fastify({ logger: opts.logger ?? false, bodyLimit: 5 * 1024 * 1024, trustProxy: config.trustProxy });
   await app.register(cookie, { secret: config.sessionSecret });
   installAuth(app, db);
 
