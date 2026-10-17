@@ -39,7 +39,6 @@ jobs:
         with:
           distribution: temurin
           java-version: 21
-      - uses: android-actions/setup-android@v3
       - run: npm ci --ignore-scripts
       - name: Create the Android project
         working-directory: web

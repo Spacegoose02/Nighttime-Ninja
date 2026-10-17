@@ -9,9 +9,9 @@
   "scripts": {
     "copy-launcher": "node -e \"require('fs').cpSync('../launcher','launcher',{recursive:true})\"",
     "start": "npm run copy-launcher && electron .",
-    "dist": "npm run copy-launcher && electron-builder --win --x64",
-    "dist:linux": "npm run copy-launcher && electron-builder --linux AppImage",
-    "dist:mac": "npm run copy-launcher && electron-builder --mac dmg"
+    "dist": "npm run copy-launcher && electron-builder --win --x64 --publish never",
+    "dist:linux": "npm run copy-launcher && electron-builder --linux AppImage --publish never",
+    "dist:mac": "npm run copy-launcher && electron-builder --mac dmg --publish never"
   },
   "devDependencies": {
     "electron": "44.8.0",
