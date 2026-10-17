@@ -16,6 +16,8 @@
   <Requires>Optional: a Google OAuth client for Google sign-in, and Kroger API keys for live prices.</Requires>
   <Config Name="Web UI port" Target="8080" Default="8080" Mode="tcp" Description="Port for the web app" Type="Port" Display="always" Required="true" Mask="false">8080</Config>
   <Config Name="Data" Target="/data" Default="/mnt/user/appdata/nighttime-ninja" Mode="rw" Description="Database, photos and the generated session secret" Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/nighttime-ninja</Config>
+  <Config Name="PUID" Target="PUID" Default="99" Mode="" Description="User the app runs as. 99 is Unraid's nobody user." Type="Variable" Display="advanced" Required="false" Mask="false">99</Config>
+  <Config Name="PGID" Target="PGID" Default="100" Mode="" Description="Group the app runs as. 100 is Unraid's users group." Type="Variable" Display="advanced" Required="false" Mask="false">100</Config>
   <Config Name="Public URL" Target="PUBLIC_URL" Default="http://[IP]:8080" Mode="" Description="The address people use to open the app, e.g. https://kitchen.example.com. Needed for Google sign-in and calendar links." Type="Variable" Display="always" Required="true" Mask="false">http://192.168.1.10:8080</Config>
   <Config Name="Google client ID" Target="GOOGLE_CLIENT_ID" Default="" Mode="" Description="Optional. Turns on Google sign-in. Redirect URI: PUBLIC_URL/api/auth/google/callback" Type="Variable" Display="always" Required="false" Mask="false"></Config>
   <Config Name="Google client secret" Target="GOOGLE_CLIENT_SECRET" Default="" Mode="" Description="Optional. Goes with the Google client ID." Type="Variable" Display="always" Required="false" Mask="true"></Config>

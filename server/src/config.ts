@@ -12,11 +12,15 @@ function bool(v: string | undefined): boolean | undefined {
 function generatedSecret(): string {
   const dir = path.resolve(process.env.DATA_DIR || './data');
   const file = path.join(dir, '.session-secret');
-  fs.mkdirSync(dir, { recursive: true });
-  if (fs.existsSync(file)) return fs.readFileSync(file, 'utf8').trim();
-  const secret = crypto.randomBytes(32).toString('hex');
-  fs.writeFileSync(file, secret, { mode: 0o600 });
-  return secret;
+  try {
+    fs.mkdirSync(dir, { recursive: true });
+    if (fs.existsSync(file)) return fs.readFileSync(file, 'utf8').trim();
+    const secret = crypto.randomBytes(32).toString('hex');
+    fs.writeFileSync(file, secret, { mode: 0o600 });
+    return secret;
+  } catch (err) {
+    throw new Error(`Can't write to the data folder ${dir}. In Docker, set PUID/PGID to the folder's owner (Unraid: 99/100). ${(err as Error).message}`);
+  }
 }
 
 const googleClientId = process.env.GOOGLE_CLIENT_ID || '';
