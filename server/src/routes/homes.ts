@@ -133,7 +133,9 @@ export function homeRoutes(app: FastifyInstance, db: DatabaseSync): void {
   app.get('/api/admin/overview', async (req) => {
     requireAdmin(req);
     const users = db.prepare(`
-      SELECT u.id, u.name, u.email, u.is_admin, u.created_at,
+      SELECT u.id, u.name, u.username, u.email, u.is_admin, u.disabled, u.totp_enabled, u.created_at,
+        (u.password_hash IS NOT NULL) AS has_password, (u.google_sub IS NOT NULL) AS has_google,
+        (SELECT COUNT(*) FROM passkeys p WHERE p.user_id = u.id) AS passkeys,
         (SELECT COUNT(*) FROM home_members m WHERE m.user_id = u.id) AS homes
       FROM users u ORDER BY u.created_at`).all();
     const homes = db.prepare(`

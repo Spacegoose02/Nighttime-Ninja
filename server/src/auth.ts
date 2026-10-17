@@ -4,6 +4,7 @@ import * as oidc from 'openid-client';
 import { config } from './config.ts';
 import { HttpError, newId, randomToken, readableCode, requireStr, sha256, str } from './util.ts';
 import type { Row } from './db.ts';
+import { isPrivateAddress, limitAuth } from './security.ts';
 
 export const SESSION_COOKIE = 'nn_session';
 const SESSION_DAYS = 60;
@@ -12,11 +13,18 @@ export interface User {
   id: string;
   email: string | null;
   name: string;
+  username: string | null;
   avatar: string;
   theme: string;
   units: string;
   is_admin: number;
+  disabled: number;
   last_home_id: string | null;
+  google_sub: string | null;
+  password_hash: string | null;
+  totp_secret: string | null;
+  totp_enabled: number;
+  totp_last_step: number | null;
 }
 
 export type Role = 'manager' | 'member';
@@ -33,6 +41,8 @@ declare module 'fastify' {
   interface FastifyRequest {
     user: User | null;
     tokenHomeId: string | null;
+    /** Hash of the current session id, for "this device" in the sessions list. */
+    sessionHash: string | null;
   }
 }
 
@@ -40,47 +50,89 @@ declare module 'fastify' {
  * Cookies are only marked Secure when this request really came in over HTTPS. Basing it on PUBLIC_URL broke
  * sign-in for anyone reaching an https server by its plain-http LAN address (the browser silently dropped the cookie).
  */
-function cookieOpts(reply: FastifyReply) {
+export function cookieOpts(reply: FastifyReply) {
   return { path: '/', httpOnly: true, sameSite: 'lax' as const, secure: reply.request.protocol === 'https', signed: true };
 }
 
-export function createSession(db: DatabaseSync, userId: string): string {
+// ---------- server-wide sign-in settings (admins can change these in the app) ----------
+
+export type SignupMode = 'open' | 'invite' | 'closed';
+export type LocalLogin = 'off' | 'lan' | 'anywhere';
+
+export function getSetting(db: DatabaseSync, key: string): string | null {
+  return ((db.prepare('SELECT value FROM server_settings WHERE key = ?').get(key) as Row | undefined)?.value as string) ?? null;
+}
+
+export function setSetting(db: DatabaseSync, key: string, value: string): void {
+  db.prepare('INSERT INTO server_settings (key, value) VALUES (?, ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value').run(key, value);
+}
+
+export function signupMode(db: DatabaseSync): SignupMode {
+  const v = getSetting(db, 'signupMode') ?? config.signupMode;
+  return v === 'open' || v === 'closed' ? v : 'invite';
+}
+
+export function localLoginMode(db: DatabaseSync): LocalLogin {
+  const v = getSetting(db, 'localLogin') ?? config.localLogin;
+  return v === 'off' || v === 'anywhere' ? v : 'lan';
+}
+
+/** Name-only sign-in: never from the internet unless an admin explicitly chose "anywhere". */
+export function localLoginAllowed(db: DatabaseSync, req: FastifyRequest): boolean {
+  const mode = localLoginMode(db);
+  return mode === 'anywhere' || (mode === 'lan' && isPrivateAddress(req.ip));
+}
+
+export const hasUsers = (db: DatabaseSync): boolean => !!db.prepare('SELECT 1 FROM users LIMIT 1').get();
+
+// ---------- sessions ----------
+
+export function startSession(db: DatabaseSync, reply: FastifyReply, userId: string, method: string): void {
   const id = randomToken();
+  const req = reply.request;
   const expires = new Date(Date.now() + SESSION_DAYS * 864e5).toISOString();
-  db.prepare('INSERT INTO sessions (id, user_id, expires_at) VALUES (?, ?, ?)').run(sha256(id), userId, expires);
+  db.prepare(`INSERT INTO sessions (id, user_id, expires_at, user_agent, ip, method, last_seen_at)
+    VALUES (?, ?, ?, ?, ?, ?, datetime('now'))`)
+    .run(sha256(id), userId, expires, str(req.headers['user-agent'], 300), req.ip, method);
+  reply.setCookie(SESSION_COOKIE, id, { ...cookieOpts(reply), maxAge: SESSION_DAYS * 86400 });
+}
+
+/** Two-factor step: a short-lived ticket the browser trades, along with a code, for a session. */
+export function startMfa(db: DatabaseSync, userId: string, method: string): string {
+  const id = randomToken();
+  db.prepare('DELETE FROM mfa_tickets WHERE expires_at < ?').run(new Date().toISOString());
+  db.prepare('INSERT INTO mfa_tickets (id, user_id, method, expires_at) VALUES (?, ?, ?, ?)')
+    .run(sha256(id), userId, method, new Date(Date.now() + 5 * 60e3).toISOString());
   return id;
 }
 
-function setSessionCookie(reply: FastifyReply, sessionId: string): void {
-  reply.setCookie(SESSION_COOKIE, sessionId, { ...cookieOpts(reply), maxAge: SESSION_DAYS * 86400 });
+export function getUser(db: DatabaseSync, id: string): User | undefined {
+  return db.prepare('SELECT * FROM users WHERE id = ?').get(id) as User | undefined;
 }
 
-/** Finds an existing user or creates one. The very first account on a server becomes its admin. */
-export function upsertUser(db: DatabaseSync, u: { name: string; email?: string | null; googleSub?: string | null }): User {
-  let row: Row | undefined;
-  if (u.googleSub) row = db.prepare('SELECT * FROM users WHERE google_sub = ?').get(u.googleSub) as Row | undefined;
-  if (!row && u.email) row = db.prepare('SELECT * FROM users WHERE email = ?').get(u.email) as Row | undefined;
-  if (!row && !u.googleSub && !u.email) {
-    row = db.prepare('SELECT * FROM users WHERE name = ? COLLATE NOCASE AND google_sub IS NULL AND email IS NULL').get(u.name) as Row | undefined;
-  }
-  if (row) {
-    if (u.googleSub && !row.google_sub) db.prepare('UPDATE users SET google_sub = ? WHERE id = ?').run(u.googleSub, row.id as string);
-    return row as unknown as User;
-  }
-  const isFirst = !(db.prepare('SELECT 1 FROM users LIMIT 1').get());
+/** Creates a user. The very first account on a server becomes its admin. */
+export function createUser(db: DatabaseSync, u: { name: string; username?: string | null; email?: string | null; googleSub?: string | null; passwordHash?: string | null }): User {
   const id = newId();
-  db.prepare('INSERT INTO users (id, name, email, google_sub, is_admin) VALUES (?, ?, ?, ?, ?)')
-    .run(id, u.name, u.email ?? null, u.googleSub ?? null, isFirst ? 1 : 0);
-  return db.prepare('SELECT * FROM users WHERE id = ?').get(id) as unknown as User;
+  db.prepare('INSERT INTO users (id, name, username, email, google_sub, password_hash, is_admin) VALUES (?, ?, ?, ?, ?, ?, ?)')
+    .run(id, u.name, u.username ?? null, u.email ?? null, u.googleSub ?? null, u.passwordHash ?? null, hasUsers(db) ? 0 : 1);
+  return getUser(db, id)!;
+}
+
+/** Accounts protected by a password, Google, two-factor or a passkey can never be used through name-only sign-in. */
+function isQuickAccount(db: DatabaseSync, u: User): boolean {
+  return !u.password_hash && !u.google_sub && !u.email && !u.totp_enabled
+    && !db.prepare('SELECT 1 FROM passkeys WHERE user_id = ?').get(u.id);
 }
 
 /** Resolves the caller from the session cookie, a bearer session, or a home API token. */
 export function installAuth(app: FastifyInstance, db: DatabaseSync): void {
   app.decorateRequest('user', null);
   app.decorateRequest('tokenHomeId', null);
+  app.decorateRequest('sessionHash', null);
   app.addHook('onRequest', async (req) => {
     req.user = null;
     req.tokenHomeId = null;
+    req.sessionHash = null;
     let sessionId: string | null = null;
     const raw = req.cookies[SESSION_COOKIE];
     if (raw) {
@@ -101,10 +153,16 @@ export function installAuth(app: FastifyInstance, db: DatabaseSync): void {
       sessionId = token;
     }
     if (!sessionId) return;
-    const user = db.prepare(`
-      SELECT u.* FROM sessions s JOIN users u ON u.id = s.user_id
-      WHERE s.id = ? AND s.expires_at > ?`).get(sha256(sessionId), new Date().toISOString()) as User | undefined;
-    req.user = user ?? null;
+    const hash = sha256(sessionId);
+    const row = db.prepare(`
+      SELECT u.*, s.last_seen_at AS session_seen FROM sessions s JOIN users u ON u.id = s.user_id
+      WHERE s.id = ? AND s.expires_at > ? AND u.disabled = 0`).get(hash, new Date().toISOString()) as (User & { session_seen: string | null }) | undefined;
+    if (!row) return;
+    req.user = row;
+    req.sessionHash = hash;
+    if (!row.session_seen || Date.parse(`${row.session_seen.replace(' ', 'T')}Z`) < Date.now() - 5 * 60e3) {
+      db.prepare("UPDATE sessions SET last_seen_at = datetime('now'), ip = ? WHERE id = ?").run(req.ip, hash);
+    }
   });
 }
 
@@ -147,22 +205,33 @@ function google(): Promise<oidc.Configuration> {
 
 export function publicUser(u: User) {
   return {
-    id: u.id, name: u.name, email: u.email, avatar: u.avatar, theme: u.theme, units: u.units,
+    id: u.id, name: u.name, username: u.username, email: u.email, avatar: u.avatar, theme: u.theme, units: u.units,
     isAdmin: !!u.is_admin, lastHomeId: u.last_home_id,
   };
 }
 
 export function registerAuthRoutes(app: FastifyInstance, db: DatabaseSync): void {
-  app.get('/api/auth/config', async () => ({
+  app.get('/api/auth/config', async (req) => ({
     google: !!config.google,
-    local: config.allowLocalLogin,
+    local: localLoginAllowed(db, req),
+    passwords: true,
+    passkeys: true,
+    signup: hasUsers(db) ? signupMode(db) : 'first',
   }));
 
+  // Name-only sign-in for trusted home networks.
   app.post('/api/auth/local', async (req, reply) => {
-    if (!config.allowLocalLogin) throw new HttpError(403, 'Local sign-in is turned off on this server');
+    if (!localLoginAllowed(db, req)) throw new HttpError(403, 'Quick sign-in only works on your home network. Use your password, a passkey or Google.');
+    limitAuth(req, 'local');
     const name = requireStr((req.body as Row)?.name, 'Name', 60);
-    const user = upsertUser(db, { name });
-    setSessionCookie(reply, createSession(db, user.id));
+    const existing = db.prepare('SELECT * FROM users WHERE name = ? COLLATE NOCASE ORDER BY created_at').all(name) as unknown as User[];
+    let user = existing.find((u) => isQuickAccount(db, u) && !u.disabled);
+    if (!user) {
+      if (existing.length) throw new HttpError(403, `${name} has a password or passkey. Sign in with that instead.`);
+      if (hasUsers(db) && signupMode(db) === 'closed') throw new HttpError(403, 'New accounts are turned off on this server');
+      user = createUser(db, { name });
+    }
+    startSession(db, reply, user.id, 'quick');
     return { user: publicUser(user) };
   });
 
@@ -170,15 +239,17 @@ export function registerAuthRoutes(app: FastifyInstance, db: DatabaseSync): void
     const cfg = await google();
     const verifier = oidc.randomPKCECodeVerifier();
     const state = oidc.randomState();
+    const nonce = oidc.randomNonce();
     const url = oidc.buildAuthorizationUrl(cfg, {
       redirect_uri: `${config.publicUrl}/api/auth/google/callback`,
       scope: 'openid email profile',
       code_challenge: await oidc.calculatePKCECodeChallenge(verifier),
       code_challenge_method: 'S256',
       state,
+      nonce,
       prompt: 'select_account',
     });
-    reply.setCookie('nn_oidc', JSON.stringify({ verifier, state }), { ...cookieOpts(reply), maxAge: 600 });
+    reply.setCookie('nn_oidc', JSON.stringify({ verifier, state, nonce }), { ...cookieOpts(reply), maxAge: 600 });
     return reply.redirect(url.href);
   });
 
@@ -186,48 +257,74 @@ export function registerAuthRoutes(app: FastifyInstance, db: DatabaseSync): void
     const cfg = await google();
     const raw = req.cookies.nn_oidc;
     const un = raw ? req.unsignCookie(raw) : null;
-    if (!un?.valid || !un.value) throw new HttpError(400, 'Sign-in expired, please try again');
-    const { verifier, state } = JSON.parse(un.value) as { verifier: string; state: string };
+    if (!un?.valid || !un.value) return reply.redirect('/?signin=expired');
+    reply.clearCookie('nn_oidc', { path: '/' });
+    const { verifier, state, nonce } = JSON.parse(un.value) as { verifier: string; state: string; nonce: string };
     const current = new URL(req.url, config.publicUrl);
-    const tokens = await oidc.authorizationCodeGrant(cfg, current, { pkceCodeVerifier: verifier, expectedState: state });
+    const tokens = await oidc.authorizationCodeGrant(cfg, current, { pkceCodeVerifier: verifier, expectedState: state, expectedNonce: nonce });
     const claims = tokens.claims();
     if (!claims) throw new HttpError(400, 'Google did not return an identity');
-    const email = typeof claims.email === 'string' && claims.email_verified ? claims.email : null;
-    const user = upsertUser(db, {
-      name: str(claims.name, 60) ?? email?.split('@')[0] ?? 'Cook',
-      email,
-      googleSub: claims.sub,
-    });
-    reply.clearCookie('nn_oidc', { path: '/' });
-    setSessionCookie(reply, createSession(db, user.id));
+    const email = typeof claims.email === 'string' && claims.email_verified ? claims.email.toLowerCase() : null;
+    let user = db.prepare('SELECT * FROM users WHERE google_sub = ?').get(claims.sub) as User | undefined;
+    if (!user && email) {
+      user = db.prepare('SELECT * FROM users WHERE email = ? COLLATE NOCASE').get(email) as User | undefined;
+      if (user) db.prepare('UPDATE users SET google_sub = ? WHERE id = ?').run(claims.sub, user.id);
+    }
+    if (!user) {
+      const mode = signupMode(db);
+      if (hasUsers(db) && mode !== 'open') {
+        // Invite-only servers: you join by using a home's join code, which links this Google account.
+        if (mode === 'closed') return reply.redirect('/?signin=closed');
+        const pending = req.cookies.nn_invite ? req.unsignCookie(req.cookies.nn_invite) : null;
+        const home = pending?.valid && pending.value ? db.prepare('SELECT id FROM homes WHERE join_code = ?').get(pending.value) as Row | undefined : undefined;
+        if (!home) return reply.redirect('/?signin=invite');
+        user = createUser(db, { name: str(claims.name, 60) ?? email?.split('@')[0] ?? 'Cook', email, googleSub: claims.sub });
+        db.prepare("INSERT OR IGNORE INTO home_members (home_id, user_id, role) VALUES (?, ?, 'member')").run(home.id as string, user.id);
+        reply.clearCookie('nn_invite', { path: '/' });
+      } else {
+        user = createUser(db, { name: str(claims.name, 60) ?? email?.split('@')[0] ?? 'Cook', email, googleSub: claims.sub });
+      }
+    }
+    if (user.disabled) return reply.redirect('/?signin=disabled');
+    if (user.totp_enabled) return reply.redirect(`/?mfa=${encodeURIComponent(startMfa(db, user.id, 'google'))}`);
+    startSession(db, reply, user.id, 'google');
     return reply.redirect('/');
   });
 
+  // Remembers a join code across the Google round trip for invite-only servers.
+  app.post('/api/auth/invite', async (req, reply) => {
+    const code = requireStr((req.body as Row)?.code, 'Join code', 20).toUpperCase().replace(/[^A-Z0-9]/g, '');
+    limitAuth(req, 'invite');
+    if (!db.prepare('SELECT 1 FROM homes WHERE join_code = ?').get(code)) throw new HttpError(404, 'No home has that join code');
+    reply.setCookie('nn_invite', code, { ...cookieOpts(reply), maxAge: 900 });
+    return { ok: true };
+  });
+
   app.post('/api/auth/logout', async (req, reply) => {
-    const raw = req.cookies[SESSION_COOKIE];
-    const un = raw ? req.unsignCookie(raw) : null;
-    if (un?.valid && un.value) db.prepare('DELETE FROM sessions WHERE id = ?').run(sha256(un.value));
+    if (req.sessionHash) db.prepare('DELETE FROM sessions WHERE id = ?').run(req.sessionHash);
     reply.clearCookie(SESSION_COOKIE, { path: '/' });
     return { ok: true };
   });
 
-  // Pairing lets a tablet or app sign in without typing a Google password on it.
+  // Pairing lets a tablet or app sign in without typing a password on it.
   app.post('/api/auth/pair-code', async (req) => {
     const user = requireUser(req);
-    db.prepare('DELETE FROM pair_codes WHERE expires_at < ?').run(new Date().toISOString());
-    const code = readableCode(6);
+    db.prepare('DELETE FROM pair_codes WHERE expires_at < ? OR user_id = ?').run(new Date().toISOString(), user.id);
+    const code = readableCode(8);
     const expires = new Date(Date.now() + 10 * 60e3).toISOString();
     db.prepare('INSERT INTO pair_codes (code, user_id, expires_at) VALUES (?, ?, ?)').run(code, user.id, expires);
     return { code, expiresAt: expires };
   });
 
   app.post('/api/auth/pair', async (req, reply) => {
-    const code = requireStr((req.body as Row)?.code, 'Code', 12).toUpperCase().replace(/[^A-Z0-9]/g, '');
+    limitAuth(req, 'pair');
+    const code = requireStr((req.body as Row)?.code, 'Code', 20).toUpperCase().replace(/[^A-Z0-9]/g, '');
     const row = db.prepare('SELECT user_id FROM pair_codes WHERE code = ? AND expires_at > ?').get(code, new Date().toISOString()) as Row | undefined;
-    if (!row) throw new HttpError(400, 'That code is wrong or expired');
+    if (!row) throw new HttpError(400, 'That code is wrong or expired. Codes last 10 minutes and work once.');
     db.prepare('DELETE FROM pair_codes WHERE code = ?').run(code);
-    setSessionCookie(reply, createSession(db, row.user_id as string));
-    const user = db.prepare('SELECT * FROM users WHERE id = ?').get(row.user_id as string) as unknown as User;
+    const user = getUser(db, row.user_id as string);
+    if (!user || user.disabled) throw new HttpError(403, 'That account is turned off');
+    startSession(db, reply, user.id, 'pairing');
     return { user: publicUser(user) };
   });
 
@@ -250,6 +347,6 @@ export function registerAuthRoutes(app: FastifyInstance, db: DatabaseSync): void
     if (typeof b.avatar === 'string' && avatars.includes(b.avatar)) db.prepare('UPDATE users SET avatar = ? WHERE id = ?').run(b.avatar, user.id);
     if (b.units === 'us' || b.units === 'metric' || b.units === 'original') db.prepare('UPDATE users SET units = ? WHERE id = ?').run(b.units, user.id);
     if (typeof b.lastHomeId === 'string') db.prepare('UPDATE users SET last_home_id = ? WHERE id = ?').run(b.lastHomeId, user.id);
-    return { user: publicUser(db.prepare('SELECT * FROM users WHERE id = ?').get(user.id) as unknown as User) };
+    return { user: publicUser(getUser(db, user.id)!) };
   });
 }

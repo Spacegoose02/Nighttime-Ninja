@@ -35,7 +35,13 @@ export const config = {
     ? process.env.SESSION_SECRET
     : generatedSecret(),
   google: googleClientId && googleClientSecret ? { clientId: googleClientId, clientSecret: googleClientSecret } : null,
-  allowLocalLogin: bool(process.env.ALLOW_LOCAL_LOGIN) ?? !(googleClientId && googleClientSecret),
+  // Name-only "quick sign-in": off, lan (home network addresses only) or anywhere. Admins can change it in the app.
+  // ALLOW_LOCAL_LOGIN=true from older versions now means "lan".
+  localLogin: process.env.LOCAL_LOGIN
+    || (bool(process.env.ALLOW_LOCAL_LOGIN) === false ? 'off' : bool(process.env.ALLOW_LOCAL_LOGIN) ? 'lan' : null)
+    || (googleClientId && googleClientSecret ? 'off' : 'lan'),
+  // Who may create an account: open, invite (needs a home join code) or closed. The first account is always allowed.
+  signupMode: process.env.SIGNUP_MODE || 'invite',
   kroger: process.env.KROGER_CLIENT_ID && process.env.KROGER_CLIENT_SECRET
     ? { clientId: process.env.KROGER_CLIENT_ID, clientSecret: process.env.KROGER_CLIENT_SECRET }
     : null,

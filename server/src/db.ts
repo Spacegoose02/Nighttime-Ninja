@@ -162,6 +162,53 @@ const MIGRATIONS: string[] = [
     kroger_location_id TEXT
   );
   `,
+  // Stronger sign-in: passwords, two-factor codes, passkeys, session management, server settings.
+  `
+  ALTER TABLE users ADD COLUMN username TEXT COLLATE NOCASE;
+  ALTER TABLE users ADD COLUMN password_hash TEXT;
+  ALTER TABLE users ADD COLUMN totp_secret TEXT;
+  ALTER TABLE users ADD COLUMN totp_enabled INTEGER NOT NULL DEFAULT 0;
+  ALTER TABLE users ADD COLUMN totp_last_step INTEGER;
+  ALTER TABLE users ADD COLUMN disabled INTEGER NOT NULL DEFAULT 0;
+  CREATE UNIQUE INDEX users_username ON users(username);
+  ALTER TABLE sessions ADD COLUMN user_agent TEXT;
+  ALTER TABLE sessions ADD COLUMN ip TEXT;
+  ALTER TABLE sessions ADD COLUMN method TEXT;
+  ALTER TABLE sessions ADD COLUMN last_seen_at TEXT;
+  CREATE TABLE recovery_codes (
+    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    code_hash TEXT NOT NULL,
+    used_at TEXT,
+    PRIMARY KEY (user_id, code_hash)
+  );
+  CREATE TABLE mfa_tickets (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    method TEXT NOT NULL,
+    expires_at TEXT NOT NULL
+  );
+  CREATE TABLE passkeys (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    public_key BLOB NOT NULL,
+    counter INTEGER NOT NULL DEFAULT 0,
+    transports TEXT,
+    name TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    last_used_at TEXT
+  );
+  CREATE INDEX passkeys_user ON passkeys(user_id);
+  CREATE TABLE webauthn_challenges (
+    id TEXT PRIMARY KEY,
+    challenge TEXT NOT NULL,
+    user_id TEXT,
+    expires_at TEXT NOT NULL
+  );
+  CREATE TABLE server_settings (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+  );
+  `,
 ];
 
 export function openDb(dataDir: string): DatabaseSync {

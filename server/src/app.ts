@@ -7,6 +7,8 @@ import type { DatabaseSync } from 'node:sqlite';
 import { config } from './config.ts';
 import { installAuth, registerAuthRoutes } from './auth.ts';
 import { HttpError } from './util.ts';
+import { installHardening } from './security.ts';
+import { accountRoutes } from './accounts.ts';
 import { homeRoutes } from './routes/homes.ts';
 import { inventoryRoutes } from './routes/inventory.ts';
 import { recipeRoutes } from './routes/recipes.ts';
@@ -20,6 +22,7 @@ import { kitchenOwlRoutes } from './routes/kitchenowl.ts';
 export async function buildApp(db: DatabaseSync, opts: { logger?: boolean; serveWeb?: boolean } = {}): Promise<FastifyInstance> {
   const app = Fastify({ logger: opts.logger ?? false, bodyLimit: 5 * 1024 * 1024, trustProxy: config.trustProxy });
   await app.register(cookie, { secret: config.sessionSecret });
+  installHardening(app);
   installAuth(app, db);
 
   app.setErrorHandler((err: Error & { statusCode?: number }, req, reply) => {
@@ -32,6 +35,7 @@ export async function buildApp(db: DatabaseSync, opts: { logger?: boolean; serve
   app.get('/api/health', async () => ({ ok: true }));
 
   registerAuthRoutes(app, db);
+  accountRoutes(app, db);
   homeRoutes(app, db);
   inventoryRoutes(app, db);
   recipeRoutes(app, db);

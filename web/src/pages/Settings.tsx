@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { api, type HomeDetail } from '../api.ts';
 import { useApp, useLoad } from '../state.tsx';
 import { AVATARS, AVATAR_LABELS, RaccoonAvatar } from '../components/Raccoon.tsx';
+import { AdminSignIn, AdminUserActions, SecurityCard } from './Security.tsx';
 
 const THEMES = [
   { id: 'forest', name: 'Forest', swatch: '#2f7d4f' },
@@ -202,7 +203,7 @@ function HomeSettings() {
 }
 
 interface Overview {
-  users: { id: string; name: string; email: string | null; is_admin: number; homes: number }[];
+  users: { id: string; name: string; username: string | null; email: string | null; is_admin: number; disabled: number; totp_enabled: number; has_password: number; has_google: number; passkeys: number; homes: number }[];
   homes: { id: string; name: string; members: number; recipes: number }[];
 }
 
@@ -213,18 +214,26 @@ function Admin() {
   return (
     <div className="card stack">
       <h2>Server admin</h2>
+      <AdminSignIn />
+      <h3>People</h3>
       <table>
-        <thead><tr><th>Person</th><th>Homes</th><th>Admin</th><th /></tr></thead>
+        <thead><tr><th>Person</th><th>Sign-in</th><th>Homes</th><th>Admin</th><th /></tr></thead>
         <tbody>
           {data.users.map((u) => (
             <tr key={u.id}>
-              <td>{u.name}<div className="small muted">{u.email}</div></td>
+              <td>{u.name}{!!u.disabled && <span className="pill bad"> off</span>}<div className="small muted">{u.username ?? u.email}</div></td>
+              <td className="small">{[u.has_password && 'password', u.has_google && 'Google', u.passkeys && 'passkey', u.totp_enabled && '2FA'].filter(Boolean).join(', ') || 'quick only'}</td>
               <td>{u.homes}</td>
               <td>
                 <input type="checkbox" checked={!!u.is_admin} disabled={u.id === me!.user.id} style={{ width: 24, minHeight: 24 }}
                   onChange={async (e) => { await api(`/api/admin/users/${u.id}`, { method: 'PATCH', body: { isAdmin: e.target.checked } }); await reload(); }} />
               </td>
-              <td>{u.id !== me!.user.id && <button className="ghost danger" onClick={async () => { if (confirm(`Delete ${u.name}'s account?`)) { await api(`/api/admin/users/${u.id}`, { method: 'DELETE' }); await reload(); toast('Deleted'); } }}>Delete</button>}</td>
+              <td>{u.id !== me!.user.id && (
+                <span className="row" style={{ gap: 4 }}>
+                  <AdminUserActions user={u} onChange={() => void reload()} />
+                  <button className="ghost danger" onClick={async () => { if (confirm(`Delete ${u.name}'s account?`)) { await api(`/api/admin/users/${u.id}`, { method: 'DELETE' }); await reload(); toast('Deleted'); } }}>Delete</button>
+                </span>
+              )}</td>
             </tr>
           ))}
         </tbody>
@@ -241,6 +250,7 @@ export function Settings() {
     <div className="stack" style={{ maxWidth: 960 }}>
       <div className="topbar"><h1>Settings</h1></div>
       <Profile />
+      <SecurityCard />
       <HomeSettings />
       {me?.user.isAdmin && <Admin />}
       <p className="small muted">Nighttime Ninja is open source under the MIT license.</p>

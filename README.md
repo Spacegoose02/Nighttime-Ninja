@@ -12,7 +12,7 @@
 - **Shopping list** with quick add (“2 lb chicken, milk, 3 avocados”), suggestions from what you buy most, purchase history, and checked-off items flowing into the pantry.
 - **7-day meal plan** that can fill the shopping list for the week and shows up in **Google Calendar** as a subscribed calendar.
 - **Homes**: create a home or join one with a code. **Home managers** run members and settings; **server admins** see everyone.
-- **Sign in with Google** (OIDC), a simple name-only sign-in for trusted home networks, and **pairing codes** for tablets.
+- **Strong sign-in** that's safe to put on the internet: passwords (scrypt), **two-factor codes** with recovery codes, **passkeys**, **Google** (OIDC), invite-only sign-up, rate limiting, a list of signed-in devices you can sign out, and **pairing codes** for tablets. Name-only quick sign-in only works from your home network.
 - **US measurements**: metric amounts and °C are shown as cups, ounces, pounds and °F (or switch to metric).
 - **Deals**: live prices and sales from the Kroger API, plus one-tap search, weekly ads and coupons for Walmart, Food Lion, Kroger, BJ's, Sam's Club and more.
 - **Feed**: follow cooks' YouTube channels, blogs or any RSS feed and watch new videos in the app.
@@ -47,9 +47,18 @@ All settings are environment variables. See [.env.example](.env.example).
 | `PUBLIC_URL` | The address people use, e.g. `https://kitchen.example.com`. Needed for Google sign-in and calendar links. |
 | `DATA_DIR` | Where the SQLite database and photos live (`/data` in Docker). |
 | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | Turn on Google sign-in. See [docs/google-sign-in.md](docs/google-sign-in.md). |
-| `ALLOW_LOCAL_LOGIN` | Name-only sign-in. On by default when Google isn't set up. Only use it on a network you trust. |
+| `SIGNUP_MODE` | `invite` (default, needs a home join code), `open`, or `closed`. Admins can change it in Settings. |
+| `LOCAL_LOGIN` | Name-only quick sign-in: `lan` (home network only), `off`, or `anywhere`. |
+| `TRUST_PROXY` | Reverse proxies allowed to set X-Forwarded headers. Defaults to loopback and private networks. |
 | `SESSION_SECRET` | Optional. Generated and saved in the data folder if empty. |
 | `KROGER_CLIENT_ID`, `KROGER_CLIENT_SECRET` | Optional, free from [developer.kroger.com](https://developer.kroger.com). Turns on live prices and sale matching. |
+
+## Putting it on the internet
+
+1. Put it behind a reverse proxy with HTTPS (Nginx Proxy Manager, SWAG, Caddy, Traefik or a Cloudflare Tunnel) and set `PUBLIC_URL` to the https address. Passkeys and Google sign-in need this.
+2. Keep `SIGNUP_MODE=invite` so only people with one of your homes' join codes can make accounts.
+3. Everyone should set a password and turn on two-factor or add a passkey in **Settings → Sign-in and security**. Quick sign-in keeps working at home but is refused from the internet. (The app tells home from internet by IP address, so always go through the reverse proxy. If you forward a port straight to the container, set `LOCAL_LOGIN=off`.)
+4. If someone gets locked out, an admin can hand them a temporary password or clear their two-factor in **Settings → Server admin**.
 
 ## Moving from KitchenOwl
 
