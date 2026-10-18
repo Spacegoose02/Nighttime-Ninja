@@ -1,12 +1,49 @@
 import { useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { api, type RecipeFull } from '../api.ts';
+import { api, type Item, type RecipeFull } from '../api.ts';
 import { useApp, useLoad } from '../state.tsx';
 import { amount, minutes, todayIso } from '../format.ts';
 import { celsiusToFahrenheitText } from '../../../shared/units.ts';
 import { READY_LABEL } from './Recipes.tsx';
 
-const AVAIL = { have: ['ok', '✓'], unknown: ['ok', '✓'], low: ['warn', 'low'], missing: ['bad', 'need'] } as const;
+/** Lets someone say "this ingredient is that pantry item". Saved for the whole home, so every recipe uses it. */
+function MatchPicker({ ingredient, onClose }: { ingredient: string; onClose: (changed: boolean) => void }) {
+  const { base, toast, me } = useApp();
+  const [items] = useLoad<Item[]>(`${base}/items`);
+  const [q, setQ] = useState('');
+  const save = async (itemId: string | null, label: string) => {
+    await api(`${base}/ingredient-links`, { method: 'PUT', body: { ingredient, itemId } });
+    toast(label);
+    onClose(true);
+  };
+  const shown = (items ?? []).filter((i) => !q || i.name.toLowerCase().includes(q.toLowerCase()));
+  return (
+    <div className="modal-back" onClick={() => onClose(false)}>
+      <div className="modal stack" onClick={(e) => e.stopPropagation()}>
+        <h2>What do you use for “{ingredient}”?</h2>
+        <p className="small muted" style={{ margin: 0 }}>Pick it once and every recipe that calls for {ingredient} will use it.</p>
+        <input placeholder="Search the pantry" value={q} onChange={(e) => setQ(e.target.value)} autoFocus />
+        <div className="list" style={{ maxHeight: 340, overflow: 'auto' }}>
+          {shown.map((i) => (
+            <button key={i.id} className="list-item ghost" style={{ justifyContent: 'flex-start', borderRadius: 0 }} onClick={() => save(i.id, `${ingredient} → ${i.name}`)}>
+              <span style={{ fontSize: '1.4rem' }}>{i.icon}</span>
+              <span style={{ flex: 1, textAlign: 'left' }}>{i.name}</span>
+              <span className="small muted">{amount(i.quantity, i.unit, me?.user.units)}</span>
+            </button>
+          ))}
+          {items && !shown.length && <p className="muted">Nothing in the pantry matches that.</p>}
+        </div>
+        <div className="row">
+          <button onClick={() => save(null, 'Back to automatic matching')}>Let the app decide</button>
+          <span className="spacer" />
+          <button className="ghost" onClick={() => onClose(false)}>Cancel</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+const AVAIL ={ have: ['ok', '✓'], unknown: ['ok', '✓'], low: ['warn', 'low'], missing: ['bad', 'need'] } as const;
 
 export function RecipeDetail() {
   const { id } = useParams();
@@ -17,6 +54,7 @@ export function RecipeDetail() {
   const [cookMode, setCookMode] = useState(false);
   const [done, setDone] = useState<Set<number>>(new Set());
   const [planDate, setPlanDate] = useState<string | null>(null);
+  const [matching, setMatching] = useState<string | null>(null);
 
   if (!recipe) return <div className="card">Loading…</div>;
   const factor = servings && recipe.servings ? servings / recipe.servings : 1;
@@ -99,11 +137,15 @@ export function RecipeDetail() {
               const [c, l] = AVAIL[i.availability];
               return (
                 <li key={n} className="row" style={{ flexWrap: 'nowrap' }}>
-                  <span className={`pill ${c}`} style={{ minWidth: 48, justifyContent: 'center' }}>{l}</span>
+                  <button className={`pill ${c}`} style={{ minWidth: 56, minHeight: 36, justifyContent: 'center', border: 'none', cursor: 'pointer' }}
+                    title="Choose which pantry item this is" onClick={() => setMatching(i.name)}>{l}</button>
                   <span>
                     <strong>{amount(i.quantity == null ? null : i.quantity * factor, i.unit, units)}</strong> {i.name}
                     {i.note && <span className="muted">, {i.note}</span>}
                     {i.optional && <span className="muted"> (optional)</span>}
+                    {!!i.matched?.length && i.matched.join().toLowerCase() !== i.name.toLowerCase() && (
+                      <span className="small muted" style={{ display: 'block' }}>{i.linked ? '📌 ' : 'using '}{i.matched.join(', ')}</span>
+                    )}
                   </span>
                 </li>
               );
@@ -125,6 +167,9 @@ export function RecipeDetail() {
       <div className="row">
         <span className="spacer" />
         <button className="danger" onClick={async () => { if (confirm('Delete this recipe?')) { await api(`${base}/recipes/${id}`, { method: 'DELETE' }); nav('/recipes'); } }}>Delete recipe</button>
+      </div>
+      {matching && <MatchPicker ingredient={matching} onClose={(changed) => { setMatching(null); if (changed) void reload(); }} />}
+      <div>
       </div>
     </div>
   );

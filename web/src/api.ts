@@ -50,7 +50,7 @@ export interface RecipeSummary {
 
 export interface RecipeFull extends Recipe {
   id: string; isPublic: boolean; shareSlug: string | null; status: 'ready' | 'almost' | 'missing'; missing: string[];
-  ingredients: (Ingredient & { availability: Availability })[];
+  ingredients: (Ingredient & { availability: Availability; matched?: string[]; linked?: boolean })[];
 }
 
 export interface Meal {

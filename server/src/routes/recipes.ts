@@ -58,34 +58,50 @@ export function loadRecipe(db: DatabaseSync, row: Row) {
 
 interface Stock { id: string; name: string; quantity: number; unit: string | null }
 
-export function stockIndex(db: DatabaseSync, homeId: string): Map<string, Stock[]> {
-  const map = new Map<string, Stock[]>();
-  for (const r of db.prepare('SELECT id, name, quantity, unit FROM items WHERE home_id = ?').all(homeId) as unknown as Stock[]) {
-    const k = matchKey(r.name);
-    map.set(k, [...(map.get(k) ?? []), r]);
-  }
-  return map;
+export interface StockIndex {
+  byKey: Map<string, Stock[]>;
+  byId: Map<string, Stock>;
+  /** Ingredient key -> pantry item id, set by hand when automatic matching gets it wrong. */
+  links: Map<string, string>;
 }
 
-function findStock(index: Map<string, Stock[]>, name: string): Stock[] {
+export function stockIndex(db: DatabaseSync, homeId: string): StockIndex {
+  const byKey = new Map<string, Stock[]>();
+  const byId = new Map<string, Stock>();
+  for (const r of db.prepare('SELECT id, name, quantity, unit FROM items WHERE home_id = ?').all(homeId) as unknown as Stock[]) {
+    const k = matchKey(r.name);
+    byKey.set(k, [...(byKey.get(k) ?? []), r]);
+    byId.set(r.id, r);
+  }
+  const links = new Map<string, string>();
+  for (const l of db.prepare('SELECT ingredient_key, item_id FROM ingredient_links WHERE home_id = ?').all(homeId) as Row[]) {
+    links.set(l.ingredient_key as string, l.item_id as string);
+  }
+  return { byKey, byId, links };
+}
+
+function findStock(index: StockIndex, name: string): { stock: Stock[]; linked: boolean } {
   const key = matchKey(name);
-  if (index.has(key)) return index.get(key)!;
+  const linkedId = index.links.get(key);
+  if (linkedId && index.byId.has(linkedId)) return { stock: [index.byId.get(linkedId)!], linked: true };
+  if (index.byKey.has(key)) return { stock: index.byKey.get(key)!, linked: false };
   // Fuzzy: "cheddar or Monterey Jack cheese" finds "Extra Sharp Cheddar Cheese"; "boneless chicken thighs" finds "chicken thighs".
   const found: Stock[] = [];
-  for (const list of index.values()) for (const s of list) if (ingredientMatches(name, s.name)) found.push(s);
-  return found;
+  for (const list of index.byKey.values()) for (const s of list) if (ingredientMatches(name, s.name)) found.push(s);
+  return { stock: found, linked: false };
 }
 
 export type Availability = 'have' | 'low' | 'missing' | 'unknown';
 
 /** Works out whether each ingredient is covered by inventory, after unit conversion and scaling. */
-export function checkIngredients(index: Map<string, Stock[]>, ingredients: Ingredient[], factor = 1) {
+export function checkIngredients(index: StockIndex, ingredients: Ingredient[], factor = 1) {
   return ingredients.map((ing) => {
-    if (ALWAYS_HAVE.has(ing.name.toLowerCase().trim())) return { ...ing, availability: 'have' as Availability };
-    const stock = findStock(index, ing.name);
+    if (ALWAYS_HAVE.has(ing.name.toLowerCase().trim())) return { ...ing, availability: 'have' as Availability, matched: [] as string[], linked: false };
+    const { stock, linked } = findStock(index, ing.name);
+    const base = { ...ing, matched: stock.map((s) => s.name), linked };
     const total = stock.reduce((sum, s) => sum + s.quantity, 0);
-    if (!stock.length || total <= 0) return { ...ing, availability: 'missing' as Availability };
-    if (ing.quantity == null) return { ...ing, availability: 'have' as Availability };
+    if (!stock.length || total <= 0) return { ...base, availability: 'missing' as Availability };
+    if (ing.quantity == null) return { ...base, availability: 'have' as Availability };
     const need = ing.quantity * factor;
     let have = 0;
     let comparable = false;
@@ -94,8 +110,8 @@ export function checkIngredients(index: Map<string, Stock[]>, ingredients: Ingre
       if (c != null) { have += c; comparable = true; }
     }
     // Units we can't compare (e.g. "2 cloves" vs "1 head") count as present.
-    if (!comparable) return { ...ing, availability: 'unknown' as Availability };
-    return { ...ing, availability: (have + 1e-9 >= need ? 'have' : 'low') as Availability };
+    if (!comparable) return { ...base, availability: 'unknown' as Availability };
+    return { ...base, availability: (have + 1e-9 >= need ? 'have' : 'low') as Availability };
   });
 }
 
@@ -200,7 +216,7 @@ export function recipeRoutes(app: FastifyInstance, db: DatabaseSync): void {
     tx(db, () => {
       for (const ing of full.ingredients) {
         if (ALWAYS_HAVE.has(ing.name.toLowerCase())) continue;
-        const stock = findStock(index, ing.name).filter((s) => s.quantity > 0);
+        const stock = findStock(index, ing.name).stock.filter((s) => s.quantity > 0);
         if (!stock.length) { if (!ing.optional) skipped.push(ing.name); continue; }
         let remaining = ing.quantity == null ? null : ing.quantity * factor;
         for (const s of stock) {
@@ -239,6 +255,23 @@ export function recipeRoutes(app: FastifyInstance, db: DatabaseSync): void {
       name: i.name, quantity: i.quantity == null ? null : Math.round(i.quantity * factor * 100) / 100, unit: i.unit, note: `for ${full.title}`,
     }, ctx.user?.id ?? null));
     return { added };
+  });
+
+  // Pin an ingredient name to a pantry item for every recipe in this home, or pass itemId null to go back to automatic.
+  app.put('/api/homes/:homeId/ingredient-links', async (req) => {
+    const ctx = homeCtx(db, req);
+    const b = (req.body ?? {}) as Row;
+    const key = matchKey(String(b.ingredient ?? ''));
+    if (!key) throw new HttpError(400, 'Which ingredient?');
+    const itemId = str(b.itemId, 60);
+    if (!itemId) {
+      db.prepare('DELETE FROM ingredient_links WHERE home_id = ? AND ingredient_key = ?').run(ctx.homeId, key);
+      return { ok: true, itemId: null };
+    }
+    if (!db.prepare('SELECT 1 FROM items WHERE id = ? AND home_id = ?').get(itemId, ctx.homeId)) throw new HttpError(404, 'That pantry item is gone');
+    db.prepare(`INSERT INTO ingredient_links (home_id, ingredient_key, item_id) VALUES (?, ?, ?)
+      ON CONFLICT (home_id, ingredient_key) DO UPDATE SET item_id = excluded.item_id, created_at = datetime('now')`).run(ctx.homeId, key, itemId);
+    return { ok: true, itemId };
   });
 
   app.post('/api/homes/:homeId/recipes/:id/share', async (req) => {

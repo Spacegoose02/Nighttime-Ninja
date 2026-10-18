@@ -209,6 +209,16 @@ const MIGRATIONS: string[] = [
     value TEXT NOT NULL
   );
   `,
+  // Hand-picked matches between recipe ingredients and pantry items.
+  `
+  CREATE TABLE ingredient_links (
+    home_id TEXT NOT NULL REFERENCES homes(id) ON DELETE CASCADE,
+    ingredient_key TEXT NOT NULL,
+    item_id TEXT NOT NULL REFERENCES items(id) ON DELETE CASCADE,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    PRIMARY KEY (home_id, ingredient_key)
+  );
+  `,
 ];
 
 export function openDb(dataDir: string): DatabaseSync {

@@ -149,3 +149,24 @@ test('pairing a device signs it in once', async () => {
   const again = await app.inject({ method: 'POST', url: '/api/auth/pair', payload: { code: body.code } });
   assert.equal(again.statusCode, 400);
 });
+
+test('ingredients can be matched to a pantry item by hand', async () => {
+  const { login, call } = await setup();
+  const a = await login('Matcher');
+  const { body: home } = await call(a, 'POST', '/api/homes', { name: 'Home' });
+  const base = `/api/homes/${home.id}`;
+  const { body: item } = await call(a, 'POST', `${base}/items`, { name: 'Tillamook Medium', quantity: 1 });
+  const { body: rec } = await call(a, 'POST', `${base}/recipes`, { title: 'Mac', ingredients: [{ name: 'cheddar', quantity: null, unit: null }] });
+  let r = await call(a, 'GET', `${base}/recipes/${rec.id}`);
+  assert.equal(r.body.ingredients[0].availability, 'missing');
+  await call(a, 'PUT', `${base}/ingredient-links`, { ingredient: 'Cheddar', itemId: item.id });
+  r = await call(a, 'GET', `${base}/recipes/${rec.id}`);
+  assert.equal(r.body.ingredients[0].availability, 'have');
+  assert.equal(r.body.ingredients[0].linked, true);
+  assert.deepEqual(r.body.ingredients[0].matched, ['Tillamook Medium']);
+  const cooked = await call(a, 'POST', `${base}/recipes/${rec.id}/cook`, {});
+  assert.equal(cooked.body.used[0].name, 'Tillamook Medium');
+  await call(a, 'PUT', `${base}/ingredient-links`, { ingredient: 'cheddar', itemId: null });
+  r = await call(a, 'GET', `${base}/recipes/${rec.id}`);
+  assert.equal(r.body.ingredients[0].linked, false);
+});
