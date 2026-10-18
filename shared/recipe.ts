@@ -87,6 +87,68 @@ export function matchKey(name: string): string {
     .join(' ');
 }
 
+/** Words that describe how something is cut, aged or packed, not what it is. "Extra sharp shredded cheddar" is still cheddar. */
+const DESCRIPTORS = new Set([
+  'extra', 'sharp', 'mild', 'medium', 'aged', 'shredded', 'grated', 'block', 'sliced', 'slice', 'cubed', 'crumbled', 'fresh', 'freshly',
+  'large', 'small', 'jumbo', 'chopped', 'diced', 'minced', 'finely', 'roughly', 'thinly', 'thick', 'whole', 'organic', 'raw', 'ripe',
+  'boneless', 'skinless', 'bone', 'skin', 'frozen', 'canned', 'dried', 'dry', 'cooked', 'uncooked', 'leftover', 'softened', 'melted',
+  'cold', 'warm', 'room', 'temperature', 'unsalted', 'salted', 'low', 'fat', 'free', 'reduced', 'sodium', 'lite', 'light', 'nonfat',
+  'skim', 'plain', 'natural', 'pure', 'kosher', 'store', 'bought', 'homemade', 'packed', 'heaping', 'level', 'about', 'optional',
+  'brand', 'good', 'quality', 'best', 'great', 'value', 'kirkland', 'signature', 'kroger', 'member', 'mark', 'equate', 'favorite',
+  'of', 'the', 'and', 'a', 'an', 'to', 'for', 'taste', 'some', 'more', 'plus',
+]);
+
+/** Category words: "cheddar cheese" and "mozzarella cheese" share "cheese" but aren't the same thing. */
+const GENERIC = new Set(['cheese', 'sauce', 'powder', 'oil', 'juice', 'paste', 'meat', 'stock', 'broth', 'seasoning', 'spice', 'mix', 'blend', 'leaf', 'leave']);
+
+function singular(w: string): string {
+  if (w.length > 3 && w.endsWith('ies')) return w.slice(0, -3) + 'y';
+  if (w.length > 3 && /(ch|sh|x|o)es$/.test(w)) return w.slice(0, -2);
+  if (w.length > 2 && w.endsWith('s') && !w.endsWith('ss')) return w.slice(0, -1);
+  return w;
+}
+
+/** The words that say what a food is, e.g. "Extra Sharp Cheddar Cheese" -> ["cheddar", "cheese"]. */
+export function foodWords(name: string): string[] {
+  return name.toLowerCase()
+    .replace(/\([^)]*\)/g, ' ')
+    .replace(/[^a-z0-9 ]/g, ' ')
+    .split(/\s+/)
+    .filter(Boolean)
+    .map(singular)
+    .filter((w) => !DESCRIPTORS.has(w) && !/^\d+$/.test(w));
+}
+
+/**
+ * Splits "cheddar or Monterey Jack cheese" into ["cheddar cheese", "monterey jack cheese"].
+ * A shared last word ("cheese") is copied onto shorter alternatives that lack it.
+ */
+export function ingredientAlternatives(name: string): string[] {
+  const parts = name.split(/\s+or\s+|\s*\/\s*/i).map((p) => p.trim()).filter(Boolean);
+  if (parts.length < 2) return [name];
+  const lastWords = parts[parts.length - 1].split(/\s+/);
+  const head = lastWords.length > 1 ? lastWords[lastWords.length - 1] : null;
+  return parts.map((p, i) => (head && i < parts.length - 1 && !new RegExp(`\\b${head}\\b`, 'i').test(p) ? `${p} ${head}` : p));
+}
+
+function sameFood(want: string, have: string): boolean {
+  const a = foodWords(want);
+  const b = foodWords(have);
+  if (!a.length || !b.length) return false;
+  const coreA = a.filter((w) => !GENERIC.has(w));
+  const coreB = b.filter((w) => !GENERIC.has(w));
+  if (!coreA.length || !coreB.length) return a.join(' ') === b.join(' ');
+  const setA = new Set(coreA);
+  // The pantry item may be the same or more general than the recipe asks for ("chicken thighs" covers "boneless chicken thighs";
+  // a pantry "chicken" covers "chicken thighs"), but not something different that contains the word ("peanut butter" is not "butter").
+  return coreB.every((w) => setA.has(w));
+}
+
+/** True when a pantry item can stand in for a recipe ingredient. "X or Y" ingredients match either one. */
+export function ingredientMatches(ingredient: string, pantryItem: string): boolean {
+  return ingredientAlternatives(ingredient).some((alt) => sameFood(alt, pantryItem));
+}
+
 /** Parses ISO-8601 durations ("PT1H30M") or plain numbers/phrases into minutes. */
 export function parseDuration(v: unknown): number | null {
   if (v == null || v === '') return null;

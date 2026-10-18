@@ -85,3 +85,28 @@ test('imports KitchenOwl recipes', () => {
   assert.deepEqual(r.instructions, ['Brown beef', 'Simmer']);
   assert.deepEqual(r.tags, ['dinner']);
 });
+
+test('matches recipe ingredients to pantry items loosely', async () => {
+  const { ingredientMatches, ingredientAlternatives } = await import('./recipe.ts');
+  assert.deepEqual(ingredientAlternatives('cheddar or Monterey Jack cheese'), ['cheddar cheese', 'Monterey Jack cheese']);
+  const yes: [string, string][] = [
+    ['cheddar or Monterey Jack cheese', 'Extra Sharp Cheddar Cheese'],
+    ['cheddar or Monterey Jack cheese', 'Monterey Jack'],
+    ['shredded cheddar cheese', 'Sharp Cheddar'],
+    ['boneless skinless chicken thighs', 'Chicken Thighs'],
+    ['chicken thighs', 'chicken'],
+    ['unsalted butter, softened', 'Butter'],
+    ['kosher salt', 'Salt'],
+    ['large eggs', 'Eggs'],
+    ['fresh basil leaves', 'Basil'],
+  ];
+  const no: [string, string][] = [
+    ['butter', 'Peanut Butter'],
+    ['cheddar cheese', 'Mozzarella Cheese'],
+    ['chicken thighs', 'Chicken Breast'],
+    ['black pepper', 'Red Pepper Flakes'],
+    ['cheese', 'Cheddar Cheese'],
+  ];
+  for (const [want, have] of yes) assert.ok(ingredientMatches(want, have), `${want} should match ${have}`);
+  for (const [want, have] of no) assert.ok(!ingredientMatches(want, have), `${want} should not match ${have}`);
+});

@@ -3,7 +3,7 @@ import type { DatabaseSync } from 'node:sqlite';
 import { homeCtx } from '../auth.ts';
 import { tx, type Row } from '../db.ts';
 import { HttpError, newId, num, parseJson, randomToken, str } from '../util.ts';
-import { importAny, matchKey, type Ingredient, type Recipe } from '../../../shared/recipe.ts';
+import { importAny, ingredientMatches, matchKey, type Ingredient, type Recipe } from '../../../shared/recipe.ts';
 import { convert } from '../../../shared/units.ts';
 import { adjustItem } from './inventory.ts';
 import { addShoppingItem } from './shopping.ts';
@@ -70,9 +70,10 @@ export function stockIndex(db: DatabaseSync, homeId: string): Map<string, Stock[
 function findStock(index: Map<string, Stock[]>, name: string): Stock[] {
   const key = matchKey(name);
   if (index.has(key)) return index.get(key)!;
-  // "boneless chicken thighs" should still find "chicken thighs".
-  for (const [k, v] of index) if (k && (key.endsWith(` ${k}`) || k.endsWith(` ${key}`))) return v;
-  return [];
+  // Fuzzy: "cheddar or Monterey Jack cheese" finds "Extra Sharp Cheddar Cheese"; "boneless chicken thighs" finds "chicken thighs".
+  const found: Stock[] = [];
+  for (const list of index.values()) for (const s of list) if (ingredientMatches(name, s.name)) found.push(s);
+  return found;
 }
 
 export type Availability = 'have' | 'low' | 'missing' | 'unknown';
