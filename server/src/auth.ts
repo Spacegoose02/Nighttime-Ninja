@@ -340,11 +340,12 @@ export function registerAuthRoutes(app: FastifyInstance, db: DatabaseSync): void
     const user = requireUser(req);
     const b = (req.body ?? {}) as Row;
     const themes = ['forest', 'midnight', 'citrus', 'raccoon', 'berry', 'ocean'];
-    const avatars = ['classic', 'chef', 'bandana', 'glasses', 'baker', 'ninja', 'grill', 'sushi'];
+    // Drawn raccoons plus any picture avatars shipped in web/src/avatars (ids are derived from file names).
+    const isAvatarId = (v: unknown): v is string => typeof v === 'string' && /^[a-z0-9_]{2,40}$/.test(v);
     const name = str(b.name, 60);
     if (name) db.prepare('UPDATE users SET name = ? WHERE id = ?').run(name, user.id);
     if (typeof b.theme === 'string' && themes.includes(b.theme)) db.prepare('UPDATE users SET theme = ? WHERE id = ?').run(b.theme, user.id);
-    if (typeof b.avatar === 'string' && avatars.includes(b.avatar)) db.prepare('UPDATE users SET avatar = ? WHERE id = ?').run(b.avatar, user.id);
+    if (isAvatarId(b.avatar)) db.prepare('UPDATE users SET avatar = ? WHERE id = ?').run(b.avatar, user.id);
     if (b.units === 'us' || b.units === 'metric' || b.units === 'original') db.prepare('UPDATE users SET units = ? WHERE id = ?').run(b.units, user.id);
     if (typeof b.lastHomeId === 'string') db.prepare('UPDATE users SET last_home_id = ? WHERE id = ?').run(b.lastHomeId, user.id);
     return { user: publicUser(getUser(db, user.id)!) };

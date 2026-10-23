@@ -1,3 +1,4 @@
+import { pictureAvatar } from '../avatars.ts';
 // The Nighttime Ninja mascot: a masked raccoon chef, drawn in plain SVG so it themes and scales cleanly.
 
 export const AVATARS = ['classic', 'chef', 'bandana', 'glasses', 'baker', 'ninja', 'grill', 'sushi'] as const;
@@ -79,7 +80,11 @@ function Head({ variant }: { variant: Avatar }) {
 }
 
 export function RaccoonAvatar({ variant = 'classic', size = 48, title }: { variant?: string; size?: number; title?: string }) {
-  const v = (AVATARS as readonly string[]).includes(variant) ? (variant as Avatar) : 'classic';
+  const pic = pictureAvatar(variant);
+  if (pic) {
+    return <img src={pic.url} alt={title ?? pic.label} width={size} height={size} style={{ width: size, height: size, borderRadius: '50%', objectFit: 'cover', display: 'block' }} />;
+  }
+  const v =(AVATARS as readonly string[]).includes(variant) ? (variant as Avatar) : 'classic';
   return (
     <svg viewBox="0 0 120 120" width={size} height={size} role="img" aria-label={title ?? `${AVATAR_LABELS[v]} raccoon`}>
       <Head variant={v} />

@@ -293,3 +293,12 @@ label.field { display: flex; flex-direction: column; gap: 6px; font-weight: 600;
 .cook-mode .steps li { font-size: 1.35rem; }
 table { border-collapse: collapse; width: 100%; }
 td, th { text-align: left; padding: 8px; border-bottom: 1px solid var(--border); }
+
+/* Avatar picker: rounded tiles (not pills) so longer names like "Executive Chef" wrap inside instead of spilling out. */
+.avatar-grid { display: grid; gap: 10px; grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); }
+.avatar-pick {
+  display: flex; flex-direction: column; align-items: center; justify-content: flex-start; gap: 6px; padding: 10px 6px;
+  min-height: 0; height: auto; border-radius: 16px; font-size: 0.8rem; line-height: 1.2; text-align: center; white-space: normal;
+}
+.avatar-pick span { overflow-wrap: anywhere; }
+.avatar-pick.on { border: 2px solid var(--primary); background: var(--surface-2); }

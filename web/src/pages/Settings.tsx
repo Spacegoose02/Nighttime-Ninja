@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { api, type HomeDetail } from '../api.ts';
 import { useApp, useLoad } from '../state.tsx';
 import { AVATARS, AVATAR_LABELS, RaccoonAvatar } from '../components/Raccoon.tsx';
+import { PICTURE_AVATARS } from '../avatars.ts';
 import { AdminSignIn, AdminUserActions, SecurityCard } from './Security.tsx';
 
 const THEMES = [
@@ -28,12 +29,12 @@ function Profile() {
         <button>Save name</button>
       </form>
       {me!.user.email && <p className="small muted" style={{ margin: 0 }}>Signed in with Google as {me!.user.email}</p>}
-      <h3>Raccoon avatar</h3>
-      <div className="chips">
-        {AVATARS.map((a) => (
-          <button key={a} className={`chip${me!.user.avatar === a ? ' on' : ''}`} style={{ minHeight: 84, flexDirection: 'column', padding: 6 }} onClick={() => update({ avatar: a })}>
-            <RaccoonAvatar variant={a} size={52} />
-            <span className="small">{AVATAR_LABELS[a]}</span>
+      <h3>Avatar</h3>
+      <div className="avatar-grid">
+        {[...PICTURE_AVATARS.map((p) => ({ id: p.id, label: p.label })), ...AVATARS.map((a) => ({ id: a, label: AVATAR_LABELS[a] }))].map((a) => (
+          <button key={a.id} className={`avatar-pick${me!.user.avatar === a.id ? ' on' : ''}`} onClick={() => update({ avatar: a.id })}>
+            <RaccoonAvatar variant={a.id} size={64} title={a.label} />
+            <span>{a.label}</span>
           </button>
         ))}
       </div>
