@@ -170,3 +170,30 @@ test('ingredients can be matched to a pantry item by hand', async () => {
   r = await call(a, 'GET', `${base}/recipes/${rec.id}`);
   assert.equal(r.body.ingredients[0].linked, false);
 });
+
+test('custom places and categories, and the running-low marker', async () => {
+  const { login, call } = await setup();
+  const a = await login('Organizer');
+  const { body: home } = await call(a, 'POST', '/api/homes', { name: 'Home' });
+  const base = `/api/homes/${home.id}`;
+  let detail = (await call(a, 'GET', base)).body;
+  assert.ok(detail.settings.locations.includes('Pantry'));
+  const { body: item } = await call(a, 'POST', `${base}/items`, { name: 'Ice', location: 'Garage Freezer', quantity: 2 });
+  detail = (await call(a, 'GET', base)).body;
+  assert.ok(detail.settings.locations.includes('Garage Freezer'), 'typed places are remembered');
+  await call(a, 'PUT', `${base}/labels`, { rename: { kind: 'locations', from: 'Garage Freezer', to: 'Chest Freezer' } });
+  let items = (await call(a, 'GET', `${base}/items`)).body;
+  assert.equal(items[0].location, 'Chest Freezer');
+  assert.equal((await call(a, 'PUT', `${base}/labels`, { categories: [] })).status, 400);
+  await call(a, 'PUT', `${base}/labels`, { categories: ['Snacks', 'Frozen'] });
+  assert.deepEqual((await call(a, 'GET', base)).body.settings.categories, ['Snacks', 'Frozen']);
+
+  await call(a, 'PATCH', `${base}/items/${item.id}`, { markedLow: true });
+  items = (await call(a, 'GET', `${base}/items?low=true`)).body;
+  assert.equal(items.length, 1);
+  assert.equal(items[0].isLow, true);
+  assert.equal((await call(a, 'GET', `${base}/ha/summary`)).body.low_stock_count, 1);
+  await call(a, 'POST', `${base}/items/${item.id}/adjust`, { delta: 3 });
+  items = (await call(a, 'GET', `${base}/items`)).body;
+  assert.equal(items[0].markedLow, false, 'restocking clears the mark');
+});

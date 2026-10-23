@@ -7,6 +7,7 @@ import type { Row } from '../db.ts';
 import { config } from '../config.ts';
 import { HttpError, newId } from '../util.ts';
 import { checkIngredients, loadRecipe, stockIndex } from './recipes.ts';
+import { LOW_SQL } from './inventory.ts';
 
 const IMAGE_TYPES: Record<string, string> = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp', 'image/gif': 'gif' };
 
@@ -34,7 +35,7 @@ export function integrationRoutes(app: FastifyInstance, db: DatabaseSync): void 
     const ctx = homeCtx(db, req);
     const today = new Date().toISOString().slice(0, 10);
     const shopping = db.prepare('SELECT name, quantity, unit FROM shopping_items WHERE home_id = ? AND checked = 0 ORDER BY name').all(ctx.homeId) as Row[];
-    const low = db.prepare('SELECT name, quantity, unit FROM items WHERE home_id = ? AND low_threshold IS NOT NULL AND quantity <= low_threshold ORDER BY name').all(ctx.homeId) as Row[];
+    const low = db.prepare(`SELECT name, quantity, unit FROM items WHERE home_id = ? AND ${LOW_SQL} ORDER BY name`).all(ctx.homeId) as Row[];
     const expiring = db.prepare("SELECT name, expires_on FROM items WHERE home_id = ? AND expires_on IS NOT NULL AND expires_on <= date('now', '+3 day') ORDER BY expires_on").all(ctx.homeId) as Row[];
     const meals = db.prepare(`SELECT m.slot, COALESCE(r.title, m.title) AS title, m.cooked_at FROM meal_plan m LEFT JOIN recipes r ON r.id = m.recipe_id
       WHERE m.home_id = ? AND m.date = ? ORDER BY CASE m.slot WHEN 'breakfast' THEN 0 WHEN 'lunch' THEN 1 WHEN 'snack' THEN 2 ELSE 3 END`).all(ctx.homeId, today) as Row[];

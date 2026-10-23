@@ -219,6 +219,12 @@ const MIGRATIONS: string[] = [
     PRIMARY KEY (home_id, ingredient_key)
   );
   `,
+  // Each home's own pantry locations and category labels (NULL = the built-in lists), and a one-tap "running low" flag.
+  `
+  ALTER TABLE home_settings ADD COLUMN locations TEXT;
+  ALTER TABLE home_settings ADD COLUMN categories TEXT;
+  ALTER TABLE items ADD COLUMN marked_low INTEGER NOT NULL DEFAULT 0;
+  `,
 ];
 
 export function openDb(dataDir: string): DatabaseSync {

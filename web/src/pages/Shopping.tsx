@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { api, type ShoppingItem } from '../api.ts';
+import { api, type HomeDetail, type ShoppingItem } from '../api.ts';
 import { useApp, useLoad } from '../state.tsx';
 import { amount } from '../format.ts';
 import { CATEGORIES, guessItem } from '../../../shared/catalog.ts';
@@ -9,6 +9,8 @@ interface Suggestion { name: string; category: string; timesBought: number }
 export function Shopping() {
   const { base, me, toast } = useApp();
   const [items, reload] = useLoad<ShoppingItem[]>(`${base}/shopping`);
+  const [home] = useLoad<HomeDetail>(base);
+  const order = home?.settings.categories ?? [...CATEGORIES];
   const [suggestions, reloadSugg] = useLoad<Suggestion[]>(`${base}/shopping/suggestions`);
   const [tab, setTab] = useState<'list' | 'history'>('list');
   const [history] = useLoad<ShoppingItem[]>(tab === 'history' ? `${base}/shopping/history` : null, [tab]);
@@ -33,8 +35,10 @@ export function Shopping() {
     const open = (items ?? []).filter((i) => !i.checked);
     const m = new Map<string, ShoppingItem[]>();
     for (const i of open) m.set(i.category, [...(m.get(i.category) ?? []), i]);
-    return [...m.entries()].sort(([a], [b]) => CATEGORIES.indexOf(a as never) - CATEGORIES.indexOf(b as never));
-  }, [items]);
+    const pos = (c: string) => { const i = order.findIndex((x) => x.toLowerCase() === c.toLowerCase()); return i < 0 ? 999 : i; };
+    return [...m.entries()].sort(([a], [b]) => pos(a) - pos(b) || a.localeCompare(b));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [items, home]);
   const checked = (items ?? []).filter((i) => i.checked);
 
   return (

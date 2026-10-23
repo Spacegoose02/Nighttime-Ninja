@@ -13,6 +13,12 @@ const THEMES = [
   { id: 'raccoon', name: 'Raccoon', swatch: '#3a4046' },
   { id: 'berry', name: 'Berry', swatch: '#8e2c7a' },
   { id: 'ocean', name: 'Ocean', swatch: '#1f6fb2' },
+  { id: 'sunset', name: 'Sunset', swatch: '#d9480f' },
+  { id: 'lavender', name: 'Lavender', swatch: '#6741d9' },
+  { id: 'mint', name: 'Mint', swatch: '#0ca678' },
+  { id: 'arctic', name: 'Arctic', swatch: '#3b5bdb' },
+  { id: 'espresso', name: 'Espresso', swatch: '#3b2a20' },
+  { id: 'neon', name: 'Neon', swatch: '#a3e635' },
 ];
 
 function Profile() {
@@ -63,6 +69,52 @@ function Profile() {
         <span className="spacer" />
         <button className="danger" onClick={async () => { await api('/api/auth/logout', { body: {} }); location.href = '/'; }}>Sign out</button>
       </div>
+    </div>
+  );
+}
+
+/** Add, rename, reorder or remove a home's pantry locations or categories. */
+function LabelEditor({ kind, title, hint, list, onSaved }: { kind: 'locations' | 'categories'; title: string; hint: string; list: string[]; onSaved: () => void }) {
+  const { base, toast } = useApp();
+  const [adding, setAdding] = useState('');
+  const [editing, setEditing] = useState<{ from: string; to: string } | null>(null);
+  const save = async (body: object, msg: string) => {
+    try { await api(`${base}/labels`, { method: 'PUT', body }); toast(msg); onSaved(); } catch (e) { toast((e as Error).message); }
+  };
+  const move = (i: number, d: number) => {
+    const next = [...list];
+    [next[i], next[i + d]] = [next[i + d], next[i]];
+    void save({ [kind]: next }, 'Order saved');
+  };
+  return (
+    <div className="stack" style={{ gap: 8 }}>
+      <h3 style={{ margin: 0 }}>{title}</h3>
+      <p className="small muted" style={{ margin: 0 }}>{hint}</p>
+      <div className="list">
+        {list.map((l, i) => (
+          <div key={l} className="list-item" style={{ minHeight: 48, padding: '4px 0' }}>
+            {editing?.from === l ? (
+              <form className="row" style={{ flex: 1 }} onSubmit={(e) => { e.preventDefault(); void save({ rename: { kind, from: l, to: editing.to } }, `Renamed to ${editing.to}`); setEditing(null); }}>
+                <input value={editing.to} onChange={(e) => setEditing({ from: l, to: e.target.value })} autoFocus style={{ flex: 1 }} />
+                <button className="primary" disabled={!editing.to.trim()}>Save</button>
+                <button type="button" className="ghost" onClick={() => setEditing(null)}>Cancel</button>
+              </form>
+            ) : (
+              <>
+                <span style={{ flex: 1 }}>{l}</span>
+                <button className="ghost icon" aria-label={`Move ${l} up`} disabled={i === 0} onClick={() => move(i, -1)}>↑</button>
+                <button className="ghost icon" aria-label={`Move ${l} down`} disabled={i === list.length - 1} onClick={() => move(i, 1)}>↓</button>
+                <button className="ghost" onClick={() => setEditing({ from: l, to: l })}>Rename</button>
+                <button className="ghost danger" disabled={list.length < 2} onClick={() => save({ [kind]: list.filter((x) => x !== l) }, `Removed ${l}`)}>Remove</button>
+              </>
+            )}
+          </div>
+        ))}
+      </div>
+      <form className="row" onSubmit={(e) => { e.preventDefault(); void save({ [kind]: [...list, adding.trim()] }, `Added ${adding.trim()}`); setAdding(''); }}>
+        <input value={adding} onChange={(e) => setAdding(e.target.value)} placeholder={kind === 'locations' ? 'New place, e.g. Garage Freezer' : 'New category, e.g. Baby Food'} style={{ flex: 1 }} />
+        <button disabled={!adding.trim()}>Add</button>
+      </form>
     </div>
   );
 }
@@ -140,6 +192,9 @@ function HomeSettings() {
           {isManager && <button onClick={async () => { await api(`${base}/calendar-token`, { body: {} }); await reload(); toast('Old link turned off'); }}>Reset link</button>}
         </div>
       )}
+
+      <LabelEditor kind="locations" title="Pantry places" hint="Where things are kept. Renaming moves every item in that place." list={home.settings.locations} onSaved={() => void reload()} />
+      <LabelEditor kind="categories" title="Categories" hint="Groups for the pantry and shopping list, in this order. Renaming updates every item." list={home.settings.categories} onSaved={() => void reload()} />
 
       <h3>Stores</h3>
       <div className="chips">

@@ -5,6 +5,10 @@ import type { Row } from '../db.ts';
 import { HttpError, newId, num, requireStr, str } from '../util.ts';
 import { guessItem } from '../../../shared/catalog.ts';
 import { addShoppingItem } from './shopping.ts';
+import { rememberLabel } from './homes.ts';
+
+/** An item is low when someone tapped "running low", or its amount dropped to the warning level. */
+export const LOW_SQL = '(marked_low = 1 OR (low_threshold IS NOT NULL AND quantity <= low_threshold))';
 
 export function recordHistory(
   db: DatabaseSync,
@@ -19,7 +23,8 @@ export function adjustItem(db: DatabaseSync, homeId: string, itemId: string, del
   const item = db.prepare('SELECT * FROM items WHERE id = ? AND home_id = ?').get(itemId, homeId) as Row | undefined;
   if (!item) throw new HttpError(404, 'Item not found');
   const after = Math.max(0, Math.round(((item.quantity as number) + delta) * 1000) / 1000);
-  db.prepare("UPDATE items SET quantity = ?, updated_at = datetime('now') WHERE id = ?").run(after, itemId);
+  // Restocking clears a "running low" mark.
+  db.prepare(`UPDATE items SET quantity = ?, marked_low = CASE WHEN ? > 0 THEN 0 ELSE marked_low END, updated_at = datetime('now') WHERE id = ?`).run(after, delta, itemId);
   recordHistory(db, { homeId, itemId, itemName: item.name as string, delta: after - (item.quantity as number), unit: item.unit as string | null, after, reason, userId });
   return { ...item, quantity: after };
 }
@@ -42,7 +47,8 @@ function shape(r: Row) {
   return {
     id: r.id, name: r.name, category: r.category, location: r.location, icon: r.icon, photo: r.photo,
     quantity: r.quantity, unit: r.unit, lowThreshold: r.low_threshold, barcode: r.barcode, expiresOn: r.expires_on,
-    isLow: r.low_threshold != null && (r.quantity as number) <= (r.low_threshold as number),
+    markedLow: !!r.marked_low,
+    isLow: !!r.marked_low || (r.low_threshold != null && (r.quantity as number) <= (r.low_threshold as number)),
     updatedAt: r.updated_at,
   };
 }
@@ -56,7 +62,7 @@ export function inventoryRoutes(app: FastifyInstance, db: DatabaseSync): void {
     if (q.q) { where.push('name LIKE ?'); args.push(`%${q.q}%`); }
     if (q.category) { where.push('category = ?'); args.push(String(q.category)); }
     if (q.location) { where.push('location = ?'); args.push(String(q.location)); }
-    if (q.low === 'true') where.push('low_threshold IS NOT NULL AND quantity <= low_threshold');
+    if (q.low === 'true') where.push(LOW_SQL);
     return (db.prepare(`SELECT * FROM items WHERE ${where.join(' AND ')} ORDER BY name COLLATE NOCASE`).all(...args) as Row[]).map(shape);
   });
 
@@ -74,6 +80,8 @@ export function inventoryRoutes(app: FastifyInstance, db: DatabaseSync): void {
       str(b.barcode, 40), str(b.expiresOn, 10),
     );
     recordHistory(db, { homeId: ctx.homeId, itemId: id, itemName: name, delta: quantity, unit: str(b.unit, 20), after: quantity, reason: 'added', userId: ctx.user?.id ?? null });
+    rememberLabel(db, ctx.homeId, 'locations', str(b.location, 40));
+    rememberLabel(db, ctx.homeId, 'categories', str(b.category, 40));
     return shape(db.prepare('SELECT * FROM items WHERE id = ?').get(id) as Row);
   });
 
@@ -93,6 +101,9 @@ export function inventoryRoutes(app: FastifyInstance, db: DatabaseSync): void {
     if ('lowThreshold' in b) fields.low_threshold = num(b.lowThreshold);
     if ('barcode' in b) fields.barcode = str(b.barcode, 40);
     if ('expiresOn' in b) fields.expires_on = str(b.expiresOn, 10);
+    if (typeof b.markedLow === 'boolean') fields.marked_low = b.markedLow ? 1 : 0;
+    rememberLabel(db, ctx.homeId, 'locations', 'location' in b ? str(b.location, 40) : null);
+    rememberLabel(db, ctx.homeId, 'categories', 'category' in b ? str(b.category, 40) : null);
     const keys = Object.keys(fields);
     if (keys.length) {
       db.prepare(`UPDATE items SET ${keys.map((k) => `${k} = ?`).join(', ')}, updated_at = datetime('now') WHERE id = ?`)

@@ -4,6 +4,16 @@ import { api, fileToDataUrl, type Item } from '../api.ts';
 import { useApp, useLoad } from '../state.tsx';
 import { amount } from '../format.ts';
 import { CATEGORIES, LOCATIONS, guessItem } from '../../../shared/catalog.ts';
+import type { HomeDetail } from '../api.ts';
+
+interface Labels { locations: string[]; categories: string[] }
+
+/** Sorts names by their position in the home's own list; anything not in the list goes last. */
+const byList = (list: string[]) => (a: string, b: string) => {
+  const ia = list.findIndex((x) => x.toLowerCase() === a.toLowerCase());
+  const ib = list.findIndex((x) => x.toLowerCase() === b.toLowerCase());
+  return (ia < 0 ? 999 : ia) - (ib < 0 ? 999 : ib) || a.localeCompare(b);
+};
 
 interface HistoryRow { id: number; itemName: string; delta: number; unit: string | null; quantityAfter: number | null; reason: string; createdAt: string; userName: string | null }
 
@@ -11,13 +21,14 @@ function ItemArt({ item }: { item: Pick<Item, 'photo' | 'icon' | 'name'> }) {
   return <div className="art">{item.photo ? <img src={item.photo} alt="" /> : (item.icon ?? guessItem(item.name).icon)}</div>;
 }
 
-function ItemEditor({ item, onClose }: { item: Item | null; onClose: (changed: boolean) => void }) {
+function ItemEditor({ item, labels, onClose }: { item: Item | null; labels: Labels; onClose: (changed: boolean) => void }) {
   const { base, toast, me } = useApp();
   const [f, setF] = useState(() => ({
     name: item?.name ?? '', quantity: String(item?.quantity ?? 1), unit: item?.unit ?? '', category: item?.category ?? '',
     location: item?.location ?? 'Pantry', lowThreshold: item?.lowThreshold == null ? '' : String(item.lowThreshold),
-    expiresOn: item?.expiresOn ?? '', icon: item?.icon ?? '', photo: item?.photo ?? '',
+    expiresOn: item?.expiresOn ?? '', icon: item?.icon ?? '', photo: item?.photo ?? '', markedLow: item?.markedLow ?? false,
   }));
+  const [showThreshold, setShowThreshold] = useState(item?.lowThreshold != null);
   const set = (k: keyof typeof f) => (e: { target: { value: string } }) => setF({ ...f, [k]: e.target.value });
 
   async function save() {
@@ -25,8 +36,15 @@ function ItemEditor({ item, onClose }: { item: Item | null; onClose: (changed: b
       ...f, quantity: Number(f.quantity) || 0, lowThreshold: f.lowThreshold === '' ? null : Number(f.lowThreshold),
       category: f.category || undefined, icon: f.icon || undefined, photo: f.photo || null, expiresOn: f.expiresOn || null, unit: f.unit || null,
     };
-    if (item) await api(`${base}/items/${item.id}`, { method: 'PATCH', body });
-    else await api(`${base}/items`, { body });
+    let saved: Item;
+    if (item) saved = await api<Item>(`${base}/items/${item.id}`, { method: 'PATCH', body });
+    else saved = await api<Item>(`${base}/items`, { body });
+    // Marking something as running low also puts it on the shopping list.
+    if (f.markedLow && !item?.markedLow) {
+      if (!item) await api(`${base}/items/${saved.id}`, { method: 'PATCH', body: { markedLow: true } });
+      await api(`${base}/items/${saved.id}/to-shopping`, { body: {} });
+      toast(`${f.name} is marked running low and added to the shopping list`);
+    }
     onClose(true);
   }
 
@@ -58,18 +76,23 @@ function ItemEditor({ item, onClose }: { item: Item | null; onClose: (changed: b
         </div>
         {item && <p className="small muted" style={{ margin: 0 }}>Shown as {amount(Number(f.quantity), f.unit, me?.user.units)}</p>}
         <div className="row">
+          <button className={f.markedLow ? 'primary' : ''} style={f.markedLow ? { background: 'var(--warn)' } : undefined} onClick={() => setF({ ...f, markedLow: !f.markedLow })}>
+            ⚠️ {f.markedLow ? 'Running low (tap to clear)' : 'Mark as running low'}
+          </button>
+          {!showThreshold && <button className="ghost small" onClick={() => setShowThreshold(true)}>Warn me automatically…</button>}
+        </div>
+        <div className="row">
           <label className="field" style={{ flex: 1 }}>Where
-            <select value={f.location} onChange={set('location')}>{LOCATIONS.map((l) => <option key={l}>{l}</option>)}</select>
+            <input list="nn-locations" value={f.location} onChange={set('location')} placeholder="Pick or type a new place" />
+            <datalist id="nn-locations">{labels.locations.map((l) => <option key={l} value={l} />)}</datalist>
           </label>
           <label className="field" style={{ flex: 1 }}>Category
-            <select value={f.category} onChange={set('category')}>
-              <option value="">Guess for me</option>
-              {CATEGORIES.map((c) => <option key={c}>{c}</option>)}
-            </select>
+            <input list="nn-categories" value={f.category} onChange={set('category')} placeholder={`Guess (${guessItem(f.name).category})`} />
+            <datalist id="nn-categories">{labels.categories.map((c) => <option key={c} value={c} />)}</datalist>
           </label>
         </div>
         <div className="row">
-          <label className="field" style={{ flex: 1 }}>Warn me when at or below<input inputMode="decimal" value={f.lowThreshold} onChange={set('lowThreshold')} placeholder="e.g. 1" /></label>
+          {showThreshold && <label className="field" style={{ flex: 1 }}>Mark low automatically at or below<input inputMode="decimal" value={f.lowThreshold} onChange={set('lowThreshold')} placeholder="e.g. 1" /></label>}
           <label className="field" style={{ flex: 1 }}>Expires<input type="date" value={f.expiresOn} onChange={set('expiresOn')} /></label>
         </div>
         <div className="row">
@@ -93,6 +116,8 @@ export function Inventory() {
   const { base, me } = useApp();
   const [params, setParams] = useSearchParams();
   const [items, reload] = useLoad<Item[]>(`${base}/items`);
+  const [home] = useLoad<HomeDetail>(base);
+  const labels: Labels = { locations: home?.settings.locations ?? [...LOCATIONS], categories: home?.settings.categories ?? [...CATEGORIES] };
   const [tab, setTab] = useState<'items' | 'history'>('items');
   const [history, reloadHistory] = useLoad<HistoryRow[]>(tab === 'history' ? `${base}/history?limit=200` : null);
   const [q, setQ] = useState('');
@@ -105,9 +130,10 @@ export function Inventory() {
   const byCategory = useMemo(() => {
     const m = new Map<string, Item[]>();
     for (const i of shown) m.set(i.category, [...(m.get(i.category) ?? []), i]);
-    return [...m.entries()].sort(([a], [b]) => CATEGORIES.indexOf(a as never) - CATEGORIES.indexOf(b as never));
-  }, [shown]);
-  const locations = ['All', ...LOCATIONS.filter((l) => items?.some((i) => i.location === l))];
+    return [...m.entries()].sort(([a], [b]) => byList(labels.categories)(a, b));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [shown, home]);
+  const locations = ['All', ...[...new Set((items ?? []).map((i) => i.location))].sort(byList(labels.locations))];
 
   return (
     <div className="stack">
@@ -166,7 +192,7 @@ export function Inventory() {
         </div>
       )}
 
-      {editing && <ItemEditor item={editing === 'new' ? null : editing} onClose={(changed) => { setEditing(null); if (changed) void reload(); }} />}
+      {editing && <ItemEditor item={editing === 'new' ? null : editing} labels={labels} onClose={(changed) => { setEditing(null); if (changed) void reload(); }} />}
     </div>
   );
 }

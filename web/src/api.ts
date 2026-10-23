@@ -33,7 +33,7 @@ export interface Me {
 export interface Item {
   id: string; name: string; category: string; location: string; icon: string | null; photo: string | null;
   quantity: number; unit: string | null; lowThreshold: number | null; barcode: string | null; expiresOn: string | null;
-  isLow: boolean; updatedAt: string;
+  isLow: boolean; markedLow: boolean; updatedAt: string;
 }
 
 export interface ShoppingItem {
@@ -60,7 +60,7 @@ export interface Meal {
 export interface HomeDetail {
   id: string; name: string; role: 'manager' | 'member'; joinCode: string; calendarUrl: string | null;
   members: { id: string; name: string; avatar: string; role: string; joined_at: string }[];
-  settings: { zipCode: string | null; stores: string[]; krogerLocationId: string | null };
+  settings: { zipCode: string | null; stores: string[]; krogerLocationId: string | null; locations: string[]; categories: string[] };
 }
 
 /** Reads an image file into a data URL, shrinking big photos so uploads stay small. */

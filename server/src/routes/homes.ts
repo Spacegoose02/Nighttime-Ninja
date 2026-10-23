@@ -3,6 +3,43 @@ import type { DatabaseSync } from 'node:sqlite';
 import { homeCtx, requireAdmin, requireUser } from '../auth.ts';
 import { tx, type Row } from '../db.ts';
 import { HttpError, newId, randomToken, readableCode, requireStr, sha256, str } from '../util.ts';
+import { CATEGORIES, LOCATIONS } from '../../../shared/catalog.ts';
+
+export type LabelKind = 'locations' | 'categories';
+const DEFAULT_LABELS: Record<LabelKind, readonly string[]> = { locations: LOCATIONS, categories: CATEGORIES };
+
+/** A home's pantry locations and category labels, falling back to the built-in lists. */
+export function homeLabels(db: DatabaseSync, homeId: string): Record<LabelKind, string[]> {
+  const row = db.prepare('SELECT locations, categories FROM home_settings WHERE home_id = ?').get(homeId) as Row | undefined;
+  const read = (k: LabelKind) => {
+    try { const v = JSON.parse((row?.[k] as string) ?? 'null'); if (Array.isArray(v) && v.length) return v.map(String); } catch { /* use defaults */ }
+    return [...DEFAULT_LABELS[k]];
+  };
+  return { locations: read('locations'), categories: read('categories') };
+}
+
+function cleanLabels(v: unknown): string[] {
+  if (!Array.isArray(v)) throw new HttpError(400, 'Send a list');
+  const out: string[] = [];
+  for (const x of v) {
+    const s = str(x, 40);
+    if (s && !out.some((o) => o.toLowerCase() === s.toLowerCase())) out.push(s);
+  }
+  if (!out.length) throw new HttpError(400, 'Keep at least one');
+  return out.slice(0, 60);
+}
+
+function saveLabels(db: DatabaseSync, homeId: string, kind: LabelKind, list: string[]): void {
+  db.prepare('INSERT OR IGNORE INTO home_settings (home_id) VALUES (?)').run(homeId);
+  db.prepare(`UPDATE home_settings SET ${kind} = ? WHERE home_id = ?`).run(JSON.stringify(list), homeId);
+}
+
+/** Adds a label someone typed on an item (e.g. a new "Garage Freezer") to the home's list if it isn't there yet. */
+export function rememberLabel(db: DatabaseSync, homeId: string, kind: LabelKind, value: string | null): void {
+  if (!value) return;
+  const list = homeLabels(db, homeId)[kind];
+  if (!list.some((l) => l.toLowerCase() === value.toLowerCase())) saveLabels(db, homeId, kind, [...list, value]);
+}
 
 export function createHome(db: DatabaseSync, userId: string, name: string): string {
   const id = newId();
@@ -52,6 +89,7 @@ export function homeRoutes(app: FastifyInstance, db: DatabaseSync): void {
         zipCode: settings?.zip_code ?? null,
         stores: JSON.parse((settings?.stores as string) ?? '[]'),
         krogerLocationId: settings?.kroger_location_id ?? null,
+        ...homeLabels(db, ctx.homeId),
       },
     };
   });
@@ -66,6 +104,31 @@ export function homeRoutes(app: FastifyInstance, db: DatabaseSync): void {
     if (Array.isArray(b.stores)) db.prepare('UPDATE home_settings SET stores = ? WHERE home_id = ?').run(JSON.stringify(b.stores.map(String).slice(0, 20)), ctx.homeId);
     if ('krogerLocationId' in b) db.prepare('UPDATE home_settings SET kroger_location_id = ? WHERE home_id = ?').run(str(b.krogerLocationId, 20), ctx.homeId);
     return { ok: true };
+  });
+
+  // Anyone in the home can manage pantry locations and category labels. Renaming also updates the items using them.
+  app.put('/api/homes/:homeId/labels', async (req) => {
+    const ctx = homeCtx(db, req);
+    const b = (req.body ?? {}) as Row;
+    tx(db, () => {
+      for (const kind of ['locations', 'categories'] as const) {
+        if (kind in b) saveLabels(db, ctx.homeId, kind, cleanLabels(b[kind]));
+      }
+      const r = b.rename as { kind?: string; from?: string; to?: string } | undefined;
+      if (r && (r.kind === 'locations' || r.kind === 'categories')) {
+        const from = requireStr(r.from, 'Old name', 40);
+        const to = requireStr(r.to, 'New name', 40);
+        const col = r.kind === 'locations' ? 'location' : 'category';
+        db.prepare(`UPDATE items SET ${col} = ? WHERE home_id = ? AND ${col} = ? COLLATE NOCASE`).run(to, ctx.homeId, from);
+        if (col === 'category') {
+          db.prepare('UPDATE shopping_items SET category = ? WHERE home_id = ? AND category = ? COLLATE NOCASE').run(to, ctx.homeId, from);
+          db.prepare('UPDATE shopping_history SET category = ? WHERE home_id = ? AND category = ? COLLATE NOCASE').run(to, ctx.homeId, from);
+        }
+        const list = homeLabels(db, ctx.homeId)[r.kind];
+        saveLabels(db, ctx.homeId, r.kind, cleanLabels(list.map((l) => (l.toLowerCase() === from.toLowerCase() ? to : l))));
+      }
+    });
+    return homeLabels(db, ctx.homeId);
   });
 
   app.delete('/api/homes/:homeId', async (req) => {
