@@ -124,11 +124,12 @@ function LabelEditor({ kind, title, hint, list, onSaved }: { kind: 'locations' |
 function PlacesAndCategories() {
   const { base } = useApp();
   const [home, reload] = useLoad<HomeDetail>(base);
-  if (!home) return null;
+  // Only home managers (and server admins, who count as managers) can change these lists.
+  if (!home || home.role !== 'manager') return null;
   return (
     <div className="card stack">
       <h2>Pantry places & categories</h2>
-      <p className="small muted" style={{ margin: 0 }}>These fill the Where and Category dropdowns when you add or edit an item. You can also pick “➕ Add new…” right in the dropdown.</p>
+      <p className="small muted" style={{ margin: 0 }}>These fill the Where and Category dropdowns when you add or edit an item. As a home manager you can also pick “➕ Add new…” right in the dropdown. Other people in the home choose from these lists.</p>
       <div className="grid-2" style={{ alignItems: 'start' }}>
         <LabelEditor kind="locations" title="Places (Where)" hint="Renaming moves every item in that place." list={home.settings.locations} onSaved={() => void reload()} />
         <LabelEditor kind="categories" title="Categories" hint="Shown in this order. Renaming updates every item." list={home.settings.categories} onSaved={() => void reload()} />

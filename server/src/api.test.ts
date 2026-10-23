@@ -197,3 +197,21 @@ test('custom places and categories, and the running-low marker', async () => {
   items = (await call(a, 'GET', `${base}/items`)).body;
   assert.equal(items[0].markedLow, false, 'restocking clears the mark');
 });
+
+test('only home managers can add or change places and categories', async () => {
+  const { login, call } = await setup();
+  const boss = await login('Boss');
+  const kid = await login('Kid');
+  const { body: home } = await call(boss, 'POST', '/api/homes', { name: 'Home' });
+  const base = `/api/homes/${home.id}`;
+  await call(kid, 'POST', '/api/homes/join', { code: (await call(boss, 'GET', base)).body.joinCode });
+  assert.equal((await call(kid, 'PUT', `${base}/labels`, { locations: ['Fridge'] })).status, 403);
+  assert.equal((await call(kid, 'POST', `${base}/items`, { name: 'Soda', location: 'Secret Stash' })).status, 403);
+  const ok = await call(kid, 'POST', `${base}/items`, { name: 'Soda', location: 'Fridge' });
+  assert.equal(ok.status, 200);
+  await call(boss, 'PUT', `${base}/labels`, { locations: ['Pantry', 'Garage'] });
+  // The kid can still edit Soda even though "Fridge" was removed from the list.
+  assert.equal((await call(kid, 'PATCH', `${base}/items/${ok.body.id}`, { name: 'Cola', location: 'Fridge' })).status, 200);
+  assert.equal((await call(boss, 'POST', `${base}/items`, { name: 'Ice', location: 'Chest Freezer' })).status, 200);
+  assert.ok((await call(boss, 'GET', base)).body.settings.locations.includes('Chest Freezer'));
+});

@@ -34,11 +34,16 @@ function saveLabels(db: DatabaseSync, homeId: string, kind: LabelKind, list: str
   db.prepare(`UPDATE home_settings SET ${kind} = ? WHERE home_id = ?`).run(JSON.stringify(list), homeId);
 }
 
-/** Adds a label someone typed on an item (e.g. a new "Garage Freezer") to the home's list if it isn't there yet. */
-export function rememberLabel(db: DatabaseSync, homeId: string, kind: LabelKind, value: string | null): void {
+/**
+ * Checks a place or category picked on an item. A new one (e.g. "Garage Freezer") is added to the home's list
+ * when a home manager or admin uses it; everyone else has to pick from the list.
+ */
+export function useLabel(db: DatabaseSync, homeId: string, kind: LabelKind, value: string | null, canManage: boolean): void {
   if (!value) return;
   const list = homeLabels(db, homeId)[kind];
-  if (!list.some((l) => l.toLowerCase() === value.toLowerCase())) saveLabels(db, homeId, kind, [...list, value]);
+  if (list.some((l) => l.toLowerCase() === value.toLowerCase())) return;
+  if (!canManage) throw new HttpError(403, `"${value}" isn't one of this home's ${kind === 'locations' ? 'places' : 'categories'}. Ask a home manager to add it.`);
+  saveLabels(db, homeId, kind, [...list, value]);
 }
 
 export function createHome(db: DatabaseSync, userId: string, name: string): string {
@@ -106,9 +111,9 @@ export function homeRoutes(app: FastifyInstance, db: DatabaseSync): void {
     return { ok: true };
   });
 
-  // Anyone in the home can manage pantry locations and category labels. Renaming also updates the items using them.
+  // Home managers (and server admins) manage pantry places and category labels. Renaming also updates the items using them.
   app.put('/api/homes/:homeId/labels', async (req) => {
-    const ctx = homeCtx(db, req);
+    const ctx = homeCtx(db, req, 'manager');
     const b = (req.body ?? {}) as Row;
     tx(db, () => {
       for (const kind of ['locations', 'categories'] as const) {

@@ -5,7 +5,7 @@ import type { Row } from '../db.ts';
 import { HttpError, newId, num, requireStr, str } from '../util.ts';
 import { guessItem } from '../../../shared/catalog.ts';
 import { addShoppingItem } from './shopping.ts';
-import { rememberLabel } from './homes.ts';
+import { useLabel } from './homes.ts';
 
 /** An item is low when someone tapped "running low", or its amount dropped to the warning level. */
 export const LOW_SQL = '(marked_low = 1 OR (low_threshold IS NOT NULL AND quantity <= low_threshold))';
@@ -70,6 +70,9 @@ export function inventoryRoutes(app: FastifyInstance, db: DatabaseSync): void {
     const ctx = homeCtx(db, req);
     const b = (req.body ?? {}) as Row;
     const name = requireStr(b.name, 'Name', 120);
+    const canManage = ctx.role === 'manager';
+    useLabel(db, ctx.homeId, 'locations', str(b.location, 40), canManage);
+    useLabel(db, ctx.homeId, 'categories', str(b.category, 40), canManage);
     const guess = guessItem(name);
     const id = newId();
     const quantity = num(b.quantity) ?? 1;
@@ -80,8 +83,6 @@ export function inventoryRoutes(app: FastifyInstance, db: DatabaseSync): void {
       str(b.barcode, 40), str(b.expiresOn, 10),
     );
     recordHistory(db, { homeId: ctx.homeId, itemId: id, itemName: name, delta: quantity, unit: str(b.unit, 20), after: quantity, reason: 'added', userId: ctx.user?.id ?? null });
-    rememberLabel(db, ctx.homeId, 'locations', str(b.location, 40));
-    rememberLabel(db, ctx.homeId, 'categories', str(b.category, 40));
     return shape(db.prepare('SELECT * FROM items WHERE id = ?').get(id) as Row);
   });
 
@@ -92,6 +93,9 @@ export function inventoryRoutes(app: FastifyInstance, db: DatabaseSync): void {
     if (!item) throw new HttpError(404, 'Item not found');
     const b = (req.body ?? {}) as Row;
     const fields: Record<string, unknown> = {};
+    // Keeping an item's current place or category is always fine, even if it was since removed from the list.
+    if ('location' in b && str(b.location, 40)?.toLowerCase() !== String(item.location).toLowerCase()) useLabel(db, ctx.homeId, 'locations', str(b.location, 40), ctx.role === 'manager');
+    if ('category' in b && str(b.category, 40)?.toLowerCase() !== String(item.category).toLowerCase()) useLabel(db, ctx.homeId, 'categories', str(b.category, 40), ctx.role === 'manager');
     if ('name' in b) fields.name = requireStr(b.name, 'Name', 120);
     if ('category' in b) fields.category = str(b.category, 40) ?? 'Other';
     if ('location' in b) fields.location = str(b.location, 40) ?? 'Pantry';
@@ -102,8 +106,6 @@ export function inventoryRoutes(app: FastifyInstance, db: DatabaseSync): void {
     if ('barcode' in b) fields.barcode = str(b.barcode, 40);
     if ('expiresOn' in b) fields.expires_on = str(b.expiresOn, 10);
     if (typeof b.markedLow === 'boolean') fields.marked_low = b.markedLow ? 1 : 0;
-    rememberLabel(db, ctx.homeId, 'locations', 'location' in b ? str(b.location, 40) : null);
-    rememberLabel(db, ctx.homeId, 'categories', 'category' in b ? str(b.category, 40) : null);
     const keys = Object.keys(fields);
     if (keys.length) {
       db.prepare(`UPDATE items SET ${keys.map((k) => `${k} = ?`).join(', ')}, updated_at = datetime('now') WHERE id = ?`)
