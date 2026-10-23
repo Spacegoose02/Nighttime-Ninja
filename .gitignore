@@ -22,3 +22,4 @@ web/ios/
 *.p12
 apps/desktop/launcher/
 !apps/desktop/build/
+web/src/avatars/*/

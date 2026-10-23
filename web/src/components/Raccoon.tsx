@@ -82,7 +82,7 @@ function Head({ variant }: { variant: Avatar }) {
 export function RaccoonAvatar({ variant = 'classic', size = 48, title }: { variant?: string; size?: number; title?: string }) {
   const pic = pictureAvatar(variant);
   if (pic) {
-    return <img src={pic.url} alt={title ?? pic.label} width={size} height={size} style={{ width: size, height: size, borderRadius: '50%', objectFit: 'cover', display: 'block' }} />;
+    return <img src={pic.url} alt={title ?? pic.label} width={size} height={size} style={{ width: size, height: size, borderRadius: '50%', objectFit: 'cover', display: 'block', background: 'var(--surface-2)' }} />;
   }
   const v =(AVATARS as readonly string[]).includes(variant) ? (variant as Avatar) : 'classic';
   return (
