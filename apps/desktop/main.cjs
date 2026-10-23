@@ -50,8 +50,27 @@ function createWindow() {
   void win.loadFile(LAUNCHER);
 }
 
+/**
+ * The installed (Setup) version updates itself from GitHub releases: it downloads in the background and installs
+ * when you quit. The portable EXE can't replace itself, so it skips this.
+ */
+function checkForUpdates() {
+  if (!app.isPackaged || process.env.PORTABLE_EXECUTABLE_DIR) return;
+  try {
+    const { autoUpdater } = require('electron-updater');
+    autoUpdater.autoDownload = true;
+    autoUpdater.autoInstallOnAppQuit = true;
+    autoUpdater.checkForUpdatesAndNotify().catch(() => {});
+    // Keep checking while the app stays open on a kitchen PC.
+    setInterval(() => autoUpdater.checkForUpdatesAndNotify().catch(() => {}), 6 * 3600e3);
+  } catch {
+    // Updates are a nice-to-have; never block the app over them.
+  }
+}
+
 app.whenReady().then(() => {
   createWindow();
+  checkForUpdates();
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });

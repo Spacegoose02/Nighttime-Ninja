@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom';
 import { useApp, useLoad } from '../state.tsx';
 import { KitchenScene } from '../components/Raccoon.tsx';
+import { UpdateBanner } from '../components/UpdateBanner.tsx';
 
 interface Summary {
   shopping_count: number;
@@ -27,6 +28,7 @@ export function Dashboard() {
 
   return (
     <div className="stack">
+      <UpdateBanner />
       <div className="hero">
         <KitchenScene variant={me?.user.avatar} />
         <div className="stack">

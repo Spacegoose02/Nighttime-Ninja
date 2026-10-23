@@ -4,6 +4,7 @@ import { api, type HomeDetail } from '../api.ts';
 import { useApp, useLoad } from '../state.tsx';
 import { AVATARS, AVATAR_LABELS, RaccoonAvatar } from '../components/Raccoon.tsx';
 import { PICTURE_AVATARS } from '../avatars.ts';
+import { VersionCard } from '../components/UpdateBanner.tsx';
 import { AdminSignIn, AdminUserActions, SecurityCard } from './Security.tsx';
 
 const THEMES = [
@@ -308,6 +309,7 @@ export function Settings() {
       <Profile />
       <SecurityCard />
       <HomeSettings />
+      <VersionCard />
       {me?.user.isAdmin && <Admin />}
       <p className="small muted">Nighttime Ninja is open source under the MIT license.</p>
     </div>

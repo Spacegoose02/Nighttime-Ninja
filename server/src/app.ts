@@ -9,6 +9,7 @@ import { installAuth, registerAuthRoutes } from './auth.ts';
 import { HttpError } from './util.ts';
 import { installHardening } from './security.ts';
 import { accountRoutes } from './accounts.ts';
+import { updateRoutes } from './updates.ts';
 import { homeRoutes } from './routes/homes.ts';
 import { inventoryRoutes } from './routes/inventory.ts';
 import { recipeRoutes } from './routes/recipes.ts';
@@ -36,6 +37,7 @@ export async function buildApp(db: DatabaseSync, opts: { logger?: boolean; serve
 
   registerAuthRoutes(app, db);
   accountRoutes(app, db);
+  updateRoutes(app);
   homeRoutes(app, db);
   inventoryRoutes(app, db);
   recipeRoutes(app, db);

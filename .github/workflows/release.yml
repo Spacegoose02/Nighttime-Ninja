@@ -25,7 +25,11 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: windows
-          path: apps/desktop/release/*.exe
+          # latest.yml and the blockmap let the installed Windows app update itself.
+          path: |
+            apps/desktop/release/*.exe
+            apps/desktop/release/*.blockmap
+            apps/desktop/release/latest.yml
 
   android:
     runs-on: ubuntu-latest
@@ -40,6 +44,9 @@ jobs:
           distribution: temurin
           java-version: 21
       - run: npm ci --ignore-scripts
+      - name: Stamp the app version (the launcher uses it to offer updates)
+        if: startsWith(github.ref, 'refs/tags/')
+        run: echo "window.NN_APP_VERSION = '${GITHUB_REF_NAME#v}';" > apps/launcher/version.js
       - name: Create the Android project
         working-directory: web
         run: npx cap add android && npx cap sync android

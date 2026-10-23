@@ -1,6 +1,6 @@
 {
   "name": "@nighttime-ninja/desktop",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "private": true,
   "description": "Nighttime Ninja desktop app",
   "author": "Nighttime Ninja contributors",
@@ -21,12 +21,57 @@
   "build": {
     "appId": "io.github.nighttimeninja.desktop",
     "productName": "Nighttime Ninja",
-    "directories": { "output": "release", "buildResources": "build" },
-    "files": ["main.cjs", "launcher/**", "build/icon.png"],
-    "win": { "target": [{ "target": "nsis", "arch": ["x64"] }, { "target": "portable", "arch": ["x64"] }], "icon": "build/icon.png" },
-    "nsis": { "oneClick": false, "allowToChangeInstallationDirectory": true, "artifactName": "NighttimeNinja-Setup-${version}.${ext}" },
-    "portable": { "artifactName": "NighttimeNinja-Portable-${version}.${ext}" },
-    "linux": { "category": "Utility", "icon": "build/icon.png" },
-    "mac": { "category": "public.app-category.lifestyle", "icon": "build/icon.png" }
+    "directories": {
+      "output": "release",
+      "buildResources": "build"
+    },
+    "files": [
+      "main.cjs",
+      "launcher/**",
+      "build/icon.png"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "build/icon.png"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "artifactName": "NighttimeNinja-Setup-${version}.${ext}"
+    },
+    "portable": {
+      "artifactName": "NighttimeNinja-Portable-${version}.${ext}"
+    },
+    "linux": {
+      "category": "Utility",
+      "icon": "build/icon.png"
+    },
+    "mac": {
+      "category": "public.app-category.lifestyle",
+      "icon": "build/icon.png"
+    },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "Spacegoose02",
+        "repo": "Nighttime-Ninja"
+      }
+    ]
+  },
+  "dependencies": {
+    "electron-updater": "^6.8.9"
   }
 }

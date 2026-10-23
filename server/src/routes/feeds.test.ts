@@ -33,3 +33,11 @@ test('turns relative times into dates', () => {
   assert.equal(relativeToIso('1 hour ago', now), '2026-10-16T23:00:00.000Z');
   assert.equal(relativeToIso('Streamed', now), null);
 });
+
+test('compares release versions', async () => {
+  const { compareVersions } = await import('../updates.ts');
+  assert.equal(compareVersions('0.3.1', '0.3.0'), 1);
+  assert.equal(compareVersions('v0.10.0', '0.9.9'), 1);
+  assert.equal(compareVersions('0.3.0', '0.3.0'), 0);
+  assert.equal(compareVersions('0.2.6', '0.3.0'), -1);
+});

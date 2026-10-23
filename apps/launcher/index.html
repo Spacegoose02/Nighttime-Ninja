@@ -22,6 +22,12 @@
   <div class="card">
     <img src="icon.svg" alt="" />
     <h1 style="margin:0">Nighttime Ninja</h1>
+    <div id="update" hidden>
+      <p><strong>A new version of the app is out</strong> (<span id="update-version"></span>, you have <span id="current-version"></span>).</p>
+      <button id="update-get">Download update</button>
+      <button class="ghost" id="update-skip">Not now</button>
+      <p class="muted">After it downloads, open the file to install it over this one. Your server address stays saved.</p>
+    </div>
     <div id="connecting" hidden>
       <p>Opening <strong id="target"></strong>…</p>
       <button class="ghost" id="change">Use a different server</button>
@@ -34,6 +40,7 @@
       <p class="muted">Tip: to sign in on this device, open Settings on a computer that's already signed in, tap "Pair a device", and enter the code here.</p>
     </form>
   </div>
+  <script src="version.js"></script>
   <script>
     const KEY = 'nn-server-url';
     const saved = localStorage.getItem(KEY);
@@ -75,13 +82,49 @@
       catch (err) { document.getElementById('error').textContent = err.message; }
     };
 
-    if (saved && !location.search.includes('change')) {
-      connecting.hidden = false;
-      document.getElementById('target').textContent = saved;
-      timer = setTimeout(() => go(saved).catch((err) => showSetup(err.message)), 1200);
-    } else {
-      showSetup();
+    function start() {
+      if (saved && !location.search.includes('change')) {
+        connecting.hidden = false;
+        document.getElementById('target').textContent = saved;
+        timer = setTimeout(() => go(saved).catch((err) => showSetup(err.message)), 1200);
+      } else {
+        showSetup();
+      }
     }
+
+    function newer(a, b) {
+      const pa = a.replace(/^v/, '').split('.').map(Number), pb = b.replace(/^v/, '').split('.').map(Number);
+      for (let i = 0; i < 3; i++) if ((pa[i] || 0) !== (pb[i] || 0)) return (pa[i] || 0) > (pb[i] || 0);
+      return false;
+    }
+
+    // The Android app can't update itself, so offer the new APK. (The Windows installer updates on its own.)
+    async function checkForAppUpdate() {
+      const mine = window.NN_APP_VERSION;
+      const android = /Android/i.test(navigator.userAgent) && !/Electron/i.test(navigator.userAgent);
+      if (!mine || !android || sessionStorage.getItem('nn-update-skipped')) return false;
+      try {
+        const r = await fetch('https://api.github.com/repos/Spacegoose02/Nighttime-Ninja/releases/latest', { signal: AbortSignal.timeout(4000) });
+        if (!r.ok) return false;
+        const rel = await r.json();
+        const apk = (rel.assets || []).find((a) => /\.apk$/i.test(a.name));
+        if (!apk || !newer(rel.tag_name, mine)) return false;
+        document.getElementById('update-version').textContent = rel.tag_name;
+        document.getElementById('current-version').textContent = 'v' + mine;
+        document.getElementById('update').hidden = false;
+        document.getElementById('update-get').onclick = () => window.open(apk.browser_download_url, '_blank');
+        document.getElementById('update-skip').onclick = () => {
+          sessionStorage.setItem('nn-update-skipped', '1');
+          document.getElementById('update').hidden = true;
+          start();
+        };
+        return true;
+      } catch {
+        return false;
+      }
+    }
+
+    checkForAppUpdate().then((shown) => { if (!shown) start(); });
   </script>
 </body>
 </html>

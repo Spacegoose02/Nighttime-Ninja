@@ -180,7 +180,7 @@ export function installHardening(app: FastifyInstance): void {
 
   app.addHook('onSend', async (req, reply, payload) => {
     // The Android and desktop apps check this from their own built-in page before switching to the server.
-    if (req.url === '/api/health') reply.header('access-control-allow-origin', '*');
+    if (req.url === '/api/health' || req.url === '/api/version') reply.header('access-control-allow-origin', '*');
     reply.header('x-content-type-options', 'nosniff');
     // YouTube's player refuses to play (error 153) unless it can see which site embeds it, so send the origin cross-site.
     reply.header('referrer-policy', 'strict-origin-when-cross-origin');
