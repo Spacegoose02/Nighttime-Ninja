@@ -21,6 +21,34 @@ function ItemArt({ item }: { item: Pick<Item, 'photo' | 'icon' | 'name'> }) {
   return <div className="art">{item.photo ? <img src={item.photo} alt="" /> : (item.icon ?? guessItem(item.name).icon)}</div>;
 }
 
+const ADD_NEW = '__add_new__';
+
+/** A dropdown of the home's places or categories, with "Add new…" to type one that isn't there yet. */
+function LabelSelect({ label, value, options, onChange, placeholder, emptyLabel }: {
+  label: string; value: string; options: string[]; onChange: (v: string) => void; placeholder: string; emptyLabel?: string;
+}) {
+  const known = !value || options.some((o) => o.toLowerCase() === value.toLowerCase());
+  const [typing, setTyping] = useState(!known);
+  return (
+    <label className="field" style={{ flex: 1 }}>{label}
+      {typing ? (
+        <span className="row" style={{ flexWrap: 'nowrap', gap: 6 }}>
+          <input value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} autoFocus style={{ flex: 1 }} />
+          <button type="button" className="ghost icon" aria-label="Pick from the list instead" onClick={() => { setTyping(false); onChange(emptyLabel ? '' : options[0] ?? ''); }}>↩</button>
+        </span>
+      ) : (
+        <select value={options.find((o) => o.toLowerCase() === value.toLowerCase()) ?? value} onChange={(e) => {
+          if (e.target.value === ADD_NEW) { setTyping(true); onChange(''); } else onChange(e.target.value);
+        }}>
+          {emptyLabel && <option value="">{emptyLabel}</option>}
+          {options.map((o) => <option key={o} value={o}>{o}</option>)}
+          <option value={ADD_NEW}>➕ Add new…</option>
+        </select>
+      )}
+    </label>
+  );
+}
+
 function ItemEditor({ item, labels, onClose }: { item: Item | null; labels: Labels; onClose: (changed: boolean) => void }) {
   const { base, toast, me } = useApp();
   const [f, setF] = useState(() => ({
@@ -82,14 +110,9 @@ function ItemEditor({ item, labels, onClose }: { item: Item | null; labels: Labe
           {!showThreshold && <button className="ghost small" onClick={() => setShowThreshold(true)}>Warn me automatically…</button>}
         </div>
         <div className="row">
-          <label className="field" style={{ flex: 1 }}>Where
-            <input list="nn-locations" value={f.location} onChange={set('location')} placeholder="Pick or type a new place" />
-            <datalist id="nn-locations">{labels.locations.map((l) => <option key={l} value={l} />)}</datalist>
-          </label>
-          <label className="field" style={{ flex: 1 }}>Category
-            <input list="nn-categories" value={f.category} onChange={set('category')} placeholder={`Guess (${guessItem(f.name).category})`} />
-            <datalist id="nn-categories">{labels.categories.map((c) => <option key={c} value={c} />)}</datalist>
-          </label>
+          <LabelSelect label="Where" value={f.location} options={labels.locations} onChange={(v) => setF({ ...f, location: v })} placeholder="New place, e.g. Garage Freezer" />
+          <LabelSelect label="Category" value={f.category} options={labels.categories} onChange={(v) => setF({ ...f, category: v })}
+            placeholder="New category, e.g. Baby Food" emptyLabel={`Guess for me (${guessItem(f.name).category})`} />
         </div>
         <div className="row">
           {showThreshold && <label className="field" style={{ flex: 1 }}>Mark low automatically at or below<input inputMode="decimal" value={f.lowThreshold} onChange={set('lowThreshold')} placeholder="e.g. 1" /></label>}

@@ -120,6 +120,23 @@ function LabelEditor({ kind, title, hint, list, onSaved }: { kind: 'locations' |
   );
 }
 
+/** Its own card so it's easy to find: the places ("Where") and categories used across the pantry and shopping list. */
+function PlacesAndCategories() {
+  const { base } = useApp();
+  const [home, reload] = useLoad<HomeDetail>(base);
+  if (!home) return null;
+  return (
+    <div className="card stack">
+      <h2>Pantry places & categories</h2>
+      <p className="small muted" style={{ margin: 0 }}>These fill the Where and Category dropdowns when you add or edit an item. You can also pick “➕ Add new…” right in the dropdown.</p>
+      <div className="grid-2" style={{ alignItems: 'start' }}>
+        <LabelEditor kind="locations" title="Places (Where)" hint="Renaming moves every item in that place." list={home.settings.locations} onSaved={() => void reload()} />
+        <LabelEditor kind="categories" title="Categories" hint="Shown in this order. Renaming updates every item." list={home.settings.categories} onSaved={() => void reload()} />
+      </div>
+    </div>
+  );
+}
+
 function HomeSettings() {
   const { me, base, homeId, setHome, refresh, toast } = useApp();
   const [home, reload] = useLoad<HomeDetail>(base);
@@ -193,9 +210,6 @@ function HomeSettings() {
           {isManager && <button onClick={async () => { await api(`${base}/calendar-token`, { body: {} }); await reload(); toast('Old link turned off'); }}>Reset link</button>}
         </div>
       )}
-
-      <LabelEditor kind="locations" title="Pantry places" hint="Where things are kept. Renaming moves every item in that place." list={home.settings.locations} onSaved={() => void reload()} />
-      <LabelEditor kind="categories" title="Categories" hint="Groups for the pantry and shopping list, in this order. Renaming updates every item." list={home.settings.categories} onSaved={() => void reload()} />
 
       <h3>Stores</h3>
       <div className="chips">
@@ -309,6 +323,7 @@ export function Settings() {
       <Profile />
       <SecurityCard />
       <HomeSettings />
+      <PlacesAndCategories />
       <VersionCard />
       {me?.user.isAdmin && <Admin />}
       <p className="small muted">Nighttime Ninja is open source under the MIT license.</p>
