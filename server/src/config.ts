@@ -49,5 +49,9 @@ export const config = {
   kroger: process.env.KROGER_CLIENT_ID && process.env.KROGER_CLIENT_SECRET
     ? { clientId: process.env.KROGER_CLIENT_ID, clientSecret: process.env.KROGER_CLIENT_SECRET }
     : null,
+  // Mixologist chat and drink ideas. The key stays on the server; the browser never sees it.
+  anthropic: process.env.ANTHROPIC_API_KEY
+    ? { apiKey: process.env.ANTHROPIC_API_KEY, model: process.env.ANTHROPIC_MODEL || 'claude-opus-5-5' }
+    : null,
   webDist: path.resolve(process.env.WEB_DIST || fileURLToPath(new URL('../../web/dist', import.meta.url))),
 };

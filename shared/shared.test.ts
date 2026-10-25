@@ -110,3 +110,30 @@ test('matches recipe ingredients to pantry items loosely', async () => {
   for (const [want, have] of yes) assert.ok(ingredientMatches(want, have), `${want} should match ${have}`);
   for (const [want, have] of no) assert.ok(!ingredientMatches(want, have), `${want} should not match ${have}`);
 });
+
+test('bar measures', async () => {
+  const { toFlOz, barConvert, batchDrink, bottlesOf750 } = await import('./bar.ts');
+  assert.equal(toFlOz(1.5, 'oz'), 1.5, 'a bare oz in a drink is fluid ounces');
+  assert.equal(toFlOz(2, 'shots'), 3);
+  assert.equal(barConvert(1, 'oz', 'ml')?.toFixed(1), '29.6');
+  assert.equal(barConvert(1, 'bottle', 'fl oz')?.toFixed(1), '25.4');
+  assert.equal(toFlOz(2, 'lb'), null);
+  const b = batchDrink([{ name: 'rum', quantity: 1.5, unit: 'oz' }, { name: 'lime', quantity: 0.5, unit: 'oz' }, { name: 'mint', quantity: null, unit: null }], 10);
+  assert.equal(b.lines[0].quantity, 15);
+  assert.equal(b.totalFlOz, 20);
+  assert.equal(bottlesOf750(25.36), 1);
+  assert.equal(bottlesOf750(26), 2);
+});
+
+test('liquor lands in the bar, not produce', async () => {
+  const { guessItem } = await import('./catalog.ts');
+  for (const n of ['Peachtree', 'Cruzan coconut rum', 'Parrot Bay pink lemonade Smirnoff', 'Blue Curaçao', 'triple sec', 'sweet n sour', 'Pinnacle whipped vodka', 'Espolòn tequila']) {
+    assert.equal(guessItem(n).category, 'Bar', n);
+  }
+  assert.equal(guessItem('pineapple juice').category, 'Beverages');
+  assert.equal(guessItem('berry punch').category, 'Beverages');
+  assert.equal(guessItem('ginger ale').category, 'Beverages');
+  assert.equal(guessItem('red wine vinegar').category, 'Pantry');
+  assert.equal(guessItem('ginger').category, 'Produce');
+  assert.equal(guessItem('limes').category, 'Produce');
+});

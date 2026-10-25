@@ -27,4 +27,5 @@
   <Config Name="Session secret" Target="SESSION_SECRET" Default="" Mode="" Description="Optional. Leave empty to generate one automatically in the data folder." Type="Variable" Display="advanced" Required="false" Mask="true"></Config>
   <Config Name="Kroger client ID" Target="KROGER_CLIENT_ID" Default="" Mode="" Description="Optional. From developer.kroger.com, for live prices and sales." Type="Variable" Display="advanced" Required="false" Mask="false"></Config>
   <Config Name="Kroger client secret" Target="KROGER_CLIENT_SECRET" Default="" Mode="" Description="Optional. Goes with the Kroger client ID." Type="Variable" Display="advanced" Required="false" Mask="true"></Config>
+  <Config Name="Claude API key" Target="ANTHROPIC_API_KEY" Default="" Mode="" Description="Optional. From console.anthropic.com. Turns on the Mixologist chat and drink ideas." Type="Variable" Display="advanced" Required="false" Mask="true"></Config>
 </Container>

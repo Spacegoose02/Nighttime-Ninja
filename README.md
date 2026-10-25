@@ -15,6 +15,7 @@
 - **Strong sign-in** that's safe to put on the internet: passwords (scrypt), **two-factor codes** with recovery codes, **passkeys**, **Google** (OIDC), invite-only sign-up, rate limiting, a list of signed-in devices you can sign out, and **pairing codes** for tablets. Name-only quick sign-in only works from your home network.
 - **US measurements**: metric amounts and °C are shown as cups, ounces, pounds and °F (or switch to metric).
 - **Deals**: live prices and sales from the Kroger API, plus one-tap search, weekly ads and coupons for Walmart, Food Lion, Kroger, BJ's, Sam's Club and more.
+- **Mixologist**: chat with an AI bartender (Claude) that knows what's in your bar and pantry, an **Idea Zone** that turns a drink style into recipes you can make now (or adds the one or two missing bottles to your list), your saved cocktails, and a bar measurement converter and batch scaler.
 - **Feed**: follow cooks' YouTube channels, blogs or any RSS feed and watch new videos in the app.
 - **Home Assistant**: token-based API with a summary sensor and a shopping-list service.
 - **Themes and raccoons**: six themes and eight raccoon chef avatars.
@@ -52,6 +53,7 @@ All settings are environment variables. See [.env.example](.env.example).
 | `TRUST_PROXY` | Reverse proxies allowed to set X-Forwarded headers. Defaults to loopback and private networks. |
 | `SESSION_SECRET` | Optional. Generated and saved in the data folder if empty. |
 | `KROGER_CLIENT_ID`, `KROGER_CLIENT_SECRET` | Optional, free from [developer.kroger.com](https://developer.kroger.com). Turns on live prices and sale matching. |
+| `ANTHROPIC_API_KEY` | Optional, from [console.anthropic.com](https://console.anthropic.com). Turns on the Mixologist's chat and drink ideas. `ANTHROPIC_MODEL` picks the Claude model (default `claude-opus-5-5`). |
 
 ## Putting it on the internet
 
@@ -108,7 +110,7 @@ Tagging a release (`git tag v0.1.0 && git push --tags`) builds the Docker image,
 
 ## Privacy
 
-Everything stays on your server. Store and feed lookups go straight from your server to those sites. Tokens for KitchenOwl imports are used once and never saved.
+Everything stays on your server. Store and feed lookups go straight from your server to those sites. If you turn on the Mixologist, your bar and pantry item names and your chat messages are sent to the Claude API to answer you. Tokens for KitchenOwl imports are used once and never saved.
 
 ## License
 

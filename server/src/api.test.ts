@@ -215,3 +215,51 @@ test('only home managers can add or change places and categories', async () => {
   assert.equal((await call(boss, 'POST', `${base}/items`, { name: 'Ice', location: 'Chest Freezer' })).status, 200);
   assert.ok((await call(boss, 'GET', base)).body.settings.locations.includes('Chest Freezer'));
 });
+
+test('mixologist: bar snapshot, saving drinks, and no key', async () => {
+  const { login, call } = await setup();
+  const a = await login('Bartender');
+  const { body: home } = await call(a, 'POST', '/api/homes', { name: 'Tiki Bar' });
+  const base = `/api/homes/${home.id}`;
+  const rum = await call(a, 'POST', `${base}/items`, { name: 'Cruzan coconut rum', quantity: 1, unit: 'bottle' });
+  assert.equal(rum.body.category, 'Bar');
+  await call(a, 'POST', `${base}/items`, { name: 'Pineapple juice', quantity: 46, unit: 'fl oz' });
+  await call(a, 'POST', `${base}/items`, { name: 'Old limes', quantity: 0 });
+
+  const status = await call(a, 'GET', '/api/mixologist/status');
+  assert.equal(status.body.available, false);
+  const chat = await call(a, 'POST', `${base}/mixologist/chat`, { messages: [{ role: 'user', content: 'Make me something' }] });
+  assert.equal(chat.status, 503);
+
+  const saved = await call(a, 'POST', `${base}/mixologist/save`, {
+    drink: {
+      title: 'Blue Island Punch', description: 'Bright and tropical.', glass: 'Highball', garnish: 'Pineapple wedge', style: 'Tropical',
+      ingredients: [
+        { name: 'Cruzan coconut rum', quantity: 1.5, unit: 'oz', note: null, optional: false },
+        { name: 'Pineapple juice', quantity: 2, unit: 'oz', note: null, optional: false },
+        { name: 'Sprite', quantity: null, unit: null, note: 'top with', optional: false },
+      ],
+      instructions: ['Shake rum and juice with ice.', 'Strain into a tall glass and top with Sprite.'],
+    },
+  });
+  const r = await call(a, 'GET', `${base}/recipes/${saved.body.id}`);
+  assert.deepEqual(r.body.tags, ['cocktail', 'tropical']);
+  assert.equal(r.body.ingredients[0].unit, 'fl oz', 'bar ounces are fluid ounces');
+  assert.equal(r.body.ingredients[1].availability, 'have');
+  assert.deepEqual(r.body.missing, ['Sprite']);
+});
+
+test('mixologist sees the bar first and skips empty stock', async () => {
+  const db = openMemoryDb();
+  const { createHome } = await import('./routes/homes.ts');
+  const { stockForPrompt } = await import('./routes/mixologist.ts');
+  db.prepare("INSERT INTO users (id, name) VALUES ('u1', 'Sam')").run();
+  const homeId = createHome(db, 'u1', 'Den');
+  const add = db.prepare('INSERT INTO items (id, home_id, name, category, location, quantity, unit) VALUES (?, ?, ?, ?, ?, ?, ?)');
+  add.run('i1', homeId, 'Blue Curaçao', 'Bar', 'Pantry', 1, 'bottle');
+  add.run('i2', homeId, 'Limes', 'Produce', 'Fridge', 4, null);
+  add.run('i3', homeId, 'Grenadine', 'Bar', 'Bar', 0, 'bottle');
+  const text = stockForPrompt(db, homeId);
+  assert.ok(text.indexOf('Blue Curaçao (1 bottle)') < text.indexOf('Limes (4)'));
+  assert.ok(!text.includes('Grenadine'));
+});
