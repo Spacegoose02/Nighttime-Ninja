@@ -346,3 +346,13 @@ td, th { text-align: left; padding: 8px; border-bottom: 1px solid var(--border);
   --danger: #fb7185; --warn: #facc15; --ok: #a3e635;
   --scene-wall: #121a24; --scene-grout: #1c2635; --scene-counter: #3b2f4a; --scene-steam: rgba(190, 242, 100, 0.25);
 }
+
+/* mixologist */
+.chat-log { min-height: 240px; max-height: 62vh; overflow-y: auto; }
+.bubble { max-width: min(720px, 92%); padding: 10px 14px; border-radius: 16px; line-height: 1.45; white-space: pre-wrap; }
+.bubble.user { align-self: flex-end; background: var(--primary); color: var(--on-primary); border-bottom-right-radius: 4px; }
+.bubble.assistant { align-self: flex-start; background: var(--surface-2); border-bottom-left-radius: 4px; white-space: normal; }
+.md ul, .md ol { margin: 4px 0; padding-left: 22px; }
+.md li { margin: 2px 0; }
+.drink-ingredients { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.drink-ingredients li.missing { color: var(--danger); }

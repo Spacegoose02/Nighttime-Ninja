@@ -12,6 +12,7 @@ import { ImportPage } from './pages/Import.tsx';
 import { Shopping } from './pages/Shopping.tsx';
 import { MealPlan } from './pages/MealPlan.tsx';
 import { Deals } from './pages/Deals.tsx';
+import { Mixologist } from './pages/Mixologist.tsx';
 import { Feed } from './pages/Feed.tsx';
 import { Settings } from './pages/Settings.tsx';
 import { PublicRecipe, Community } from './pages/Public.tsx';
@@ -22,6 +23,7 @@ const NAV = [
   { to: '/recipes', ico: '📖', label: 'Recipes' },
   { to: '/shopping', ico: '🛒', label: 'Shopping' },
   { to: '/plan', ico: '📅', label: 'Meal Plan' },
+  { to: '/mixologist', ico: '🍸', label: 'Mixologist' },
   { to: '/deals', ico: '🏷️', label: 'Deals' },
   { to: '/feed', ico: '📺', label: 'Feed' },
   { to: '/settings', ico: '⚙️', label: 'Settings' },
@@ -79,6 +81,7 @@ export function App() {
           <Route path="/recipes/:id/edit" element={<RecipeEdit />} />
           <Route path="/shopping" element={<Shopping />} />
           <Route path="/plan" element={<MealPlan />} />
+          <Route path="/mixologist" element={<Mixologist />} />
           <Route path="/deals" element={<Deals />} />
           <Route path="/feed" element={<Feed />} />
           <Route path="/settings" element={<Settings />} />

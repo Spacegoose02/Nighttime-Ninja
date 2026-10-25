@@ -19,6 +19,7 @@ import { feedRoutes } from './routes/feeds.ts';
 import { dealRoutes } from './routes/deals.ts';
 import { integrationRoutes } from './routes/integrations.ts';
 import { kitchenOwlRoutes } from './routes/kitchenowl.ts';
+import { mixologistRoutes } from './routes/mixologist.ts';
 
 export async function buildApp(db: DatabaseSync, opts: { logger?: boolean; serveWeb?: boolean } = {}): Promise<FastifyInstance> {
   const app = Fastify({ logger: opts.logger ?? false, bodyLimit: 5 * 1024 * 1024, trustProxy: config.trustProxy });
@@ -47,6 +48,7 @@ export async function buildApp(db: DatabaseSync, opts: { logger?: boolean; serve
   dealRoutes(app, db);
   integrationRoutes(app, db);
   kitchenOwlRoutes(app, db);
+  mixologistRoutes(app, db);
 
   await app.register(fastifyStatic, {
     root: path.join(config.dataDir, 'uploads'),

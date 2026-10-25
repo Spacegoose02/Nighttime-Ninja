@@ -6,7 +6,7 @@ import { amount } from '../format.ts';
 import { CATEGORIES, LOCATIONS, guessItem } from '../../../shared/catalog.ts';
 import type { HomeDetail } from '../api.ts';
 
-interface Labels { locations: string[]; categories: string[] }
+export interface Labels { locations: string[]; categories: string[] }
 
 /** Sorts names by their position in the home's own list; anything not in the list goes last. */
 const byList = (list: string[]) => (a: string, b: string) => {
@@ -17,7 +17,7 @@ const byList = (list: string[]) => (a: string, b: string) => {
 
 interface HistoryRow { id: number; itemName: string; delta: number; unit: string | null; quantityAfter: number | null; reason: string; createdAt: string; userName: string | null }
 
-function ItemArt({ item }: { item: Pick<Item, 'photo' | 'icon' | 'name'> }) {
+export function ItemArt({ item }: { item: Pick<Item, 'photo' | 'icon' | 'name'> }) {
   return <div className="art">{item.photo ? <img src={item.photo} alt="" /> : (item.icon ?? guessItem(item.name).icon)}</div>;
 }
 
@@ -51,7 +51,7 @@ function LabelSelect({ label, value, options: list, onChange, placeholder, empty
   );
 }
 
-function ItemEditor({ item, labels, canAdd, onClose }: { item: Item | null; labels: Labels; canAdd: boolean; onClose: (changed: boolean) => void }) {
+export function ItemEditor({ item, labels, canAdd, onClose }: { item: Item | null; labels: Labels; canAdd: boolean; onClose: (changed: boolean) => void }) {
   const { base, toast, me } = useApp();
   const [f, setF] = useState(() => ({
     name: item?.name ?? '', quantity: String(item?.quantity ?? 1), unit: item?.unit ?? '', category: item?.category ?? '',
