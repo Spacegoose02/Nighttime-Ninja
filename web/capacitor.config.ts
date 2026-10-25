@@ -18,6 +18,11 @@ const config: CapacitorConfig = {
   android: {
     allowMixedContent: true,
   },
+  plugins: {
+    // Android 15+ draws apps under the system navigation bar. "native" keeps the web page clear of it
+    // (older WebViews get padding; newer ones honor viewport-fit=cover and report real safe-area insets).
+    SystemBars: { insetsHandling: 'native', initialViewportFitValueHint: 'cover' },
+  },
 };
 
 export default config;
