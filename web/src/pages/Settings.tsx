@@ -6,6 +6,7 @@ import { AVATARS, AVATAR_LABELS, RaccoonAvatar } from '../components/Raccoon.tsx
 import { PICTURE_AVATARS } from '../avatars.ts';
 import { VersionCard } from '../components/UpdateBanner.tsx';
 import { AdminSignIn, AdminUserActions, SecurityCard } from './Security.tsx';
+import { AdminMixologist } from './Mixologist.tsx';
 
 const THEMES = [
   { id: 'forest', name: 'Forest', swatch: '#2f7d4f' },
@@ -287,6 +288,7 @@ function Admin() {
     <div className="card stack">
       <h2>Server admin</h2>
       <AdminSignIn />
+      <AdminMixologist />
       <h3>People</h3>
       <table>
         <thead><tr><th>Person</th><th>Sign-in</th><th>Homes</th><th>Admin</th><th /></tr></thead>

@@ -53,7 +53,7 @@ All settings are environment variables. See [.env.example](.env.example).
 | `TRUST_PROXY` | Reverse proxies allowed to set X-Forwarded headers. Defaults to loopback and private networks. |
 | `SESSION_SECRET` | Optional. Generated and saved in the data folder if empty. |
 | `KROGER_CLIENT_ID`, `KROGER_CLIENT_SECRET` | Optional, free from [developer.kroger.com](https://developer.kroger.com). Turns on live prices and sale matching. |
-| `ANTHROPIC_API_KEY` | Optional, from [console.anthropic.com](https://console.anthropic.com). Turns on the Mixologist's chat and drink ideas. `ANTHROPIC_MODEL` picks the Claude model (default `claude-opus-5-5`). |
+| `ANTHROPIC_API_KEY` | Optional, from [console.anthropic.com](https://console.anthropic.com). Turns on the Mixologist's chat and drink ideas. `ANTHROPIC_MODEL` sets the default Claude model (`claude-opus-5-5`); admins can switch it in **Settings → Server admin**. |
 
 ## Putting it on the internet
 
