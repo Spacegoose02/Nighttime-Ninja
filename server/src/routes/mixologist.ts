@@ -96,7 +96,7 @@ export function mixologistModel(db: DatabaseSync): string | null {
 
 let client: Anthropic | null = null;
 
-function claude(db: DatabaseSync): { client: Anthropic; model: string } {
+export function claude(db: DatabaseSync): { client: Anthropic; model: string } {
   if (!config.anthropic) throw new HttpError(503, 'The Mixologist needs a Claude API key. Add ANTHROPIC_API_KEY to the server settings and restart.');
   client ??= new Anthropic({ apiKey: config.anthropic.apiKey });
   return { client, model: mixologistModel(db)! };
@@ -108,7 +108,7 @@ function claudeMessage(err: InstanceType<typeof Anthropic.APIError>): string {
   return body?.error?.message ?? err.message;
 }
 
-async function ask(db: DatabaseSync, params: Omit<Anthropic.Beta.MessageCreateParamsNonStreaming, 'model' | 'max_tokens'>): Promise<Anthropic.Beta.BetaMessage> {
+export async function ask(db: DatabaseSync, params: Omit<Anthropic.Beta.MessageCreateParamsNonStreaming, 'model' | 'max_tokens'>): Promise<Anthropic.Beta.BetaMessage> {
   const { client, model } = claude(db);
   const { output_config, ...rest } = params;
   const send = (withFallback: boolean) => client.beta.messages.stream({
@@ -215,7 +215,7 @@ function withAvailability(db: DatabaseSync, homeId: string, drinks: Drink[]) {
   }).sort((a, b) => a.missing.length - b.missing.length);
 }
 
-function textOf(m: Anthropic.Beta.BetaMessage): string {
+export function textOf(m: Anthropic.Beta.BetaMessage): string {
   return m.content.flatMap((b) => (b.type === 'text' ? [b.text] : [])).join('\n\n').trim();
 }
 
@@ -224,7 +224,7 @@ function textOf(m: Anthropic.Beta.BetaMessage): string {
  * Send the 200 right away and a space every few seconds (JSON ignores leading whitespace), then the answer.
  * A failure after that point goes in the body with x-nn-deferred set, and the web app's api() turns it back into an error.
  */
-async function keepAlive(reply: FastifyReply, work: () => Promise<unknown>): Promise<void> {
+export async function keepAlive(reply: FastifyReply, work: () => Promise<unknown>): Promise<void> {
   reply.hijack();
   const raw = reply.raw;
   raw.writeHead(200, {

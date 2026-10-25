@@ -326,3 +326,13 @@ test('mixologist retries without the refusal fallback, and reports Claude errors
     config.anthropic = saved;
   }
 });
+
+test('Chef Gordy explains when there is no Claude key', async () => {
+  const { login, call } = await setup();
+  const a = await login('Hungry');
+  const { body: home } = await call(a, 'POST', '/api/homes', { name: 'Home' });
+  const r = await call(a, 'POST', `/api/homes/${home.id}/chef/chat`, { messages: [{ role: 'user', content: 'Biscuits please' }] });
+  if (process.env.ANTHROPIC_API_KEY) return;
+  assert.equal(r.status, 503);
+  assert.equal((await call(a, 'POST', `/api/homes/${home.id}/chef/chat`, { messages: [] })).status, 400);
+});

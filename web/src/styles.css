@@ -365,3 +365,9 @@ td, th { text-align: left; padding: 8px; border-bottom: 1px solid var(--border);
 .md li { margin: 2px 0; }
 .drink-ingredients { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
 .drink-ingredients li.missing { color: var(--danger); }
+
+/* Chat bubbles with the persona's picture (Rocco Rocks, Gordy Scavengé). */
+.chat-row { display: flex; gap: 8px; align-items: flex-end; }
+.chat-row.user { justify-content: flex-end; }
+.chat-row .bubble { max-width: min(720px, calc(100% - 52px)); }
+.chat-avatar { width: 40px; height: 40px; border-radius: 50%; object-fit: cover; flex-shrink: 0; background: var(--surface-2); display: grid; place-items: center; }

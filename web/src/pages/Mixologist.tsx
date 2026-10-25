@@ -103,9 +103,41 @@ function loadChat(key: string): ChatMsg[] {
   try { return JSON.parse(sessionStorage.getItem(key) ?? '[]') as ChatMsg[]; } catch { return []; }
 }
 
-function Chat({ disabled }: { disabled: boolean }) {
+export interface ChatPersona {
+  /** API path under the home, e.g. "mixologist/chat". */
+  endpoint: string;
+  name: string;
+  /** Picture for the chat bubbles; falls back to the emoji if the file isn't there. */
+  avatar: string;
+  emoji: string;
+  intro: string;
+  starters: string[];
+  placeholder: string;
+  thinking: string;
+}
+
+export const ROCCO: ChatPersona = {
+  endpoint: 'mixologist/chat',
+  name: 'Rocco Rocks',
+  avatar: '/avatars/rocco-rocks.png',
+  emoji: '🍸',
+  intro: "Hey, I'm Rocco Rocks, your mixologist. Ask me anything about drinks. I can see what's in your bar and pantry, or just tell me: “I need a good drink. I have triple sec, coconut rum, pineapple juice…”",
+  starters: STARTERS,
+  placeholder: 'What are you in the mood for?',
+  thinking: 'Rocco is shaking something up…',
+};
+
+/** A round picture for chat bubbles, or the persona's emoji until the image exists. */
+export function ChatAvatar({ p, size = 40 }: { p: ChatPersona; size?: number }) {
+  const [broken, setBroken] = useState(false);
+  return broken
+    ? <span className="chat-avatar" style={{ width: size, height: size, fontSize: size * 0.55 }} aria-label={p.name}>{p.emoji}</span>
+    : <img className="chat-avatar" src={p.avatar} alt={p.name} width={size} height={size} onError={() => setBroken(true)} />;
+}
+
+export function Chat({ disabled, persona = ROCCO }: { disabled: boolean; persona?: ChatPersona }) {
   const { base, homeId, toast } = useApp();
-  const key = `nn-mixologist-chat-${homeId}`;
+  const key = `nn-${persona.endpoint.replace(/W+/g, '-')}-${homeId}`;
   const [msgs, setMsgs] = useState<ChatMsg[]>(() => loadChat(key));
   const [draft, setDraft] = useState('');
   const [busy, setBusy] = useState(false);
@@ -124,7 +156,7 @@ function Chat({ disabled }: { disabled: boolean }) {
     setDraft('');
     setBusy(true);
     try {
-      const res = await api<{ reply: string; actions: ChatAction[] }>(`${base}/mixologist/chat`, {
+      const res = await api<{ reply: string; actions: ChatAction[] }>(`${base}/${persona.endpoint}`, {
         body: { messages: next.map(({ role, content: c }) => ({ role, content: c })) },
       });
       setMsgs([...next, { role: 'assistant', content: res.reply, actions: res.actions }]);
@@ -142,14 +174,17 @@ function Chat({ disabled }: { disabled: boolean }) {
       <div className="card stack chat-log">
         {!msgs.length && (
           <div className="stack">
-            <p className="muted" style={{ margin: 0 }}>
-              Ask me anything about drinks. I can see what's in your bar and pantry, or you can just tell me: “I need a good drink. I have triple sec, coconut rum, pineapple juice…”
-            </p>
-            <div className="chips">{STARTERS.map((s) => <button key={s} className="chip" disabled={disabled || busy} onClick={() => send(s)}>{s}</button>)}</div>
+            <div className="chat-row">
+              <ChatAvatar p={persona} size={56} />
+              <div className="bubble assistant">{persona.intro}</div>
+            </div>
+            <div className="chips">{persona.starters.map((s) => <button key={s} className="chip" disabled={disabled || busy} onClick={() => send(s)}>{s}</button>)}</div>
           </div>
         )}
         {msgs.map((m, i) => (
-          <div key={i} className={`bubble ${m.role}`}>
+          <div key={i} className={`chat-row ${m.role}`}>
+          {m.role === 'assistant' && <ChatAvatar p={persona} />}
+          <div className={`bubble ${m.role}`}>
             {m.role === 'assistant' ? <Markdown text={m.content} /> : m.content}
             {!!m.actions?.length && (
               <div className="chips" style={{ marginTop: 8 }}>
@@ -159,14 +194,15 @@ function Chat({ disabled }: { disabled: boolean }) {
               </div>
             )}
           </div>
+          </div>
         ))}
-        {busy && <div className="bubble assistant muted">Shaking something up…</div>}
+        {busy && <div className="chat-row"><ChatAvatar p={persona} /><div className="bubble assistant muted">{persona.thinking}</div></div>}
         <div ref={end} />
       </div>
       <form className="row" style={{ alignItems: 'flex-end' }} onSubmit={(e) => { e.preventDefault(); void send(draft); }}>
         <textarea
           value={draft} onChange={(e) => setDraft(e.target.value)} disabled={disabled} rows={2}
-          placeholder="What are you in the mood for?" style={{ flex: 1, minHeight: 56 }}
+          placeholder={persona.placeholder} style={{ flex: 1, minHeight: 56 }}
           onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void send(draft); } }}
         />
         <button className="primary" disabled={disabled || busy || !draft.trim()}>Send</button>
