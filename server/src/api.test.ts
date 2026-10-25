@@ -284,3 +284,45 @@ test('admins pick the Mixologist model', async () => {
     delete process.env.ANTHROPIC_API_KEY;
   }
 });
+
+test('mixologist retries without the refusal fallback, and reports Claude errors in the body', async () => {
+  const { config } = await import('./config.ts');
+  const saved = config.anthropic;
+  const realFetch = globalThis.fetch;
+  config.anthropic = { apiKey: 'test-key', model: 'claude-opus-5-5' };
+  const ev = (type: string, data: object) => `event: ${type}\ndata: ${JSON.stringify({ type, ...data })}\n\n`;
+  const reply = (text: string) => new Response(
+    ev('message_start', { message: { id: 'm', type: 'message', role: 'assistant', model: 'claude-opus-5-5', content: [], stop_reason: null, usage: { input_tokens: 1, output_tokens: 1 } } })
+    + ev('content_block_start', { index: 0, content_block: { type: 'text', text: '' } }) + ev('content_block_delta', { index: 0, delta: { type: 'text_delta', text } })
+    + ev('content_block_stop', { index: 0 }) + ev('message_delta', { delta: { stop_reason: 'end_turn' }, usage: { output_tokens: 1 } }) + ev('message_stop', {}),
+    { headers: { 'content-type': 'text/event-stream' } });
+  const refuse = (message: string) => new Response(JSON.stringify({ type: 'error', error: { type: 'invalid_request_error', message } }), { status: 400, headers: { 'content-type': 'application/json' } });
+  let mode: 'no-fallback' | 'broken' = 'no-fallback';
+  const sent: unknown[] = [];
+  globalThis.fetch = (async (url: string | URL | Request, init?: RequestInit) => {
+    if (!String(url).includes('anthropic.com')) return realFetch(url, init);
+    const body = JSON.parse(String(init?.body));
+    sent.push(body.fallbacks ?? null);
+    if (mode === 'broken') return refuse('something is off');
+    return body.fallbacks ? refuse('fallbacks: not available for this account') : reply('Try a **Mai Tai**.');
+  }) as typeof fetch;
+  try {
+    const { app, login, call } = await setup();
+    const a = await login('Sipper');
+    const { body: home } = await call(a, 'POST', '/api/homes', { name: 'Bar' });
+    const ok = await call(a, 'POST', `/api/homes/${home.id}/mixologist/chat`, { messages: [{ role: 'user', content: 'Something tropical' }] });
+    assert.equal(ok.status, 200);
+    assert.equal(ok.body.reply, 'Try a **Mai Tai**.');
+    assert.deepEqual(sent, ['default', null]);
+
+    mode = 'broken';
+    const res = await app.inject({ method: 'POST', url: `/api/homes/${home.id}/mixologist/ideas`, payload: { style: 'Tropical' }, headers: a });
+    assert.equal(res.headers['x-nn-deferred'], '1');
+    const err = JSON.parse(res.body);
+    assert.equal(err.status, 502);
+    assert.match(err.error, /something is off/);
+  } finally {
+    globalThis.fetch = realFetch;
+    config.anthropic = saved;
+  }
+});
