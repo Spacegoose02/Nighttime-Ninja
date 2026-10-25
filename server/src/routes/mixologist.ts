@@ -1,5 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk';
-import type { FastifyInstance } from 'fastify';
+import type { FastifyInstance, FastifyReply } from 'fastify';
 import type { DatabaseSync } from 'node:sqlite';
 import { getSetting, homeCtx, requireAdmin, setSetting } from '../auth.ts';
 import type { Row } from '../db.ts';
@@ -102,23 +102,40 @@ function claude(db: DatabaseSync): { client: Anthropic; model: string } {
   return { client, model: mixologistModel(db)! };
 }
 
+/** Claude's own explanation from an API error, e.g. "model: claude-x is not available". */
+function claudeMessage(err: InstanceType<typeof Anthropic.APIError>): string {
+  const body = err.error as { error?: { message?: string } } | undefined;
+  return body?.error?.message ?? err.message;
+}
+
 async function ask(db: DatabaseSync, params: Omit<Anthropic.Beta.MessageCreateParamsNonStreaming, 'model' | 'max_tokens'>): Promise<Anthropic.Beta.BetaMessage> {
   const { client, model } = claude(db);
   const { output_config, ...rest } = params;
+  const send = (withFallback: boolean) => client.beta.messages.stream({
+    ...rest,
+    model,
+    max_tokens: 16000,
+    output_config: { effort: 'medium', ...output_config },
+    ...(withFallback ? { betas: ['server-side-fallback-2026-07-01'], fallbacks: 'default' as const } : {}),
+  }).finalMessage();
   try {
-    return await client.beta.messages.stream({
-      ...rest,
-      model,
-      max_tokens: 16000,
-      output_config: { effort: 'medium', ...output_config },
-      ...(FALLBACK_MODELS.has(model) ? { betas: ['server-side-fallback-2026-07-01'], fallbacks: 'default' as const } : {}),
-    }).finalMessage();
+    try {
+      return await send(FALLBACK_MODELS.has(model));
+    } catch (err) {
+      // Not every account can use the refusal fallback yet. If Claude turns the request down, try once without it.
+      if (!(err instanceof Anthropic.BadRequestError) || !FALLBACK_MODELS.has(model)) throw err;
+      console.warn('Mixologist: retrying without the refusal fallback:', claudeMessage(err));
+      return await send(false);
+    }
   } catch (err) {
     if (err instanceof Anthropic.AuthenticationError) throw new HttpError(502, 'Claude rejected the API key. Check ANTHROPIC_API_KEY.');
+    if (err instanceof Anthropic.PermissionDeniedError || err instanceof Anthropic.NotFoundError) {
+      throw new HttpError(502, `Claude can't use ${model} with this API key. Pick another model in Settings → Server admin. (${claudeMessage(err)})`);
+    }
     if (err instanceof Anthropic.RateLimitError) throw new HttpError(429, 'The Mixologist is getting a lot of orders. Try again in a minute.');
     if (err instanceof Anthropic.APIError) {
-      console.error('Mixologist: Claude API error', err.status, err.message);
-      throw new HttpError(502, `The Mixologist couldn't reach Claude (${err.status ?? 'network error'}). Try again in a moment.`);
+      console.error('Mixologist: Claude API error', err.status, claudeMessage(err));
+      throw new HttpError(502, `Claude answered ${err.status ?? 'with a network error'}: ${claudeMessage(err)}`);
     }
     throw err;
   }
@@ -202,6 +219,31 @@ function textOf(m: Anthropic.Beta.BetaMessage): string {
   return m.content.flatMap((b) => (b.type === 'text' ? [b.text] : [])).join('\n\n').trim();
 }
 
+/**
+ * Claude can take a minute or more, and reverse proxies often give up after 60 seconds with a bare 502.
+ * Send the 200 right away and a space every few seconds (JSON ignores leading whitespace), then the answer.
+ * A failure after that point goes in the body with x-nn-deferred set, and the web app's api() turns it back into an error.
+ */
+async function keepAlive(reply: FastifyReply, work: () => Promise<unknown>): Promise<void> {
+  reply.hijack();
+  const raw = reply.raw;
+  raw.writeHead(200, {
+    'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store', 'x-content-type-options': 'nosniff',
+    'x-accel-buffering': 'no', 'x-nn-deferred': '1',
+  });
+  raw.write(' ');
+  const timer = setInterval(() => raw.write(' '), 5000);
+  try {
+    raw.end(JSON.stringify(await work()));
+  } catch (err) {
+    if (!(err instanceof HttpError)) console.error('Mixologist:', err);
+    const status = err instanceof HttpError ? err.status : 500;
+    raw.end(JSON.stringify({ error: err instanceof HttpError ? err.message : 'Something went wrong in the kitchen', status }));
+  } finally {
+    clearInterval(timer);
+  }
+}
+
 const REFUSED = "I can't help with that one. Ask me about another drink, or tell me what's in your bar and I'll mix something up.";
 
 interface ChatAction { type: 'shopping' | 'saved'; label: string; recipeId?: string }
@@ -224,7 +266,7 @@ export function mixologistRoutes(app: FastifyInstance, db: DatabaseSync): void {
     return { model: mixologistModel(db) };
   });
 
-  app.post('/api/homes/:homeId/mixologist/chat', async (req) => {
+  app.post('/api/homes/:homeId/mixologist/chat', async (req, reply) => {
     const ctx = homeCtx(db, req);
     const b = (req.body ?? {}) as Row;
     const history = (Array.isArray(b.messages) ? b.messages : [])
@@ -233,6 +275,7 @@ export function mixologistRoutes(app: FastifyInstance, db: DatabaseSync): void {
       .map((m: Row): Anthropic.Beta.BetaMessageParam => ({ role: m.role as 'user' | 'assistant', content: String(m.content).slice(0, 8000) }));
     while (history.length && history[0].role !== 'user') history.shift();
     if (!history.length || history[history.length - 1].role !== 'user') throw new HttpError(400, 'Ask the Mixologist something');
+    claude(db);
 
     // Earlier turns come back from the browser as plain text, so nothing here replays old thinking.
     // Within this request the tool loop appends whole responses, which keeps the history append-only.
@@ -243,8 +286,10 @@ export function mixologistRoutes(app: FastifyInstance, db: DatabaseSync): void {
     const messages = [...history];
     const actions: ChatAction[] = [];
     const replies: string[] = [];
+    await keepAlive(reply, async () => {
     for (let round = 0; round < 6; round++) {
-      const res = await ask(db, { system, tools: TOOLS, messages });
+      // Low effort keeps chat snappy; the Idea Zone thinks harder.
+      const res = await ask(db, { system, tools: TOOLS, messages, output_config: { effort: 'low' } });
       if (res.stop_reason === 'refusal') return { reply: REFUSED, actions };
       const text = textOf(res);
       if (text) replies.push(text);
@@ -262,6 +307,7 @@ export function mixologistRoutes(app: FastifyInstance, db: DatabaseSync): void {
       messages.push({ role: 'user', content: results });
     }
     return { reply: replies.join('\n\n') || "Let me know what you're in the mood for.", actions };
+    });
 
     function runTool(name: string, input: Row): string {
       const userId = ctx.user?.id ?? null;
@@ -285,7 +331,7 @@ export function mixologistRoutes(app: FastifyInstance, db: DatabaseSync): void {
   });
 
   // Idea Zone: pick a style, get recipes built from what's in stock.
-  app.post('/api/homes/:homeId/mixologist/ideas', async (req) => {
+  app.post('/api/homes/:homeId/mixologist/ideas', async (req, reply) => {
     const ctx = homeCtx(db, req);
     const b = (req.body ?? {}) as Row;
     const style = str(b.style, 60) ?? 'Surprise me';
@@ -297,6 +343,8 @@ export function mixologistRoutes(app: FastifyInstance, db: DatabaseSync): void {
       'Build each drink from what is in stock. A drink may need at most two things that are not in stock; prefer drinks that need none.',
       'Use the household item names exactly as listed for anything in stock. Amounts in oz for liquids.',
     ].filter(Boolean).join('\n');
+    claude(db);
+    await keepAlive(reply, async () => {
     const res = await ask(db, {
       system: [
         { type: 'text', text: PERSONA, cache_control: { type: 'ephemeral' } },
@@ -315,6 +363,7 @@ export function mixologistRoutes(app: FastifyInstance, db: DatabaseSync): void {
     try { parsed = JSON.parse(textOf(res)); } catch { throw new HttpError(502, "The Mixologist's answer got garbled. Try again."); }
     const drinks = (parsed.drinks ?? []).map((d) => cleanDrink({ ...d, style }));
     return { drinks: withAvailability(db, ctx.homeId, drinks) };
+    });
   });
 
   app.post('/api/homes/:homeId/mixologist/save', async (req) => {

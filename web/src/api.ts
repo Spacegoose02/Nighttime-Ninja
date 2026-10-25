@@ -18,6 +18,11 @@ export async function api<T = unknown>(path: string, opts: { method?: string; bo
   const text = await res.text();
   const data = text ? safeJson(text) : null;
   if (!res.ok) throw new ApiError(res.status, (data as { error?: string })?.error ?? `Request failed (${res.status})`);
+  // Slow routes answer 200 straight away to keep proxies from timing out, then put any failure in the body.
+  if (res.headers.get('x-nn-deferred') && typeof (data as { error?: unknown })?.error === 'string') {
+    const d = data as { error: string; status?: number };
+    throw new ApiError(d.status ?? 500, d.error);
+  }
   return data as T;
 }
 
