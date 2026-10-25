@@ -263,3 +263,24 @@ test('mixologist sees the bar first and skips empty stock', async () => {
   assert.ok(text.indexOf('Blue Curaçao (1 bottle)') < text.indexOf('Limes (4)'));
   assert.ok(!text.includes('Grenadine'));
 });
+
+test('admins pick the Mixologist model', async () => {
+  process.env.ANTHROPIC_API_KEY = 'test-key';
+  const { config } = await import('./config.ts');
+  const saved = config.anthropic;
+  config.anthropic = { apiKey: 'test-key', model: 'claude-opus-5-5' };
+  try {
+    const { login, call } = await setup();
+    const admin = await login('Admin');
+    const guest = await login('Guest');
+    assert.equal((await call(guest, 'GET', '/api/admin/mixologist')).status, 403);
+    assert.equal((await call(admin, 'GET', '/api/admin/mixologist')).body.model, 'claude-opus-5-5');
+    assert.equal((await call(admin, 'PATCH', '/api/admin/mixologist', { model: 'gpt-4' })).status, 400);
+    assert.equal((await call(admin, 'PATCH', '/api/admin/mixologist', { model: 'claude-sonnet-5-5' })).body.model, 'claude-sonnet-5-5');
+    assert.equal((await call(admin, 'GET', '/api/mixologist/status')).body.model, 'claude-sonnet-5-5');
+    assert.equal((await call(admin, 'PATCH', '/api/admin/mixologist', { model: 'claude-opus-5-5' })).body.model, 'claude-opus-5-5');
+  } finally {
+    config.anthropic = saved;
+    delete process.env.ANTHROPIC_API_KEY;
+  }
+});

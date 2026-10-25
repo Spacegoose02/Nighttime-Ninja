@@ -1,7 +1,7 @@
 import Anthropic from '@anthropic-ai/sdk';
 import type { FastifyInstance } from 'fastify';
 import type { DatabaseSync } from 'node:sqlite';
-import { homeCtx } from '../auth.ts';
+import { getSetting, homeCtx, requireAdmin, setSetting } from '../auth.ts';
 import type { Row } from '../db.ts';
 import { config } from '../config.ts';
 import { HttpError, num, str } from '../util.ts';
@@ -80,16 +80,30 @@ const TOOLS: Anthropic.Beta.BetaTool[] = [
 // Models that take the server-side refusal fallback. Others just run without it.
 const FALLBACK_MODELS = new Set(['claude-fable-5-1', 'claude-opus-5-5', 'claude-opus-5', 'claude-sonnet-5-5']);
 
-let client: Anthropic | null = null;
+/** The models an admin can pick in Settings. ANTHROPIC_MODEL can name any other one. */
+export const MODEL_CHOICES = [
+  { id: 'claude-opus-5-5', label: 'Claude Opus 5.5', blurb: 'Best drinks, the default' },
+  { id: 'claude-sonnet-5-5', label: 'Claude Sonnet 5.5', blurb: 'Faster, about half the price' },
+  { id: 'claude-haiku-5-5', label: 'Claude Haiku 5.5', blurb: 'Quickest and cheapest' },
+  { id: 'claude-fable-5-1', label: 'Claude Fable 5.1', blurb: 'Most capable, priciest' },
+];
 
-function claude(): { client: Anthropic; model: string } {
-  if (!config.anthropic) throw new HttpError(503, 'The Mixologist needs a Claude API key. Add ANTHROPIC_API_KEY to the server settings and restart.');
-  client ??= new Anthropic({ apiKey: config.anthropic.apiKey });
-  return { client, model: config.anthropic.model };
+/** An admin's pick in Settings wins over ANTHROPIC_MODEL. */
+export function mixologistModel(db: DatabaseSync): string | null {
+  if (!config.anthropic) return null;
+  return getSetting(db, 'mixologistModel') ?? config.anthropic.model;
 }
 
-async function ask(params: Omit<Anthropic.Beta.MessageCreateParamsNonStreaming, 'model' | 'max_tokens'>): Promise<Anthropic.Beta.BetaMessage> {
-  const { client, model } = claude();
+let client: Anthropic | null = null;
+
+function claude(db: DatabaseSync): { client: Anthropic; model: string } {
+  if (!config.anthropic) throw new HttpError(503, 'The Mixologist needs a Claude API key. Add ANTHROPIC_API_KEY to the server settings and restart.');
+  client ??= new Anthropic({ apiKey: config.anthropic.apiKey });
+  return { client, model: mixologistModel(db)! };
+}
+
+async function ask(db: DatabaseSync, params: Omit<Anthropic.Beta.MessageCreateParamsNonStreaming, 'model' | 'max_tokens'>): Promise<Anthropic.Beta.BetaMessage> {
+  const { client, model } = claude(db);
   const { output_config, ...rest } = params;
   try {
     return await client.beta.messages.stream({
@@ -193,7 +207,22 @@ const REFUSED = "I can't help with that one. Ask me about another drink, or tell
 interface ChatAction { type: 'shopping' | 'saved'; label: string; recipeId?: string }
 
 export function mixologistRoutes(app: FastifyInstance, db: DatabaseSync): void {
-  app.get('/api/mixologist/status', async () => ({ available: !!config.anthropic, model: config.anthropic?.model ?? null }));
+  app.get('/api/mixologist/status', async () => ({ available: !!config.anthropic, model: mixologistModel(db) }));
+
+  app.get('/api/admin/mixologist', async (req) => {
+    requireAdmin(req);
+    return { available: !!config.anthropic, model: mixologistModel(db), envModel: config.anthropic?.model ?? null, choices: MODEL_CHOICES };
+  });
+
+  app.patch('/api/admin/mixologist', async (req) => {
+    requireAdmin(req);
+    const model = str(((req.body ?? {}) as Row).model, 80);
+    if (!model || !(MODEL_CHOICES.some((c) => c.id === model) || model === config.anthropic?.model)) throw new HttpError(400, 'Pick one of the listed models');
+    // Picking the env var's model clears the override, so ANTHROPIC_MODEL takes over again.
+    if (model === config.anthropic?.model) db.prepare("DELETE FROM server_settings WHERE key = 'mixologistModel'").run();
+    else setSetting(db, 'mixologistModel', model);
+    return { model: mixologistModel(db) };
+  });
 
   app.post('/api/homes/:homeId/mixologist/chat', async (req) => {
     const ctx = homeCtx(db, req);
@@ -215,7 +244,7 @@ export function mixologistRoutes(app: FastifyInstance, db: DatabaseSync): void {
     const actions: ChatAction[] = [];
     const replies: string[] = [];
     for (let round = 0; round < 6; round++) {
-      const res = await ask({ system, tools: TOOLS, messages });
+      const res = await ask(db, { system, tools: TOOLS, messages });
       if (res.stop_reason === 'refusal') return { reply: REFUSED, actions };
       const text = textOf(res);
       if (text) replies.push(text);
@@ -268,7 +297,7 @@ export function mixologistRoutes(app: FastifyInstance, db: DatabaseSync): void {
       'Build each drink from what is in stock. A drink may need at most two things that are not in stock; prefer drinks that need none.',
       'Use the household item names exactly as listed for anything in stock. Amounts in oz for liquids.',
     ].filter(Boolean).join('\n');
-    const res = await ask({
+    const res = await ask(db, {
       system: [
         { type: 'text', text: PERSONA, cache_control: { type: 'ephemeral' } },
         { type: 'text', text: stockForPrompt(db, ctx.homeId) },
