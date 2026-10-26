@@ -6,7 +6,7 @@ import { homeCtx } from '../auth.ts';
 import type { Row } from '../db.ts';
 import { HttpError, num, str } from '../util.ts';
 import type { Ingredient } from '../../../shared/recipe.ts';
-import { saveRecipe } from './recipes.ts';
+import { checkIngredients, loadRecipe, saveRecipe, stockIndex } from './recipes.ts';
 import { addShoppingItem } from './shopping.ts';
 import { ask, claude, keepAlive, stockForPrompt, textOf } from './mixologist.ts';
 
@@ -107,7 +107,147 @@ function cleanIngredient(i: Partial<Ingredient>): Ingredient {
   return { name: str(i.name, 200) ?? 'Ingredient', quantity: num(i.quantity), unit: str(i.unit, 20), note: str(i.note, 200), optional: !!i.optional };
 }
 
+const RECIPE_SCHEMA = {
+  type: 'object',
+  properties: {
+    title: { type: 'string' },
+    description: { type: 'string', description: 'One or two lines on the dish.' },
+    servings: { type: ['number', 'null'] },
+    prepMinutes: { type: ['number', 'null'] },
+    cookMinutes: { type: ['number', 'null'] },
+    ingredients: { type: 'array', items: { ...INGREDIENT, additionalProperties: false } },
+    instructions: { type: 'array', items: { type: 'string' } },
+  },
+  required: ['title', 'description', 'servings', 'prepMinutes', 'cookMinutes', 'ingredients', 'instructions'],
+  additionalProperties: false,
+} as const;
+
+const PERFECT_SCHEMA = {
+  type: 'object',
+  properties: {
+    greeting: { type: 'string', description: 'A short, warm note in your voice about the recipe.' },
+    improvements: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: { title: { type: 'string', description: 'The change, in a few words.' }, why: { type: 'string', description: 'Why it makes the dish better.' } },
+        required: ['title', 'why'],
+        additionalProperties: false,
+      },
+    },
+    perfected: { ...RECIPE_SCHEMA, description: 'The whole recipe with your improvements worked in.' },
+    mealIdeas: {
+      type: 'array',
+      description: 'Meals to put on the meal plan that go with or build on this recipe, made mostly from what is in stock.',
+      items: {
+        type: 'object',
+        properties: { pitch: { type: 'string', description: 'One line on why this meal fits.' }, recipe: RECIPE_SCHEMA },
+        required: ['pitch', 'recipe'],
+        additionalProperties: false,
+      },
+    },
+  },
+  required: ['greeting', 'improvements', 'perfected', 'mealIdeas'],
+  additionalProperties: false,
+} as const;
+
+interface PlainRecipe {
+  title: string; description: string; servings: number | null; prepMinutes: number | null; cookMinutes: number | null;
+  ingredients: Partial<Ingredient>[]; instructions: string[];
+}
+
+function cleanRecipe(r: Partial<PlainRecipe> | undefined): PlainRecipe & { ingredients: Ingredient[] } {
+  return {
+    title: str(r?.title, 200) ?? "Gordy's special",
+    description: str(r?.description, 2000) ?? '',
+    servings: num(r?.servings), prepMinutes: num(r?.prepMinutes), cookMinutes: num(r?.cookMinutes),
+    ingredients: (Array.isArray(r?.ingredients) ? r.ingredients : []).slice(0, 60).map(cleanIngredient),
+    instructions: (Array.isArray(r?.instructions) ? r.instructions : []).slice(0, 60).map(String),
+  };
+}
+
+/** The recipe as Gordy reads it: from the recipe book, or whatever the person typed or pasted. */
+function recipeText(db: DatabaseSync, homeId: string, b: Row): string {
+  const id = str(b.recipeId, 60);
+  if (id) {
+    const row = db.prepare('SELECT * FROM recipes WHERE id = ? AND home_id = ?').get(id, homeId) as Row | undefined;
+    if (!row) throw new HttpError(404, 'Recipe not found');
+    const r = loadRecipe(db, row);
+    return [
+      `Title: ${r.title}`,
+      r.description && `Description: ${r.description}`,
+      r.servings && `Serves: ${r.servings}`,
+      'Ingredients:',
+      ...r.ingredients.map((i) => `- ${[i.quantity, i.unit, i.name].filter((x) => x != null && x !== '').join(' ')}${i.note ? `, ${i.note}` : ''}${i.optional ? ' (optional)' : ''}`),
+      'Steps:',
+      ...r.instructions.map((s, n) => `${n + 1}. ${s}`),
+    ].filter(Boolean).join('\n');
+  }
+  const text = str(b.text, 20000);
+  if (!text) throw new HttpError(400, 'Pick a recipe or paste one in');
+  return text;
+}
+
 export function chefRoutes(app: FastifyInstance, db: DatabaseSync): void {
+  // "Help me perfect my recipe": tips, an improved version, and meal ideas checked against the pantry.
+  app.post('/api/homes/:homeId/chef/perfect', async (req, reply) => {
+    const ctx = homeCtx(db, req);
+    const b = (req.body ?? {}) as Row;
+    const recipe = recipeText(db, ctx.homeId, b);
+    const notes = str(b.notes, 1000);
+    const ideas = Math.min(5, Math.max(1, num(b.ideas) ?? 3));
+    claude(db);
+    await keepAlive(reply, async () => {
+      const res = await ask(db, {
+        system: [
+          { type: 'text', text: PERSONA, cache_control: { type: 'ephemeral' } },
+          { type: 'text', text: stockForPrompt(db, ctx.homeId) },
+        ],
+        messages: [{
+          role: 'user',
+          content: [
+            'Help me perfect this recipe. Tell me what to change and why, then give me the whole improved recipe.',
+            `Then suggest ${ideas} meal${ideas === 1 ? '' : 's'} I could put on my meal plan that go with it or build on it, made mostly from what I have in stock. Each may need a few things I'd have to buy.`,
+            'Use the household item names exactly as listed for anything in stock. US measurements.',
+            notes && `What I'm hoping for: ${notes}`,
+            '',
+            recipe,
+          ].filter((x) => x !== null && x !== undefined).join('\n'),
+        }],
+        output_config: { effort: 'medium', format: { type: 'json_schema', schema: PERFECT_SCHEMA } },
+      });
+      if (res.stop_reason === 'refusal') throw new HttpError(422, REFUSED);
+      let parsed: { greeting?: string; improvements?: { title?: string; why?: string }[]; perfected?: Partial<PlainRecipe>; mealIdeas?: { pitch?: string; recipe?: Partial<PlainRecipe> }[] };
+      try { parsed = JSON.parse(textOf(res)); } catch { throw new HttpError(502, "Gordy's answer got garbled. Try again."); }
+      const index = stockIndex(db, ctx.homeId);
+      const withPantry = (r: ReturnType<typeof cleanRecipe>) => {
+        const ingredients = checkIngredients(index, r.ingredients);
+        const missing = ingredients.filter((i) => !i.optional && (i.availability === 'missing' || i.availability === 'low'));
+        return { ...r, ingredients, missing: missing.map((i) => ({ name: i.name, quantity: i.quantity, unit: i.unit })), status: missing.length === 0 ? 'ready' : missing.length <= 3 ? 'almost' : 'missing' };
+      };
+      return {
+        greeting: str(parsed.greeting, 2000) ?? '',
+        improvements: (parsed.improvements ?? []).slice(0, 12).map((i) => ({ title: str(i.title, 200) ?? '', why: str(i.why, 1000) ?? '' })).filter((i) => i.title),
+        perfected: withPantry(cleanRecipe(parsed.perfected)),
+        mealIdeas: (parsed.mealIdeas ?? []).slice(0, ideas).map((m) => ({ pitch: str(m.pitch, 500) ?? '', ...withPantry(cleanRecipe(m.recipe)) })),
+        sourceRecipeId: str(b.recipeId, 60),
+      };
+    });
+  });
+
+  // Saves a recipe Gordy came up with (from the perfect-my-recipe results).
+  app.post('/api/homes/:homeId/chef/save', async (req) => {
+    const ctx = homeCtx(db, req);
+    const b = (req.body ?? {}) as Row;
+    const r = cleanRecipe(b.recipe as Partial<PlainRecipe>);
+    if (!r.ingredients.length) throw new HttpError(400, 'That recipe has no ingredients');
+    const replaceId = str(b.replaceId, 60);
+    if (replaceId && !db.prepare('SELECT 1 FROM recipes WHERE id = ? AND home_id = ?').get(replaceId, ctx.homeId)) throw new HttpError(404, 'Recipe not found');
+    const tags = Array.isArray(b.tags) ? b.tags.map(String).slice(0, 8) : [];
+    const recipe = { ...r, sourceUrl: null, image: null, tags: ['gordy', ...tags] };
+    const id = replaceId ? saveRecipe(db, ctx.homeId, recipe, ctx.user?.id ?? null, replaceId) : saveRecipe(db, ctx.homeId, recipe, ctx.user?.id ?? null);
+    return { id };
+  });
   app.post('/api/homes/:homeId/chef/chat', async (req, reply) => {
     const ctx = homeCtx(db, req);
     const b = (req.body ?? {}) as Row;

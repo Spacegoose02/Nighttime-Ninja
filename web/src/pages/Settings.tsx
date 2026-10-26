@@ -21,6 +21,12 @@ const THEMES = [
   { id: 'arctic', name: 'Arctic', swatch: '#3b5bdb' },
   { id: 'espresso', name: 'Espresso', swatch: '#3b2a20' },
   { id: 'neon', name: 'Neon', swatch: '#a3e635' },
+  { id: 'sweettea', name: 'Sweet Tea', swatch: '#b7791f' },
+  { id: 'peach', name: 'Peach Cobbler', swatch: '#f08c5a' },
+  { id: 'pistachio', name: 'Pistachio', swatch: '#8aad3a' },
+  { id: 'blueberry', name: 'Blueberry', swatch: '#4c4fc4' },
+  { id: 'castiron', name: 'Cast Iron', swatch: '#2a2a2a' },
+  { id: 'bourbon', name: 'Bourbon', swatch: '#8a5a2b' },
 ];
 
 function Profile() {

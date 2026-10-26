@@ -339,7 +339,7 @@ export function registerAuthRoutes(app: FastifyInstance, db: DatabaseSync): void
   app.patch('/api/me', async (req) => {
     const user = requireUser(req);
     const b = (req.body ?? {}) as Row;
-    const themes = ['forest', 'midnight', 'citrus', 'raccoon', 'berry', 'ocean', 'sunset', 'lavender', 'mint', 'arctic', 'espresso', 'neon'];
+    const themes = ['forest', 'midnight', 'citrus', 'raccoon', 'berry', 'ocean', 'sunset', 'lavender', 'mint', 'arctic', 'espresso', 'neon', 'sweettea', 'peach', 'pistachio', 'blueberry', 'castiron', 'bourbon'];
     // Drawn raccoons plus any picture avatars shipped in web/src/avatars (ids are derived from file names).
     const isAvatarId = (v: unknown): v is string => typeof v === 'string' && /^[a-z0-9_]{2,40}$/.test(v);
     const name = str(b.name, 60);

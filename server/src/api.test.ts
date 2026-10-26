@@ -336,3 +336,21 @@ test('Chef Gordy explains when there is no Claude key', async () => {
   assert.equal(r.status, 503);
   assert.equal((await call(a, 'POST', `/api/homes/${home.id}/chef/chat`, { messages: [] })).status, 400);
 });
+
+test("Gordy's perfect-my-recipe needs a recipe, and his recipes can be saved or replace the original", async () => {
+  const { login, call } = await setup();
+  const a = await login('Perfectionist');
+  const { body: home } = await call(a, 'POST', '/api/homes', { name: 'Home' });
+  const base = `/api/homes/${home.id}`;
+  assert.equal((await call(a, 'POST', `${base}/chef/perfect`, {})).status, 400);
+  assert.equal((await call(a, 'POST', `${base}/chef/perfect`, { recipeId: 'nope' })).status, 404);
+  if (!process.env.ANTHROPIC_API_KEY) assert.equal((await call(a, 'POST', `${base}/chef/perfect`, { text: 'Biscuits\n2 cups flour' })).status, 503);
+  const { body: orig } = await call(a, 'POST', `${base}/recipes`, { title: 'Biscuits', ingredients: [{ name: 'flour', quantity: 2, unit: 'cup' }], instructions: ['Bake'] });
+  const better = { title: 'Better Biscuits', description: 'Fluffier', servings: 8, prepMinutes: 15, cookMinutes: 12, ingredients: [{ name: 'self-rising flour', quantity: 2, unit: 'cup', note: null, optional: false }], instructions: ['Fold', 'Bake hot'] };
+  const copy = await call(a, 'POST', `${base}/chef/save`, { recipe: better });
+  assert.notEqual(copy.body.id, orig.id);
+  await call(a, 'POST', `${base}/chef/save`, { recipe: better, replaceId: orig.id });
+  const r = await call(a, 'GET', `${base}/recipes/${orig.id}`);
+  assert.equal(r.body.title, 'Better Biscuits');
+  assert.ok(r.body.tags.includes('gordy'));
+});
