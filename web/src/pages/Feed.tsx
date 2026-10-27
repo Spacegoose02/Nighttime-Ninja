@@ -57,7 +57,9 @@ export function Feed() {
         {entries.map((e, i) => (
           <div key={`${e.link}-${i}`} className="card video">
             {playing === e.videoId && e.videoId ? (
-              <iframe src={`https://www.youtube-nocookie.com/embed/${e.videoId}?autoplay=1&playsinline=1&origin=${encodeURIComponent(location.origin)}`} title={e.title} referrerPolicy="strict-origin-when-cross-origin" allow="autoplay; encrypted-media; picture-in-picture; web-share" allowFullScreen />
+              // No autoplay: browsers and phone web views only let an embedded player autoplay muted, so YouTube
+              // started the video silently. Tapping YouTube's own play button starts it with sound everywhere.
+              <iframe src={`https://www.youtube-nocookie.com/embed/${e.videoId}?playsinline=1&origin=${encodeURIComponent(location.origin)}`} title={e.title} referrerPolicy="strict-origin-when-cross-origin" allow="autoplay; encrypted-media; picture-in-picture; web-share" allowFullScreen />
             ) : e.videoId ? (
               <button className="thumb" style={{ padding: 0, border: 0, borderRadius: 0, minHeight: 0 }} onClick={() => setPlaying(e.videoId)} aria-label={`Play ${e.title}`}>
                 {e.thumbnail && <img src={e.thumbnail} alt="" loading="lazy" />}
