@@ -354,3 +354,16 @@ test("Gordy's perfect-my-recipe needs a recipe, and his recipes can be saved or 
   assert.equal(r.body.title, 'Better Biscuits');
   assert.ok(r.body.tags.includes('gordy'));
 });
+
+test('pantry items know when they are on the shopping list', async () => {
+  const { login, call } = await setup();
+  const a = await login('Stocker');
+  const { body: home } = await call(a, 'POST', '/api/homes', { name: 'Home' });
+  const base = `/api/homes/${home.id}`;
+  await call(a, 'POST', `${base}/items`, { name: 'Eggs', quantity: 6 });
+  await call(a, 'POST', `${base}/items`, { name: 'Milk', quantity: 1 });
+  await call(a, 'POST', `${base}/shopping`, { text: '1 dozen eggs' });
+  const items = (await call(a, 'GET', `${base}/items`)).body as { name: string; onShoppingList: boolean }[];
+  assert.equal(items.find((i) => i.name === 'Eggs')!.onShoppingList, true);
+  assert.equal(items.find((i) => i.name === 'Milk')!.onShoppingList, false);
+});

@@ -231,7 +231,7 @@ label.field { display: flex; flex-direction: column; gap: 6px; font-weight: 600;
 .tile .name { font-weight: 700; line-height: 1.15; }
 .tile .qty { font-size: 0.85rem; opacity: 0.9; }
 .tile.low { background: linear-gradient(160deg, #c98a00, #a86f00); }
-.tile.empty { background: linear-gradient(160deg, #7d8a82, #66726b); }
+.tile.out { background: linear-gradient(160deg, #d64545, #b02e2e); }
 .tile .badge { position: absolute; top: 8px; right: 10px; font-size: 0.7rem; font-weight: 700; background: rgba(0,0,0,.25); padding: 2px 8px; border-radius: 99px; }
 
 /* recipe cards */
@@ -415,3 +415,5 @@ td, th { text-align: left; padding: 8px; border-bottom: 1px solid var(--border);
   --danger: #ff8a7a; --warn: #f2c14e; --ok: #9ad1a0;
   --scene-wall: #2a1c12; --scene-grout: #382518; --scene-counter: #5b3a22; --scene-steam: rgba(240, 200, 150, 0.25);
 }
+
+.key-dot { display: inline-block; width: 12px; height: 12px; border-radius: 4px; vertical-align: -1px; margin-right: 4px; }

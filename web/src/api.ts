@@ -38,7 +38,7 @@ export interface Me {
 export interface Item {
   id: string; name: string; category: string; location: string; icon: string | null; photo: string | null;
   quantity: number; unit: string | null; lowThreshold: number | null; barcode: string | null; expiresOn: string | null;
-  isLow: boolean; markedLow: boolean; updatedAt: string;
+  isLow: boolean; markedLow: boolean; onShoppingList: boolean; updatedAt: string;
 }
 
 export interface ShoppingItem {
@@ -87,4 +87,12 @@ export async function fileToDataUrl(file: File, maxSize = 1200): Promise<string>
   } finally {
     URL.revokeObjectURL(url);
   }
+}
+
+/** Pantry tile color: red when it's out or on the shopping list, yellow when low, green otherwise. */
+export function tileState(i: Pick<Item, 'quantity' | 'isLow' | 'onShoppingList'>): { cls: string; badge: string | null } {
+  if (i.quantity <= 0) return { cls: ' out', badge: 'OUT' };
+  if (i.onShoppingList) return { cls: ' out', badge: 'ON LIST' };
+  if (i.isLow) return { cls: ' low', badge: 'LOW' };
+  return { cls: '', badge: null };
 }

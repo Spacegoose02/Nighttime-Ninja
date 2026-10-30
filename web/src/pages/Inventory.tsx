@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { api, fileToDataUrl, type Item } from '../api.ts';
+import { api, fileToDataUrl, tileState, type Item } from '../api.ts';
 import { useApp, useLoad } from '../state.tsx';
 import { amount } from '../format.ts';
 import { CATEGORIES, LOCATIONS, guessItem } from '../../../shared/catalog.ts';
@@ -176,6 +176,11 @@ export function Inventory() {
           <div className="row">
             <input placeholder="Search the pantry" value={q} onChange={(e) => setQ(e.target.value)} style={{ maxWidth: 380 }} />
             <button className={`chip${lowOnly ? ' on' : ''}`} onClick={() => setParams(lowOnly ? {} : { low: '1' })}>⚠️ Running low</button>
+            <span className="row small muted" style={{ gap: 10 }} aria-label="Tile colors">
+              <span><span className="key-dot" style={{ background: "var(--tile)" }} /> In stock</span>
+              <span><span className="key-dot" style={{ background: "#c98a00" }} /> Low</span>
+              <span><span className="key-dot" style={{ background: "#d64545" }} /> Out or on the list</span>
+            </span>
           </div>
           <div className="chips">
             {locations.map((l) => <button key={l} className={`chip${loc === l ? ' on' : ''}`} onClick={() => setLoc(l)}>{l}</button>)}
@@ -186,8 +191,8 @@ export function Inventory() {
               <h2 style={{ marginTop: 8 }}>{cat}</h2>
               <div className="tiles">
                 {list.map((i) => (
-                  <button key={i.id} className={`tile${i.quantity <= 0 ? ' empty' : i.isLow ? ' low' : ''}`} onClick={() => setEditing(i)}>
-                    {i.isLow && <span className="badge">LOW</span>}
+                  <button key={i.id} className={`tile${tileState(i).cls}`} onClick={() => setEditing(i)}>
+                    {tileState(i).badge && <span className="badge">{tileState(i).badge}</span>}
                     <ItemArt item={i} />
                     <span className="name">{i.name}</span>
                     <span className="qty">{amount(i.quantity, i.unit, me?.user.units)} · {i.location}</span>

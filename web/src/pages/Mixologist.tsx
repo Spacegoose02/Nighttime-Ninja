@@ -1,6 +1,6 @@
 import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { api, type HomeDetail, type Item, type RecipeFull, type RecipeSummary } from '../api.ts';
+import { api, tileState, type HomeDetail, type Item, type RecipeFull, type RecipeSummary } from '../api.ts';
 import { useApp, useLoad } from '../state.tsx';
 import { amount } from '../format.ts';
 import { formatQuantity } from '../../../shared/units.ts';
@@ -381,8 +381,8 @@ function Bar() {
       {items && !bar.length && <div className="card muted">No bottles yet. Add what's in your liquor cabinet and the Mixologist will build drinks around it.</div>}
       <div className="tiles">
         {bar.map((i) => (
-          <button key={i.id} className={`tile${i.quantity <= 0 ? ' empty' : i.isLow ? ' low' : ''}`} onClick={() => setEditing(i)}>
-            {i.isLow && <span className="badge">LOW</span>}
+          <button key={i.id} className={`tile${tileState(i).cls}`} onClick={() => setEditing(i)}>
+            {tileState(i).badge && <span className="badge">{tileState(i).badge}</span>}
             <ItemArt item={i} />
             <span className="name">{i.name}</span>
             <span className="qty">{amount(i.quantity, i.unit, me?.user.units)}</span>

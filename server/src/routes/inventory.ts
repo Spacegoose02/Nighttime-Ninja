@@ -4,6 +4,7 @@ import { homeCtx } from '../auth.ts';
 import type { Row } from '../db.ts';
 import { HttpError, newId, num, requireStr, str } from '../util.ts';
 import { guessItem } from '../../../shared/catalog.ts';
+import { matchKey } from '../../../shared/recipe.ts';
 import { addShoppingItem } from './shopping.ts';
 import { useLabel } from './homes.ts';
 
@@ -43,12 +44,19 @@ export function stockByName(db: DatabaseSync, homeId: string, name: string, quan
   recordHistory(db, { homeId, itemId: id, itemName: name, delta: quantity, unit, after: quantity, reason, userId });
 }
 
-function shape(r: Row) {
+/** Names on the home's open shopping list, so pantry tiles can show "needs shopped". */
+function shoppingKeys(db: DatabaseSync, homeId: string): Set<string> {
+  const rows = db.prepare('SELECT name FROM shopping_items WHERE home_id = ? AND checked = 0').all(homeId) as Row[];
+  return new Set(rows.map((r) => matchKey(r.name as string)));
+}
+
+function shape(r: Row, shopping?: Set<string>) {
   return {
     id: r.id, name: r.name, category: r.category, location: r.location, icon: r.icon, photo: r.photo,
     quantity: r.quantity, unit: r.unit, lowThreshold: r.low_threshold, barcode: r.barcode, expiresOn: r.expires_on,
     markedLow: !!r.marked_low,
     isLow: !!r.marked_low || (r.low_threshold != null && (r.quantity as number) <= (r.low_threshold as number)),
+    onShoppingList: shopping ? shopping.has(matchKey(r.name as string)) : false,
     updatedAt: r.updated_at,
   };
 }
@@ -63,7 +71,8 @@ export function inventoryRoutes(app: FastifyInstance, db: DatabaseSync): void {
     if (q.category) { where.push('category = ?'); args.push(String(q.category)); }
     if (q.location) { where.push('location = ?'); args.push(String(q.location)); }
     if (q.low === 'true') where.push(LOW_SQL);
-    return (db.prepare(`SELECT * FROM items WHERE ${where.join(' AND ')} ORDER BY name COLLATE NOCASE`).all(...args) as Row[]).map(shape);
+    const shopping = shoppingKeys(db, ctx.homeId);
+    return (db.prepare(`SELECT * FROM items WHERE ${where.join(' AND ')} ORDER BY name COLLATE NOCASE`).all(...args) as Row[]).map((r) => shape(r, shopping));
   });
 
   app.post('/api/homes/:homeId/items', async (req) => {
