@@ -113,7 +113,7 @@ export function Login() {
         {mode === 'mfa' && (
           <form className="stack" onSubmit={(e) => { e.preventDefault(); void run(async () => { await api('/api/auth/login/2fa', { body: { ticket, code: f.code } }); await finish(); }); }}>
             <p className="muted" style={{ margin: 0 }}>Enter the 6-digit code from your authenticator app, or one of your recovery codes.</p>
-            <input value={f.code} onChange={set('code')} inputMode="numeric" autoComplete="one-time-code" autoFocus style={{ textAlign: 'center', letterSpacing: '0.3em', fontSize: '1.4rem' }} />
+            <input aria-label="Two-factor or recovery code" value={f.code} onChange={set('code')} inputMode="numeric" autoComplete="one-time-code" autoFocus style={{ textAlign: 'center', letterSpacing: '0.3em', fontSize: '1.4rem' }} />
             <button className="primary" disabled={busy || f.code.length < 6}>Verify</button>
             <button type="button" className="ghost" onClick={() => { setMode('signin'); setTicket(null); }}>Start over</button>
           </form>

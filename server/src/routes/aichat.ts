@@ -87,27 +87,42 @@ export async function runChat(db: DatabaseSync, req: FastifyRequest, reply: Fast
   const lastUser = history[history.length - 1].content;
   const wantsSave = wantsToSave(lastUser);
 
-  await keepAlive(reply, async () => {
-    const { reply: replyText, actions } = await chatLoop((p) => ask(db, p), turn, history, wantsSave);
+  const stream = /application\/x-ndjson/.test(req.headers.accept ?? '');
+  await keepAlive(reply, async (onText) => {
+    const { reply: replyText, actions } = await chatLoop((p, t) => ask(db, p, t), turn, history, wantsSave, onText);
     const stored = [...history, { role: 'assistant' as const, content: replyText, actions }];
     const id = saveChat(db, ctx, turn.kind, chatId, stored);
     return { reply: replyText, actions, chatId: id };
-  });
+  }, stream);
 }
 
-type AskFn = (p: Omit<Anthropic.Beta.MessageCreateParamsNonStreaming, 'model' | 'max_tokens'>) => Promise<Anthropic.Beta.BetaMessage>;
+type AskFn = (p: Omit<Anthropic.Beta.MessageCreateParamsNonStreaming, 'model' | 'max_tokens'>, onText?: (text: string) => void) => Promise<Anthropic.Beta.BetaMessage>;
 
-/** The tool loop on its own (no HTTP), so it can be tested with a stand-in for Claude. */
-export async function chatLoop(askFn: AskFn, turn: Pick<ChatTurn, 'system' | 'tools' | 'saveTool' | 'refused' | 'empty' | 'runTool'>, history: StoredMsg[], wantsSave: boolean): Promise<{ reply: string; actions: ChatAction[] }> {
+/**
+ * The tool loop on its own (no HTTP), so it can be tested with a stand-in for Claude.
+ * onText hears each round's text as it's written, with a blank line between rounds. It's only a preview:
+ * the returned reply is what to keep, since it can drop or add lines once the tools have run.
+ */
+export async function chatLoop(askFn: AskFn, turn: Pick<ChatTurn, 'system' | 'tools' | 'saveTool' | 'refused' | 'empty' | 'runTool'>, history: StoredMsg[], wantsSave: boolean, onText?: (text: string) => void): Promise<{ reply: string; actions: ChatAction[] }> {
   const messages = toClaude(history);
   const actions: ChatAction[] = [];
   let finalText = '';
   const earlier: string[] = [];
-  const round = (force: string | null) => askFn({
-    system: turn.system, tools: turn.tools, messages,
-    ...(force ? { tool_choice: { type: 'tool' as const, name: force } } : {}),
-    output_config: { effort: 'low' },
-  });
+  let streamed = false;
+  const round = (force: string | null, preview = true) => {
+    let first = true;
+    const hear = onText && preview ? (t: string) => {
+      if (first && streamed) onText('\n\n');
+      first = false;
+      streamed = true;
+      onText(t);
+    } : undefined;
+    return askFn({
+      system: turn.system, tools: turn.tools, messages,
+      ...(force ? { tool_choice: { type: 'tool' as const, name: force } } : {}),
+      output_config: { effort: 'low' },
+    }, hear);
+  };
 
   // If they asked to save, make sure the save tool actually runs instead of trusting the model to remember.
   let force: string | null = wantsSave ? turn.saveTool : null;
@@ -137,7 +152,7 @@ export async function chatLoop(askFn: AskFn, turn: Pick<ChatTurn, 'system' | 'to
     messages.push({ role: 'assistant', content: finalText || '.' });
     messages.push({ role: 'user', content: 'You said it was saved, but nothing was saved yet. Save it now with the tool.' });
     try {
-      const res = await round(turn.saveTool);
+      const res = await round(turn.saveTool, false);
       for (const block of res.content) {
         if (block.type === 'tool_use') {
           try { turn.runTool(block.name, block.input as Row, actions); } catch { /* reported below */ }

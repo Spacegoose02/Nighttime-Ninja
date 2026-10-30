@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
+import { useDialogs } from '../components/Dialog.tsx';
 import { api, type RecipeSummary } from '../api.ts';
 import { useApp, useLoad } from '../state.tsx';
 import { amount, todayIso } from '../format.ts';
@@ -112,7 +113,7 @@ function Perfect({ disabled }: { disabled: boolean }) {
           <button className={`chip${mode === 'paste' ? ' on' : ''}`} onClick={() => setMode('paste')}>✍️ Type or paste one</button>
         </div>
         {mode === 'book' ? (
-          <select value={recipeId} onChange={(e) => setRecipeId(e.target.value)}>
+          <select aria-label="Recipe to perfect" value={recipeId} onChange={(e) => setRecipeId(e.target.value)}>
             <option value="">Pick a recipe…</option>
             {recipes?.map((r) => <option key={r.id} value={r.id}>{r.title}</option>)}
           </select>
@@ -151,6 +152,7 @@ function Perfect({ disabled }: { disabled: boolean }) {
 
 function RecipeResult({ recipe, heading, pitch, replaceId, planner }: { recipe: GordyRecipe; heading?: string; pitch?: string; replaceId?: string | null; planner?: boolean }) {
   const { base, toast, me } = useApp();
+  const dialogs = useDialogs();
   const [savedId, setSavedId] = useState<string | null>(null);
   const [date, setDate] = useState(todayIso());
   const [slot, setSlot] = useState('dinner');
@@ -203,15 +205,15 @@ function RecipeResult({ recipe, heading, pitch, replaceId, planner }: { recipe: 
           : (
             <>
               <button onClick={async () => { await save(false); toast('Saved to your recipes'); }}>💾 Save as new recipe</button>
-              {replaceId && <button onClick={async () => { if (confirm('Replace your original recipe with this version?')) { await save(true); toast('Your recipe is updated'); } }}>✏️ Update my original</button>}
+              {replaceId && <button onClick={async () => { if (await dialogs.confirm('Replace your original recipe with this version?', { okLabel: 'Replace' })) { await save(true); toast('Your recipe is updated'); } }}>✏️ Update my original</button>}
             </>
           )}
         {!!recipe.missing.length && <button disabled={listed} onClick={shop}>🛒 {listed ? 'On the list' : `Add ${recipe.missing.length} missing to list`}</button>}
       </div>
       {planner && (
         <div className="row">
-          <input type="date" value={date} onChange={(e) => setDate(e.target.value)} style={{ maxWidth: 180 }} />
-          <select value={slot} onChange={(e) => setSlot(e.target.value)} style={{ maxWidth: 150 }}>
+          <input type="date" aria-label="Day" value={date} onChange={(e) => setDate(e.target.value)} style={{ maxWidth: 180 }} />
+          <select aria-label="Meal" value={slot} onChange={(e) => setSlot(e.target.value)} style={{ maxWidth: 150 }}>
             {['breakfast', 'lunch', 'dinner', 'snack'].map((s) => <option key={s} value={s}>{s}</option>)}
           </select>
           <button className="primary" onClick={plan}>📅 Put on meal plan</button>
