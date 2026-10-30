@@ -3,14 +3,17 @@ import { createRoot } from 'react-dom/client';
 import { BrowserRouter } from 'react-router-dom';
 import { AppProvider } from './state.tsx';
 import { App } from './App.tsx';
+import { DialogProvider } from './components/Dialog.tsx';
 import './styles.css';
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <BrowserRouter>
-      <AppProvider>
-        <App />
-      </AppProvider>
+      <DialogProvider>
+        <AppProvider>
+          <App />
+        </AppProvider>
+      </DialogProvider>
     </BrowserRouter>
   </StrictMode>,
 );

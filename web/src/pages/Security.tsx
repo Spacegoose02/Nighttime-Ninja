@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { browserSupportsWebAuthn, startRegistration } from '@simplewebauthn/browser';
+import { useDialogs } from '../components/Dialog.tsx';
 import { api } from '../api.ts';
 import { useApp, useLoad } from '../state.tsx';
 
@@ -33,6 +34,7 @@ function RecoveryCodes({ codes, onDone }: { codes: string[]; onDone: () => void 
 
 export function SecurityCard() {
   const { toast } = useApp();
+  const dialogs = useDialogs();
   const [info, reload] = useLoad<SecurityInfo>('/api/auth/security');
   const [sessions, reloadSessions] = useLoad<SessionRow[]>('/api/auth/sessions');
   const [pw, setPw] = useState({ username: '', currentPassword: '', newPassword: '' });
@@ -121,7 +123,7 @@ export function SecurityCard() {
         <button style={{ alignSelf: 'flex-start' }} onClick={() => run(async () => {
           const options = await api<Parameters<typeof startRegistration>[0]['optionsJSON']>('/api/auth/passkey/register-options', { body: proof() });
           const response = await startRegistration({ optionsJSON: options });
-          const name = prompt('Name this passkey', deviceName(navigator.userAgent)) ?? 'Passkey';
+          const name = (await dialogs.prompt('Name this passkey', deviceName(navigator.userAgent), { okLabel: 'Save' }))?.trim() || 'Passkey';
           await api('/api/auth/passkey/register', { body: { response, name } });
           toast('Passkey added');
           await reload();
@@ -175,9 +177,10 @@ export function AdminSignIn() {
 /** Admin actions to help someone who's locked out. */
 export function AdminUserActions({ user, onChange }: { user: { id: string; name: string; disabled: number; totp_enabled: number }; onChange: () => void }) {
   const { toast } = useApp();
+  const dialogs = useDialogs();
   const act = async (body: object, msg: string) => {
     const r = await api<{ username?: string; tempPassword?: string }>(`/api/admin/users/${user.id}/security`, { body });
-    if (r.tempPassword) alert(`Give ${user.name} these to sign in, then have them change the password in Settings:\n\nUsername: ${r.username}\nPassword: ${r.tempPassword}`);
+    if (r.tempPassword) await dialogs.alert(`Give ${user.name} these to sign in, then have them change the password in Settings:\n\nUsername: ${r.username}\nPassword: ${r.tempPassword}`);
     else toast(msg);
     onChange();
   };

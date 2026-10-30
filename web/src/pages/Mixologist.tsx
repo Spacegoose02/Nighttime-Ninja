@@ -1,6 +1,7 @@
 import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { api, tileState, type HomeDetail, type Item, type RecipeFull, type RecipeSummary } from '../api.ts';
+import { useDialogs } from '../components/Dialog.tsx';
+import { api, apiStream, tileState, type HomeDetail, type Item, type RecipeFull, type RecipeSummary } from '../api.ts';
 import { useApp, useLoad } from '../state.tsx';
 import { amount } from '../format.ts';
 import { formatQuantity } from '../../../shared/units.ts';
@@ -136,6 +137,7 @@ interface PastChat { id: string; title: string; archived: boolean; updatedAt: st
 /** Past chats with this persona: reopen one, archive it, or delete it. */
 function PastChats({ kind, current, onOpen, onClose }: { kind: string; current: string | null; onOpen: (id: string) => void; onClose: () => void }) {
   const { base, toast } = useApp();
+  const dialogs = useDialogs();
   const [showArchived, setShowArchived] = useState(true);
   const [list, reload] = useLoad<PastChat[]>(`${base}/ai-chats?kind=${kind}`);
   const shown = (list ?? []).filter((c) => showArchived || !c.archived);
@@ -159,7 +161,7 @@ function PastChats({ kind, current, onOpen, onClose }: { kind: string; current: 
             </div>
             <button onClick={() => onOpen(c.id)}>Open</button>
             <button className="ghost" onClick={async () => { await api(`${base}/ai-chats/${c.id}`, { method: 'PATCH', body: { archived: !c.archived } }); await reload(); }}>{c.archived ? 'Unarchive' : 'Archive'}</button>
-            <button className="ghost danger" onClick={async () => { if (!confirm('Delete this chat for good? Recipes you saved from it stay in your recipe book.')) return; await api(`${base}/ai-chats/${c.id}`, { method: 'DELETE' }); toast('Deleted'); await reload(); }}>Delete</button>
+            <button className="ghost danger" onClick={async () => { if (!(await dialogs.confirm('Delete this chat for good? Recipes you saved from it stay in your recipe book.', { okLabel: 'Delete', danger: true }))) return; await api(`${base}/ai-chats/${c.id}`, { method: 'DELETE' }); toast('Deleted'); await reload(); }}>Delete</button>
           </div>
         ))}
       </div>
@@ -175,6 +177,10 @@ export function Chat({ disabled, persona = ROCCO }: { disabled: boolean; persona
   const [msgs, setMsgs] = useState<ChatMsg[]>([]);
   const [draft, setDraft] = useState('');
   const [busy, setBusy] = useState(false);
+  /** The reply so far while it's being written. */
+  const [streaming, setStreaming] = useState('');
+  /** The last finished reply, read out by screen readers (the streaming bubble itself stays quiet). */
+  const [announce, setAnnounce] = useState('');
   const [showPast, setShowPast] = useState(false);
   const end = useRef<HTMLDivElement>(null);
 
@@ -189,7 +195,10 @@ export function Chat({ disabled, persona = ROCCO }: { disabled: boolean; persona
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [base]);
 
-  useEffect(() => { end.current?.scrollIntoView({ behavior: 'smooth', block: 'end' }); }, [msgs]);
+  useEffect(() => {
+    const calm = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    end.current?.scrollIntoView({ behavior: calm || streaming ? 'auto' : 'smooth', block: 'end' });
+  }, [msgs, streaming]);
 
   async function open(id: string) {
     const c = await api<{ id: string; messages: ChatMsg[] }>(`${base}/ai-chats/${id}`);
@@ -212,19 +221,24 @@ export function Chat({ disabled, persona = ROCCO }: { disabled: boolean; persona
     setMsgs(next);
     setDraft('');
     setBusy(true);
+    let preview = '';
     try {
       // Send what the app did after each reply too, so the chef knows what's already saved.
-      const res = await api<{ reply: string; actions: ChatAction[]; chatId: string }>(`${base}/${persona.endpoint}`, {
-        body: { chatId, messages: next.map(({ role, content: c, actions }) => ({ role, content: c, actions })) },
-      });
+      const res = await apiStream<{ reply: string; actions: ChatAction[]; chatId: string }>(
+        `${base}/${persona.endpoint}`,
+        { chatId, messages: next.map(({ role, content: c, actions }) => ({ role, content: c, actions })) },
+        (text) => { preview += text; setStreaming(preview); },
+      );
       setChatId(res.chatId);
       setMsgs([...next, { role: 'assistant', content: res.reply, actions: res.actions }]);
+      setAnnounce(`${persona.name}: ${res.reply.replace(/[*_#`>]/g, '')}`);
     } catch (e) {
       toast((e as Error).message);
       setMsgs(msgs);
       setDraft(content);
     } finally {
       setBusy(false);
+      setStreaming('');
     }
   }
 
@@ -261,9 +275,17 @@ export function Chat({ disabled, persona = ROCCO }: { disabled: boolean; persona
           </div>
           </div>
         ))}
-        {busy && <div className="chat-row"><ChatAvatar p={persona} /><div className="bubble assistant muted">{persona.thinking}</div></div>}
+        {busy && (
+          <div className="chat-row">
+            <ChatAvatar p={persona} />
+            {streaming
+              ? <div className="bubble assistant"><Markdown text={streaming} /></div>
+              : <div className="bubble assistant muted">{persona.thinking}</div>}
+          </div>
+        )}
         <div ref={end} />
       </div>
+      <div className="sr-only" role="status" aria-live="polite">{busy ? persona.thinking : announce}</div>
       <form className="row" style={{ alignItems: 'flex-end' }} onSubmit={(e) => { e.preventDefault(); void send(draft); }}>
         <textarea
           value={draft} onChange={(e) => setDraft(e.target.value)} disabled={disabled} rows={2}

@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
+import { Modal } from '../components/Dialog.tsx';
 import { api, fileToDataUrl, tileState, type Item } from '../api.ts';
 import { useApp, useLoad } from '../state.tsx';
 import { amount } from '../format.ts';
@@ -91,49 +92,47 @@ export function ItemEditor({ item, labels, canAdd, onClose }: { item: Item | nul
   }
 
   return (
-    <div className="modal-back" onClick={() => onClose(false)}>
-      <div className="modal stack" onClick={(e) => e.stopPropagation()}>
-        <div className="row">
-          <div className="tile" style={{ minHeight: 0, width: 96, cursor: 'default' }}><ItemArt item={{ ...f, name: f.name }} /></div>
-          <h2 style={{ flex: 1 }}>{item ? item.name : 'Add to pantry'}</h2>
-        </div>
-        <label className="field">Name<input value={f.name} onChange={set('name')} autoFocus={!item} /></label>
-        <div className="row">
-          <button className="icon" onClick={() => bump(-1)} aria-label="One less">−</button>
-          <label className="field" style={{ flex: 1 }}>Amount<input inputMode="decimal" value={f.quantity} onChange={set('quantity')} /></label>
-          <label className="field" style={{ flex: 1 }}>Unit<input value={f.unit} onChange={set('unit')} placeholder="each, lb, cup…" /></label>
-          <button className="icon" onClick={() => bump(1)} aria-label="One more">+</button>
-        </div>
-        {item && <p className="small muted" style={{ margin: 0 }}>Shown as {amount(Number(f.quantity), f.unit, me?.user.units)}</p>}
-        <div className="row">
-          <button className={f.markedLow ? 'primary' : ''} style={f.markedLow ? { background: 'var(--warn)' } : undefined} onClick={() => setF({ ...f, markedLow: !f.markedLow })}>
-            ⚠️ {f.markedLow ? 'Running low (tap to clear)' : 'Mark as running low'}
-          </button>
-          {!showThreshold && <button className="ghost small" onClick={() => setShowThreshold(true)}>Warn me automatically…</button>}
-        </div>
-        <div className="row">
-          <LabelSelect label="Where" value={f.location} options={labels.locations} onChange={(v) => setF({ ...f, location: v })} placeholder="New place, e.g. Garage Freezer" canAdd={canAdd} />
-          <LabelSelect label="Category" value={f.category} options={labels.categories} onChange={(v) => setF({ ...f, category: v })}
-            placeholder="New category, e.g. Baby Food" emptyLabel={`Guess for me (${guessItem(f.name).category})`} canAdd={canAdd} />
-        </div>
-        <div className="row">
-          {showThreshold && <label className="field" style={{ flex: 1 }}>Mark low automatically at or below<input inputMode="decimal" value={f.lowThreshold} onChange={set('lowThreshold')} placeholder="e.g. 1" /></label>}
-          <label className="field" style={{ flex: 1 }}>Expires<input type="date" value={f.expiresOn} onChange={set('expiresOn')} /></label>
-        </div>
-        <div className="row">
-          <label className="field" style={{ width: 110 }}>Icon<input value={f.icon} onChange={set('icon')} placeholder={guessItem(f.name).icon} /></label>
-          <label className="field" style={{ flex: 1 }}>Photo<input type="file" accept="image/*" capture="environment" onChange={(e) => photo(e.target.files?.[0])} /></label>
-          {f.photo && <button className="ghost" onClick={() => setF({ ...f, photo: '' })}>Remove photo</button>}
-        </div>
-        <div className="row">
-          {item && <button className="danger" onClick={async () => { await api(`${base}/items/${item.id}`, { method: 'DELETE' }); onClose(true); }}>Delete</button>}
-          {item && <button onClick={async () => { await api(`${base}/items/${item.id}/to-shopping`, { body: {} }); toast(`${item.name} added to the shopping list`); }}>🛒 Add to list</button>}
-          <span className="spacer" />
-          <button onClick={() => onClose(false)}>Cancel</button>
-          <button className="primary" onClick={save} disabled={!f.name.trim()}>Save</button>
-        </div>
+    <Modal label="Pantry item" onClose={() => onClose(false)}>
+      <div className="row">
+        <div className="tile" style={{ minHeight: 0, width: 96, cursor: 'default' }}><ItemArt item={{ ...f, name: f.name }} /></div>
+        <h2 style={{ flex: 1 }}>{item ? item.name : 'Add to pantry'}</h2>
       </div>
-    </div>
+      <label className="field">Name<input value={f.name} onChange={set('name')} autoFocus={!item} /></label>
+      <div className="row">
+        <button className="icon" onClick={() => bump(-1)} aria-label="One less">−</button>
+        <label className="field" style={{ flex: 1 }}>Amount<input inputMode="decimal" value={f.quantity} onChange={set('quantity')} /></label>
+        <label className="field" style={{ flex: 1 }}>Unit<input value={f.unit} onChange={set('unit')} placeholder="each, lb, cup…" /></label>
+        <button className="icon" onClick={() => bump(1)} aria-label="One more">+</button>
+      </div>
+      {item && <p className="small muted" style={{ margin: 0 }}>Shown as {amount(Number(f.quantity), f.unit, me?.user.units)}</p>}
+      <div className="row">
+        <button className={f.markedLow ? 'primary' : ''} style={f.markedLow ? { background: 'var(--warn)' } : undefined} onClick={() => setF({ ...f, markedLow: !f.markedLow })}>
+          ⚠️ {f.markedLow ? 'Running low (tap to clear)' : 'Mark as running low'}
+        </button>
+        {!showThreshold && <button className="ghost small" onClick={() => setShowThreshold(true)}>Warn me automatically…</button>}
+      </div>
+      <div className="row">
+        <LabelSelect label="Where" value={f.location} options={labels.locations} onChange={(v) => setF({ ...f, location: v })} placeholder="New place, e.g. Garage Freezer" canAdd={canAdd} />
+        <LabelSelect label="Category" value={f.category} options={labels.categories} onChange={(v) => setF({ ...f, category: v })}
+          placeholder="New category, e.g. Baby Food" emptyLabel={`Guess for me (${guessItem(f.name).category})`} canAdd={canAdd} />
+      </div>
+      <div className="row">
+        {showThreshold && <label className="field" style={{ flex: 1 }}>Mark low automatically at or below<input inputMode="decimal" value={f.lowThreshold} onChange={set('lowThreshold')} placeholder="e.g. 1" /></label>}
+        <label className="field" style={{ flex: 1 }}>Expires<input type="date" value={f.expiresOn} onChange={set('expiresOn')} /></label>
+      </div>
+      <div className="row">
+        <label className="field" style={{ width: 110 }}>Icon<input value={f.icon} onChange={set('icon')} placeholder={guessItem(f.name).icon} /></label>
+        <label className="field" style={{ flex: 1 }}>Photo<input type="file" accept="image/*" capture="environment" onChange={(e) => photo(e.target.files?.[0])} /></label>
+        {f.photo && <button className="ghost" onClick={() => setF({ ...f, photo: '' })}>Remove photo</button>}
+      </div>
+      <div className="row">
+        {item && <button className="danger" onClick={async () => { await api(`${base}/items/${item.id}`, { method: 'DELETE' }); onClose(true); }}>Delete</button>}
+        {item && <button onClick={async () => { await api(`${base}/items/${item.id}/to-shopping`, { body: {} }); toast(`${item.name} added to the shopping list`); }}>🛒 Add to list</button>}
+        <span className="spacer" />
+        <button onClick={() => onClose(false)}>Cancel</button>
+        <button className="primary" onClick={save} disabled={!f.name.trim()}>Save</button>
+      </div>
+    </Modal>
   );
 }
 

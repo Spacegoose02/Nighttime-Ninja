@@ -26,6 +26,41 @@ export async function api<T = unknown>(path: string, opts: { method?: string; bo
   return data as T;
 }
 
+/**
+ * POSTs to a route that can stream (the AI chats). onText gets the reply as it's written; the promise resolves
+ * with the final answer, which replaces the preview.
+ */
+export async function apiStream<T = unknown>(path: string, body: unknown, onText: (text: string) => void): Promise<T> {
+  const res = await fetch(path, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', accept: 'application/x-ndjson' },
+    body: JSON.stringify(body),
+    credentials: 'same-origin',
+  });
+  if (!res.ok || !res.body || !res.headers.get('content-type')?.includes('ndjson')) {
+    const data = safeJson(await res.text()) as { error?: string; status?: number } | null;
+    if (!res.ok || typeof data?.error === 'string') throw new ApiError(data?.status ?? res.status, data?.error ?? `Request failed (${res.status})`);
+    return data as T;
+  }
+  const reader = res.body.pipeThrough(new TextDecoderStream()).getReader();
+  let buffer = '';
+  for (;;) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buffer += value;
+    const lines = buffer.split('\n');
+    buffer = lines.pop() ?? '';
+    for (const line of lines) {
+      if (!line.trim()) continue;
+      const msg = JSON.parse(line) as { type: string; text?: string; error?: string; status?: number };
+      if (msg.type === 'text') onText(msg.text ?? '');
+      else if (msg.type === 'error') throw new ApiError(msg.status ?? 500, msg.error ?? 'Something went wrong');
+      else if (msg.type === 'done') return msg as T;
+    }
+  }
+  throw new ApiError(502, 'The connection dropped before the reply finished. Try again.');
+}
+
 function safeJson(t: string): unknown {
   try { return JSON.parse(t); } catch { return t; }
 }

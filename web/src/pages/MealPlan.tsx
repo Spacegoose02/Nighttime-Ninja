@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
+import { Modal } from '../components/Dialog.tsx';
 import { api, type Meal, type RecipeSummary } from '../api.ts';
 import { useApp, useLoad } from '../state.tsx';
 import { addDays, todayIso } from '../format.ts';
@@ -20,24 +21,22 @@ function AddMeal({ date, onClose }: { date: string; onClose: (changed: boolean) 
 
   const shown = (recipes ?? []).filter((r) => !q || r.title.toLowerCase().includes(q.toLowerCase()));
   return (
-    <div className="modal-back" onClick={() => onClose(false)}>
-      <div className="modal stack" onClick={(e) => e.stopPropagation()}>
-        <h2>{new Date(`${date}T12:00:00`).toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric' })}</h2>
-        <div className="chips">{SLOTS.map((s) => <button key={s} className={`chip${slot === s ? ' on' : ''}`} onClick={() => setSlot(s)}>{s}</button>)}</div>
-        <input placeholder="Find a recipe" value={q} onChange={(e) => setQ(e.target.value)} />
-        <div className="list" style={{ maxHeight: 320, overflow: 'auto' }}>
-          {shown.map((r) => (
-            <button key={r.id} className="list-item ghost" style={{ justifyContent: 'flex-start', borderRadius: 0 }} onClick={() => add({ recipeId: r.id })}>
-              <span>{r.ready === 'ready' ? '✅' : r.ready === 'almost' ? '🟡' : '⚪'}</span> {r.title}
-            </button>
-          ))}
-        </div>
-        <form className="row" onSubmit={(e) => { e.preventDefault(); void add({ title }); }}>
-          <input placeholder="…or just type a meal (Leftovers, Pizza night)" value={title} onChange={(e) => setTitle(e.target.value)} style={{ flex: 1 }} />
-          <button disabled={!title.trim()}>Add</button>
-        </form>
+    <Modal label="Plan a meal" onClose={() => onClose(false)}>
+      <h2>{new Date(`${date}T12:00:00`).toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric' })}</h2>
+      <div className="chips">{SLOTS.map((s) => <button key={s} className={`chip${slot === s ? ' on' : ''}`} onClick={() => setSlot(s)}>{s}</button>)}</div>
+      <input placeholder="Find a recipe" value={q} onChange={(e) => setQ(e.target.value)} />
+      <div className="list" style={{ maxHeight: 320, overflow: 'auto' }}>
+        {shown.map((r) => (
+          <button key={r.id} className="list-item ghost" style={{ justifyContent: 'flex-start', borderRadius: 0 }} onClick={() => add({ recipeId: r.id })}>
+            <span>{r.ready === 'ready' ? '✅' : r.ready === 'almost' ? '🟡' : '⚪'}</span> {r.title}
+          </button>
+        ))}
       </div>
-    </div>
+      <form className="row" onSubmit={(e) => { e.preventDefault(); void add({ title }); }}>
+        <input placeholder="…or just type a meal (Leftovers, Pizza night)" value={title} onChange={(e) => setTitle(e.target.value)} style={{ flex: 1 }} />
+        <button disabled={!title.trim()}>Add</button>
+      </form>
+    </Modal>
   );
 }
 

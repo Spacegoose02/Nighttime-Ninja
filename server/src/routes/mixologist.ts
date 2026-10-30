@@ -100,7 +100,8 @@ let client: Anthropic | null = null;
 
 export function claude(db: DatabaseSync): { client: Anthropic; model: string } {
   if (!config.anthropic) throw new HttpError(503, 'The Mixologist needs a Claude API key. Add ANTHROPIC_API_KEY to the server settings and restart.');
-  client ??= new Anthropic({ apiKey: config.anthropic.apiKey });
+  // A new key (tests swap it) gets a new client; the SDK keeps the key and fetch it was made with.
+  if (client?.apiKey !== config.anthropic.apiKey) client = new Anthropic({ apiKey: config.anthropic.apiKey });
   return { client, model: mixologistModel(db)! };
 }
 
@@ -121,16 +122,21 @@ function claudeMessage(err: InstanceType<typeof Anthropic.APIError>): string {
   return body?.error?.message ?? err.message;
 }
 
-export async function ask(db: DatabaseSync, params: Omit<Anthropic.Beta.MessageCreateParamsNonStreaming, 'model' | 'max_tokens'>): Promise<Anthropic.Beta.BetaMessage> {
+/** Asks Claude. onText, when given, hears the reply's text as it's written. */
+export async function ask(db: DatabaseSync, params: Omit<Anthropic.Beta.MessageCreateParamsNonStreaming, 'model' | 'max_tokens'>, onText?: (text: string) => void): Promise<Anthropic.Beta.BetaMessage> {
   const { client, model } = claude(db);
   const { output_config, ...rest } = params;
-  const send = (withFallback: boolean) => client.beta.messages.stream({
-    ...rest,
-    model,
-    max_tokens: 16000,
-    output_config: { effort: 'medium', ...output_config },
-    ...(withFallback ? { betas: ['server-side-fallback-2026-07-01'], fallbacks: 'default' as const } : {}),
-  }).finalMessage();
+  const send = (withFallback: boolean) => {
+    const stream = client.beta.messages.stream({
+      ...rest,
+      model,
+      max_tokens: 16000,
+      output_config: { effort: 'medium', ...output_config },
+      ...(withFallback ? { betas: ['server-side-fallback-2026-07-01'], fallbacks: 'default' as const } : {}),
+    });
+    if (onText) stream.on('text', onText);
+    return stream.finalMessage();
+  };
   try {
     try {
       return await send(FALLBACK_MODELS.has(model));
@@ -236,22 +242,31 @@ export function textOf(m: Anthropic.Beta.BetaMessage): string {
  * Claude can take a minute or more, and reverse proxies often give up after 60 seconds with a bare 502.
  * Send the 200 right away and a space every few seconds (JSON ignores leading whitespace), then the answer.
  * A failure after that point goes in the body with x-nn-deferred set, and the web app's api() turns it back into an error.
+ *
+ * With stream set (the browser asked for application/x-ndjson), the body is one JSON object per line instead:
+ * {"type":"text","text":"..."} as the reply is written, then {"type":"done",...answer} or {"type":"error",...}.
+ * Blank lines keep proxies from timing out.
  */
-export async function keepAlive(reply: FastifyReply, work: () => Promise<unknown>): Promise<void> {
+export async function keepAlive(reply: FastifyReply, work: (onText?: (text: string) => void) => Promise<unknown>, stream = false): Promise<void> {
   reply.hijack();
   const raw = reply.raw;
   raw.writeHead(200, {
-    'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store', 'x-content-type-options': 'nosniff',
-    'x-accel-buffering': 'no', 'x-nn-deferred': '1',
+    'content-type': stream ? 'application/x-ndjson; charset=utf-8' : 'application/json; charset=utf-8',
+    'cache-control': 'no-store', 'x-content-type-options': 'nosniff', 'x-accel-buffering': 'no', 'x-nn-deferred': '1',
   });
-  raw.write(' ');
-  const timer = setInterval(() => raw.write(' '), 5000);
+  const pad = stream ? '\n' : ' ';
+  const line = (o: object) => `${JSON.stringify(o)}\n`;
+  raw.write(pad);
+  const timer = setInterval(() => raw.write(pad), 5000);
   try {
-    raw.end(JSON.stringify(await work()));
+    const onText = stream ? (text: string) => { raw.write(line({ type: 'text', text })); } : undefined;
+    const out = await work(onText);
+    raw.end(stream ? line({ type: 'done', ...(out as object) }) : JSON.stringify(out));
   } catch (err) {
     if (!(err instanceof HttpError)) console.error('Mixologist:', err);
     const status = err instanceof HttpError ? err.status : 500;
-    raw.end(JSON.stringify({ error: err instanceof HttpError ? err.message : 'Something went wrong in the kitchen', status }));
+    const error = err instanceof HttpError ? err.message : 'Something went wrong in the kitchen';
+    raw.end(stream ? line({ type: 'error', error, status }) : JSON.stringify({ error, status }));
   } finally {
     clearInterval(timer);
   }

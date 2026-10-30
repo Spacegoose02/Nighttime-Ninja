@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
+import { useDialogs } from '../components/Dialog.tsx';
 import { api, type HomeDetail } from '../api.ts';
 import { useApp, useLoad } from '../state.tsx';
 import { AVATARS, AVATAR_LABELS, RaccoonAvatar } from '../components/Raccoon.tsx';
@@ -39,7 +40,7 @@ function Profile() {
     <div className="card stack">
       <h2>You</h2>
       <form className="row" onSubmit={async (e) => { e.preventDefault(); await update({ name }); toast('Saved'); }}>
-        <input value={name} onChange={(e) => setName(e.target.value)} style={{ flex: 1 }} />
+        <input aria-label="Your name" value={name} onChange={(e) => setName(e.target.value)} style={{ flex: 1 }} />
         <button>Save name</button>
       </form>
       {me!.user.email && <p className="small muted" style={{ margin: 0 }}>Signed in with Google as {me!.user.email}</p>}
@@ -103,7 +104,7 @@ function LabelEditor({ kind, title, hint, list, onSaved }: { kind: 'locations' |
           <div key={l} className="list-item" style={{ minHeight: 48, padding: '4px 0' }}>
             {editing?.from === l ? (
               <form className="row" style={{ flex: 1 }} onSubmit={(e) => { e.preventDefault(); void save({ rename: { kind, from: l, to: editing.to } }, `Renamed to ${editing.to}`); setEditing(null); }}>
-                <input value={editing.to} onChange={(e) => setEditing({ from: l, to: e.target.value })} autoFocus style={{ flex: 1 }} />
+                <input aria-label={`New name for ${l}`} value={editing.to} onChange={(e) => setEditing({ from: l, to: e.target.value })} autoFocus style={{ flex: 1 }} />
                 <button className="primary" disabled={!editing.to.trim()}>Save</button>
                 <button type="button" className="ghost" onClick={() => setEditing(null)}>Cancel</button>
               </form>
@@ -147,6 +148,7 @@ function PlacesAndCategories() {
 
 function HomeSettings() {
   const { me, base, homeId, setHome, refresh, toast } = useApp();
+  const dialogs = useDialogs();
   const [home, reload] = useLoad<HomeDetail>(base);
   const [stores] = useLoad<{ stores: { id: string; name: string }[]; krogerApi: boolean }>('/api/stores');
   const [tokens, reloadTokens] = useLoad<{ id: string; name: string; last_used_at: string | null }[]>(home?.role === 'manager' ? `${base}/tokens` : null, [home?.role]);
@@ -163,7 +165,7 @@ function HomeSettings() {
       <div className="row">
         <h2 style={{ flex: 1, margin: 0 }}>Home</h2>
         {me!.homes.length > 1 && (
-          <select value={homeId ?? ''} onChange={(e) => setHome(e.target.value)} style={{ width: 'auto' }}>
+          <select aria-label="Current home" value={homeId ?? ''} onChange={(e) => setHome(e.target.value)} style={{ width: 'auto' }}>
             {me!.homes.map((h) => <option key={h.id} value={h.id}>{h.name}</option>)}
           </select>
         )}
@@ -171,7 +173,7 @@ function HomeSettings() {
       </div>
       {isManager ? (
         <form className="row" onSubmit={async (e) => { e.preventDefault(); await patch({ name: (e.currentTarget.elements.namedItem('hn') as HTMLInputElement).value }); await refresh(); toast('Renamed'); }}>
-          <input name="hn" defaultValue={home.name} style={{ flex: 1 }} />
+          <input name="hn" aria-label="Home name" defaultValue={home.name} style={{ flex: 1 }} />
           <button>Rename</button>
         </form>
       ) : <p style={{ margin: 0 }}><strong>{home.name}</strong> <span className="muted">(you're a member)</span></p>}
@@ -190,7 +192,7 @@ function HomeSettings() {
             <RaccoonAvatar variant={m.avatar} size={40} />
             <span style={{ flex: 1 }}>{m.name}{m.id === me!.user.id && ' (you)'}</span>
             {isManager ? (
-              <select value={m.role} style={{ width: 'auto' }} onChange={async (e) => {
+              <select aria-label={`Role for ${m.name}`} value={m.role} style={{ width: 'auto' }} onChange={async (e) => {
                 try { await api(`${base}/members/${m.id}`, { method: 'PATCH', body: { role: e.target.value } }); } catch (err) { toast((err as Error).message); }
                 await reload();
               }}>
@@ -200,7 +202,7 @@ function HomeSettings() {
             ) : <span className="pill">{m.role === 'manager' ? 'Home manager' : 'Member'}</span>}
             {(isManager || m.id === me!.user.id) && (
               <button className="ghost danger" onClick={async () => {
-                if (!confirm(m.id === me!.user.id ? 'Leave this home?' : `Remove ${m.name}?`)) return;
+                if (!(await dialogs.confirm(m.id === me!.user.id ? 'Leave this home?' : `Remove ${m.name}?`, { okLabel: m.id === me!.user.id ? 'Leave' : 'Remove', danger: true }))) return;
                 try { await api(`${base}/members/${m.id}`, { method: 'DELETE' }); } catch (err) { toast((err as Error).message); return; }
                 if (m.id === me!.user.id) { await refresh(); } else await reload();
               }}>{m.id === me!.user.id ? 'Leave' : 'Remove'}</button>
@@ -213,7 +215,7 @@ function HomeSettings() {
       <p className="small muted" style={{ margin: 0 }}>In Google Calendar choose Other calendars → ＋ → From URL, and paste this link. Your meal plan shows up and stays in sync.</p>
       {calendar && (
         <div className="row">
-          <input readOnly value={calendar} onFocus={(e) => e.target.select()} style={{ flex: 1 }} />
+          <input readOnly aria-label="Calendar link" value={calendar} onFocus={(e) => e.target.select()} style={{ flex: 1 }} />
           <button onClick={() => { void navigator.clipboard?.writeText(calendar); toast('Copied'); }}>Copy</button>
           {isManager && <button onClick={async () => { await api(`${base}/calendar-token`, { body: {} }); await reload(); toast('Old link turned off'); }}>Reset link</button>}
         </div>
@@ -270,7 +272,7 @@ function HomeSettings() {
           <div className="row">
             <a className="btn" href={`${base}/export`}>⬇️ Download everything (JSON)</a>
             <button className="danger" onClick={async () => {
-              if (prompt(`Type the home name to delete it forever: ${home.name}`) !== home.name) return;
+              if (await dialogs.prompt(`Type the home name to delete it forever: ${home.name}`, '', { okLabel: 'Delete forever', danger: true, mustType: home.name }) !== home.name) return;
               await api(base, { method: 'DELETE' });
               await refresh();
             }}>Delete home</button>
@@ -288,6 +290,7 @@ interface Overview {
 
 function Admin() {
   const { me, toast } = useApp();
+  const dialogs = useDialogs();
   const [data, reload] = useLoad<Overview>('/api/admin/overview');
   if (!data) return null;
   return (
@@ -311,7 +314,7 @@ function Admin() {
               <td>{u.id !== me!.user.id && (
                 <span className="row" style={{ gap: 4 }}>
                   <AdminUserActions user={u} onChange={() => void reload()} />
-                  <button className="ghost danger" onClick={async () => { if (confirm(`Delete ${u.name}'s account?`)) { await api(`/api/admin/users/${u.id}`, { method: 'DELETE' }); await reload(); toast('Deleted'); } }}>Delete</button>
+                  <button className="ghost danger" onClick={async () => { if (await dialogs.confirm(`Delete ${u.name}'s account?`, { okLabel: 'Delete', danger: true })) { await api(`/api/admin/users/${u.id}`, { method: 'DELETE' }); await reload(); toast('Deleted'); } }}>Delete</button>
                 </span>
               )}</td>
             </tr>

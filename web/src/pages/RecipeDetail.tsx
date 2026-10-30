@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
+import { Modal, useDialogs } from '../components/Dialog.tsx';
 import { api, type Item, type RecipeFull } from '../api.ts';
 import { useApp, useLoad } from '../state.tsx';
 import { amount, minutes, todayIso } from '../format.ts';
@@ -18,28 +19,26 @@ function MatchPicker({ ingredient, onClose }: { ingredient: string; onClose: (ch
   };
   const shown = (items ?? []).filter((i) => !q || i.name.toLowerCase().includes(q.toLowerCase()));
   return (
-    <div className="modal-back" onClick={() => onClose(false)}>
-      <div className="modal stack" onClick={(e) => e.stopPropagation()}>
-        <h2>What do you use for “{ingredient}”?</h2>
-        <p className="small muted" style={{ margin: 0 }}>Pick it once and every recipe that calls for {ingredient} will use it.</p>
-        <input placeholder="Search the pantry" value={q} onChange={(e) => setQ(e.target.value)} autoFocus />
-        <div className="list" style={{ maxHeight: 340, overflow: 'auto' }}>
-          {shown.map((i) => (
-            <button key={i.id} className="list-item ghost" style={{ justifyContent: 'flex-start', borderRadius: 0 }} onClick={() => save(i.id, `${ingredient} → ${i.name}`)}>
-              <span style={{ fontSize: '1.4rem' }}>{i.icon}</span>
-              <span style={{ flex: 1, textAlign: 'left' }}>{i.name}</span>
-              <span className="small muted">{amount(i.quantity, i.unit, me?.user.units)}</span>
-            </button>
-          ))}
-          {items && !shown.length && <p className="muted">Nothing in the pantry matches that.</p>}
-        </div>
-        <div className="row">
-          <button onClick={() => save(null, 'Back to automatic matching')}>Let the app decide</button>
-          <span className="spacer" />
-          <button className="ghost" onClick={() => onClose(false)}>Cancel</button>
-        </div>
+    <Modal label="Match an ingredient" onClose={() => onClose(false)}>
+      <h2>What do you use for “{ingredient}”?</h2>
+      <p className="small muted" style={{ margin: 0 }}>Pick it once and every recipe that calls for {ingredient} will use it.</p>
+      <input placeholder="Search the pantry" value={q} onChange={(e) => setQ(e.target.value)} autoFocus />
+      <div className="list" style={{ maxHeight: 340, overflow: 'auto' }}>
+        {shown.map((i) => (
+          <button key={i.id} className="list-item ghost" style={{ justifyContent: 'flex-start', borderRadius: 0 }} onClick={() => save(i.id, `${ingredient} → ${i.name}`)}>
+            <span style={{ fontSize: '1.4rem' }}>{i.icon}</span>
+            <span style={{ flex: 1, textAlign: 'left' }}>{i.name}</span>
+            <span className="small muted">{amount(i.quantity, i.unit, me?.user.units)}</span>
+          </button>
+        ))}
+        {items && !shown.length && <p className="muted">Nothing in the pantry matches that.</p>}
       </div>
-    </div>
+      <div className="row">
+        <button onClick={() => save(null, 'Back to automatic matching')}>Let the app decide</button>
+        <span className="spacer" />
+        <button className="ghost" onClick={() => onClose(false)}>Cancel</button>
+      </div>
+    </Modal>
   );
 }
 
@@ -48,6 +47,7 @@ const AVAIL ={ have: ['ok', '✓'], unknown: ['ok', '✓'], low: ['warn', 'low']
 export function RecipeDetail() {
   const { id } = useParams();
   const { base, me, toast } = useApp();
+  const dialogs = useDialogs();
   const nav = useNavigate();
   const [servings, setServings] = useState<number | null>(null);
   const [recipe, reload] = useLoad<RecipeFull>(`${base}/recipes/${id}${servings ? `?servings=${servings}` : ''}`, [servings]);
@@ -62,7 +62,7 @@ export function RecipeDetail() {
   const [cls, label] = READY_LABEL[recipe.status];
 
   async function cook() {
-    if (!confirm(`Take the ingredients for ${recipe!.title} out of the pantry?`)) return;
+    if (!(await dialogs.confirm(`Take the ingredients for ${recipe!.title} out of the pantry?`, { okLabel: 'I cooked it' }))) return;
     const r = await api<{ used: unknown[]; skipped: string[] }>(`${base}/recipes/${id}/cook`, { body: { servings } });
     toast(`Used ${r.used.length} pantry items${r.skipped.length ? `; not in pantry: ${r.skipped.join(', ')}` : ''}`);
     void reload();
@@ -115,7 +115,7 @@ export function RecipeDetail() {
       </div>
       {planDate !== null && (
         <div className="card row">
-          <input type="date" value={planDate} onChange={(e) => setPlanDate(e.target.value)} style={{ maxWidth: 220 }} />
+          <input type="date" aria-label="Day to cook it" value={planDate} onChange={(e) => setPlanDate(e.target.value)} style={{ maxWidth: 220 }} />
           <button className="primary" onClick={plan}>Add for dinner</button>
           <button className="ghost" onClick={() => setPlanDate(null)}>Cancel</button>
         </div>
@@ -156,8 +156,10 @@ export function RecipeDetail() {
           <h2>Steps</h2>
           <ol className="steps">
             {recipe.instructions.map((s, n) => (
-              <li key={n} className={done.has(n) ? 'done' : ''} onClick={() => setDone((d) => { const x = new Set(d); if (x.has(n)) x.delete(n); else x.add(n); return x; })} style={{ cursor: 'pointer' }}>
-                {units === 'us' ? celsiusToFahrenheitText(s) : s}
+              <li key={n} className={done.has(n) ? 'done' : ''}>
+                <button className="step" aria-pressed={done.has(n)} onClick={() => setDone((d) => { const x = new Set(d); if (x.has(n)) x.delete(n); else x.add(n); return x; })}>
+                  {units === 'us' ? celsiusToFahrenheitText(s) : s}
+                </button>
               </li>
             ))}
           </ol>
@@ -166,7 +168,7 @@ export function RecipeDetail() {
       </div>
       <div className="row">
         <span className="spacer" />
-        <button className="danger" onClick={async () => { if (confirm('Delete this recipe?')) { await api(`${base}/recipes/${id}`, { method: 'DELETE' }); nav('/recipes'); } }}>Delete recipe</button>
+        <button className="danger" onClick={async () => { if (await dialogs.confirm('Delete this recipe?', { okLabel: 'Delete', danger: true })) { await api(`${base}/recipes/${id}`, { method: 'DELETE' }); nav('/recipes'); } }}>Delete recipe</button>
       </div>
       {matching && <MatchPicker ingredient={matching} onClose={(changed) => { setMatching(null); if (changed) void reload(); }} />}
       <div>

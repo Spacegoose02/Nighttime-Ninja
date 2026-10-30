@@ -6,9 +6,10 @@ import { chatLoop, wantsToSave, type ChatAction } from './aichat.ts';
 function fake(script: ({ text?: string; tool?: { name: string; input: object } })[]) {
   const calls: { tool_choice?: unknown }[] = [];
   let i = 0;
-  const askFn = async (p: { tool_choice?: unknown }) => {
+  const askFn = async (p: { tool_choice?: unknown }, onText?: (t: string) => void) => {
     calls.push(p);
     const step = script[Math.min(i++, script.length - 1)];
+    if (step.text && onText) for (const word of step.text.split(/(?<= )/)) onText(word);
     const content: object[] = [];
     if (step.text) content.push({ type: 'text', text: step.text });
     if (step.tool) content.push({ type: 'tool_use', id: `t${i}`, name: step.tool.name, input: step.tool.input });
@@ -77,4 +78,16 @@ test('a repeat save finds the recipe already in the book', async () => {
   assert.equal(existingRecipeId(db, 'h', '  biscuits '), id);
   saveRecipe(db, 'h', { ...base, title: 'Biscuits', servings: 8 }, null, existingRecipeId(db, 'h', 'Biscuits'));
   assert.equal((db.prepare("SELECT COUNT(*) AS n FROM recipes WHERE title = 'Biscuits'").get() as { n: number }).n, 1);
+});
+
+test('streams each round as it is written, with a blank line between rounds', async () => {
+  const saves: string[] = [];
+  const { askFn } = fake([
+    { text: 'Let me check your pantry. ', tool: { name: 'save_recipe', input: { title: 'Biscuits' } } },
+    { text: 'Saved Biscuits for you.' },
+  ]);
+  let heard = '';
+  const out = await chatLoop(askFn, turn(saves), [{ role: 'user', content: 'biscuits please' }], false, (t) => { heard += t; });
+  assert.equal(heard, 'Let me check your pantry. \n\nSaved Biscuits for you.');
+  assert.equal(out.reply, 'Saved Biscuits for you.');
 });

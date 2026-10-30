@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import { NavLink, Route, Routes, useLocation } from 'react-router-dom';
 import { useApp } from './state.tsx';
 import { RaccoonAvatar } from './components/Raccoon.tsx';
@@ -17,6 +18,7 @@ import { Feed } from './pages/Feed.tsx';
 import { Settings } from './pages/Settings.tsx';
 import { PublicRecipe, Community } from './pages/Public.tsx';
 import { Chef } from './pages/Chef.tsx';
+import { Modal } from './components/Dialog.tsx';
 
 const NAV = [
   { to: '/', ico: '🏠', label: 'Home', end: true },
@@ -31,21 +33,48 @@ const NAV = [
   { to: '/settings', ico: '⚙️', label: 'Settings' },
 ];
 
-function Nav({ className }: { className: string }) {
+/** The phone tab bar keeps these; everything else lives under More. */
+const PHONE_TABS = new Set(['/', '/inventory', '/recipes', '/shopping']);
+
+function NavItem({ n }: { n: (typeof NAV)[number] }) {
+  return (
+    <NavLink to={n.to} end={n.end} className={({ isActive }) => `nav-link${isActive ? ' active' : ''}`}>
+      <span className="ico" aria-hidden>{n.ico}</span>
+      {n.label}
+    </NavLink>
+  );
+}
+
+function Rail() {
   const { me } = useApp();
   return (
-    <nav className={className} aria-label="Main">
-      {className === 'rail' && (
-        <div className="brand" title="Nighttime Ninja">
-          <RaccoonAvatar variant={me?.user.avatar} size={56} />
-        </div>
+    <nav className="rail" aria-label="Main">
+      <div className="brand" title="Nighttime Ninja">
+        <RaccoonAvatar variant={me?.user.avatar} size={56} />
+      </div>
+      {NAV.map((n) => <NavItem key={n.to} n={n} />)}
+    </nav>
+  );
+}
+
+function BottomBar() {
+  const loc = useLocation();
+  const [more, setMore] = useState(false);
+  const extra = NAV.filter((n) => !PHONE_TABS.has(n.to));
+  const inMore = extra.some((n) => loc.pathname.startsWith(n.to));
+  useEffect(() => setMore(false), [loc.pathname]);
+  return (
+    <nav className="bottom-bar" aria-label="Main">
+      {NAV.filter((n) => PHONE_TABS.has(n.to)).map((n) => <NavItem key={n.to} n={n} />)}
+      <button className={`nav-link ghost${inMore ? ' active' : ''}`} aria-haspopup="dialog" aria-expanded={more} onClick={() => setMore(true)}>
+        <span className="ico" aria-hidden>☰</span>
+        More
+      </button>
+      {more && (
+        <Modal label="More" className="sheet" onClose={() => setMore(false)}>
+          <div className="sheet-grid" onClick={() => setMore(false)}>{extra.map((n) => <NavItem key={n.to} n={n} />)}</div>
+        </Modal>
       )}
-      {NAV.map((n) => (
-        <NavLink key={n.to} to={n.to} end={n.end} className={({ isActive }) => `nav-link${isActive ? ' active' : ''}`}>
-          <span className="ico" aria-hidden>{n.ico}</span>
-          {n.label}
-        </NavLink>
-      ))}
     </nav>
   );
 }
@@ -70,7 +99,7 @@ export function App() {
 
   return (
     <div className="layout">
-      <Nav className="rail" />
+      <Rail />
       <main className="main">
         <Routes>
           <Route path="/" element={<Dashboard />} />
@@ -92,7 +121,7 @@ export function App() {
           <Route path="*" element={<div className="card">That page wandered off. <NavLink to="/">Go home</NavLink></div>} />
         </Routes>
       </main>
-      <Nav className="bottom-bar" />
+      <BottomBar />
     </div>
   );
 }

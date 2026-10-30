@@ -421,7 +421,7 @@ test('AI requests are capped per person per hour', async () => {
   const { config } = await import('./config.ts');
   const saved = config.anthropic;
   const realFetch = globalThis.fetch;
-  config.anthropic = { apiKey: 'test-key', model: 'claude-haiku-5-5' };
+  config.anthropic = { apiKey: 'limit-key', model: 'claude-haiku-5-5' };
   process.env.AI_MESSAGES_PER_HOUR = '2';
   const ev = (type: string, data: object) => `event: ${type}\ndata: ${JSON.stringify({ type, ...data })}\n\n`;
   globalThis.fetch = (async (url: string | URL | Request, init?: RequestInit) => {
@@ -438,18 +438,56 @@ test('AI requests are capped per person per hour', async () => {
     const b = await login('Patient');
     const { body: home } = await call(a, 'POST', '/api/homes', { name: 'Limits' });
     const chat = (who: Record<string, string>) => call(who, 'POST', `/api/homes/${home.id}/mixologist/chat`, { messages: [{ role: 'user', content: 'Surprise me' }] });
-    assert.equal((await chat(a)).status, 200);
-    assert.equal((await chat(a)).status, 200);
+    assert.equal((await chat(a)).body.reply, 'Cheers');
+    assert.equal((await chat(a)).body.reply, 'Cheers');
     const third = await chat(a);
     assert.equal(third.status, 429);
     assert.match(third.body.error, /try again in/);
     // Someone else in the house still gets their own allowance.
     const { body: join } = await call(a, 'GET', `/api/homes/${home.id}`);
     await call(b, 'POST', '/api/homes/join', { code: join.joinCode });
-    assert.equal((await chat(b)).status, 200);
+    assert.equal((await chat(b)).body.reply, 'Cheers');
   } finally {
     globalThis.fetch = realFetch;
     config.anthropic = saved;
     delete process.env.AI_MESSAGES_PER_HOUR;
+  }
+});
+
+test('AI chat streams its reply as lines of JSON when the browser asks for it', async () => {
+  const { config } = await import('./config.ts');
+  const saved = config.anthropic;
+  const realFetch = globalThis.fetch;
+  config.anthropic = { apiKey: 'stream-key', model: 'claude-haiku-5-5' };
+  const ev = (type: string, data: object) => `event: ${type}\ndata: ${JSON.stringify({ type, ...data })}\n\n`;
+  globalThis.fetch = (async (url: string | URL | Request, init?: RequestInit) => {
+    if (!String(url).includes('anthropic.com')) return realFetch(url, init);
+    return new Response(
+      ev('message_start', { message: { id: 'm', type: 'message', role: 'assistant', model: 'claude-haiku-5-5', content: [], stop_reason: null, usage: { input_tokens: 1, output_tokens: 1 } } })
+      + ev('content_block_start', { index: 0, content_block: { type: 'text', text: '' } })
+      + ev('content_block_delta', { index: 0, delta: { type: 'text_delta', text: 'Try a ' } })
+      + ev('content_block_delta', { index: 0, delta: { type: 'text_delta', text: 'Daiquiri.' } })
+      + ev('content_block_stop', { index: 0 }) + ev('message_delta', { delta: { stop_reason: 'end_turn' }, usage: { output_tokens: 1 } }) + ev('message_stop', {}),
+      { headers: { 'content-type': 'text/event-stream' } });
+  }) as typeof fetch;
+  try {
+    const { app, login, call } = await setup();
+    const a = await login('Streamer');
+    const { body: home } = await call(a, 'POST', '/api/homes', { name: 'Stream' });
+    const res = await app.inject({
+      method: 'POST', url: `/api/homes/${home.id}/mixologist/chat`,
+      headers: { ...a, accept: 'application/x-ndjson' }, payload: { messages: [{ role: 'user', content: 'Rum?' }] },
+    });
+    assert.match(String(res.headers['content-type']), /ndjson/);
+    const lines = res.body.split('\n').filter((l) => l.trim()).map((l) => JSON.parse(l));
+    assert.ok(lines.every((l) => l.type !== 'error'), res.body);
+    assert.deepEqual(lines.filter((l) => l.type === 'text').map((l) => l.text), ['Try a ', 'Daiquiri.']);
+    const done = lines.at(-1);
+    assert.equal(done.type, 'done');
+    assert.equal(done.reply, 'Try a Daiquiri.');
+    assert.ok(done.chatId);
+  } finally {
+    globalThis.fetch = realFetch;
+    config.anthropic = saved;
   }
 });
