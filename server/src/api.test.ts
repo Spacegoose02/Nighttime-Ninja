@@ -367,3 +367,16 @@ test('pantry items know when they are on the shopping list', async () => {
   assert.equal(items.find((i) => i.name === 'Eggs')!.onShoppingList, true);
   assert.equal(items.find((i) => i.name === 'Milk')!.onShoppingList, false);
 });
+
+test('AI chat history starts empty and the chat route needs a Claude key', async () => {
+  const { login, call } = await setup();
+  const a = await login('Chatter');
+  const b = await login('Snoop');
+  const { body: home } = await call(a, 'POST', '/api/homes', { name: 'Home' });
+  const base = `/api/homes/${home.id}`;
+  await call(b, 'POST', '/api/homes/join', { code: (await call(a, 'GET', base)).body.joinCode });
+  assert.deepEqual((await call(a, 'GET', `${base}/ai-chats?kind=chef`)).body, []);
+  assert.equal((await call(a, 'GET', `${base}/ai-chats/nope`)).status, 404);
+  const sent = await call(a, 'POST', `${base}/chef/chat`, { messages: [{ role: 'user', content: 'Save my biscuits' }] });
+  assert.equal(sent.status, process.env.ANTHROPIC_API_KEY ? 200 : 503);
+});

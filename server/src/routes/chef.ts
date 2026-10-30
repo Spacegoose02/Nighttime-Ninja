@@ -9,6 +9,7 @@ import type { Ingredient } from '../../../shared/recipe.ts';
 import { checkIngredients, loadRecipe, saveRecipe, stockIndex } from './recipes.ts';
 import { addShoppingItem } from './shopping.ts';
 import { ask, claude, keepAlive, stockForPrompt, textOf } from './mixologist.ts';
+import { runChat, TOOL_RULES } from './aichat.ts';
 
 const PERSONA = `You are Gordy Scavengé, the master chef inside Nighttime Ninja, a home kitchen app run by raccoon chefs. You're a raccoon yourself: an absolute masterchef with warm Southern hospitality.
 
@@ -101,7 +102,6 @@ const TOOLS: Anthropic.Beta.BetaTool[] = [
 
 const REFUSED = "Sugar, I can't help with that one. Ask me about anything from the kitchen and I'll walk you right through it.";
 
-interface ChatAction { type: 'shopping' | 'saved'; label: string; recipeId?: string }
 
 function cleanIngredient(i: Partial<Ingredient>): Ingredient {
   return { name: str(i.name, 200) ?? 'Ingredient', quantity: num(i.quantity), unit: str(i.unit, 20), note: str(i.note, 200), optional: !!i.optional };
@@ -250,71 +250,38 @@ export function chefRoutes(app: FastifyInstance, db: DatabaseSync): void {
   });
   app.post('/api/homes/:homeId/chef/chat', async (req, reply) => {
     const ctx = homeCtx(db, req);
-    const b = (req.body ?? {}) as Row;
-    const history = (Array.isArray(b.messages) ? b.messages : [])
-      .filter((m: Row) => (m?.role === 'user' || m?.role === 'assistant') && typeof m.content === 'string' && m.content.trim())
-      .slice(-30)
-      .map((m: Row): Anthropic.Beta.BetaMessageParam => ({ role: m.role as 'user' | 'assistant', content: String(m.content).slice(0, 8000) }));
-    while (history.length && history[0].role !== 'user') history.shift();
-    if (!history.length || history[history.length - 1].role !== 'user') throw new HttpError(400, 'Ask Gordy something');
-    claude(db);
-
-    const system: Anthropic.Beta.BetaTextBlockParam[] = [
-      { type: 'text', text: PERSONA, cache_control: { type: 'ephemeral' } },
-      { type: 'text', text: stockForPrompt(db, ctx.homeId) },
-    ];
-    const messages = [...history];
-    const actions: ChatAction[] = [];
-    const replies: string[] = [];
-
-    function runTool(name: string, input: Row): string {
-      const userId = ctx.user?.id ?? null;
-      if (name === 'add_to_shopping_list') {
-        const items = (Array.isArray(input.items) ? input.items : []).slice(0, 30) as Row[];
-        const forRecipe = str(input.forRecipe, 120);
-        const added = items.map((i) => addShoppingItem(db, ctx.homeId, {
-          name: str(i.name, 120) ?? '', quantity: num(i.quantity), unit: str(i.unit, 20), note: forRecipe ? `for ${forRecipe}` : 'from Gordy',
-        }, userId));
-        for (const a of added) actions.push({ type: 'shopping', label: `Added ${a.name} to the shopping list` });
-        return `Added to the shopping list: ${added.map((a) => a.name).join(', ')}`;
-      }
-      if (name === 'save_recipe') {
-        const title = str(input.title, 200) ?? "Gordy's special";
-        const id = saveRecipe(db, ctx.homeId, {
-          title,
-          description: str(input.description, 2000) ?? '',
-          servings: num(input.servings), prepMinutes: num(input.prepMinutes), cookMinutes: num(input.cookMinutes),
-          sourceUrl: null, image: null,
-          ingredients: (Array.isArray(input.ingredients) ? input.ingredients : []).slice(0, 60).map(cleanIngredient),
-          instructions: (Array.isArray(input.instructions) ? input.instructions : []).slice(0, 60).map(String),
-          tags: ['gordy', ...(Array.isArray(input.tags) ? input.tags.map(String).slice(0, 8) : [])],
-        }, userId);
-        actions.push({ type: 'saved', label: `Saved ${title}`, recipeId: id });
-        return `Saved "${title}" to the recipe book.`;
-      }
-      throw new Error(`Unknown tool ${name}`);
-    }
-
-    await keepAlive(reply, async () => {
-      for (let round = 0; round < 6; round++) {
-        const res = await ask(db, { system, tools: TOOLS, messages, output_config: { effort: 'low' } });
-        if (res.stop_reason === 'refusal') return { reply: REFUSED, actions };
-        const text = textOf(res);
-        if (text) replies.push(text);
-        if (res.stop_reason !== 'tool_use') break;
-        messages.push({ role: 'assistant', content: res.content });
-        const results: Anthropic.Beta.BetaToolResultBlockParam[] = [];
-        for (const block of res.content) {
-          if (block.type !== 'tool_use') continue;
-          try {
-            results.push({ type: 'tool_result', tool_use_id: block.id, content: runTool(block.name, block.input as Row) });
-          } catch (err) {
-            results.push({ type: 'tool_result', tool_use_id: block.id, content: (err as Error).message, is_error: true });
-          }
+    await runChat(db, req, reply, {
+      kind: 'chef',
+      system: [
+        { type: 'text', text: PERSONA + TOOL_RULES, cache_control: { type: 'ephemeral' } },
+        { type: 'text', text: stockForPrompt(db, ctx.homeId) },
+      ],
+      tools: TOOLS,
+      saveTool: 'save_recipe',
+      refused: REFUSED,
+      empty: 'Well, come on in! What are we cooking today, sugar?',
+      runTool(name, input, actions) {
+        const userId = ctx.user?.id ?? null;
+        if (name === 'add_to_shopping_list') {
+          const items = (Array.isArray(input.items) ? input.items : []).slice(0, 30) as Row[];
+          const forRecipe = str(input.forRecipe, 120);
+          const added = items.map((i) => addShoppingItem(db, ctx.homeId, {
+            name: str(i.name, 120) ?? '', quantity: num(i.quantity), unit: str(i.unit, 20), note: forRecipe ? `for ${forRecipe}` : 'from Gordy',
+          }, userId));
+          for (const a of added) actions.push({ type: 'shopping', label: `Added ${a.name} to the shopping list` });
+          return `Added to the shopping list: ${added.map((a) => a.name).join(', ')}`;
         }
-        messages.push({ role: 'user', content: results });
-      }
-      return { reply: replies.join('\n\n') || 'Well, come on in! What are we cooking today, sugar?', actions };
+        if (name === 'save_recipe') {
+          const r = cleanRecipe(input as Partial<PlainRecipe>);
+          if (!r.ingredients.length) throw new Error('A recipe needs its ingredients to be saved. Include them.');
+          const tags = Array.isArray(input.tags) ? input.tags.map(String).slice(0, 8) : [];
+          const id = saveRecipe(db, ctx.homeId, { ...r, sourceUrl: null, image: null, tags: ['gordy', ...tags] }, userId);
+          if (!db.prepare('SELECT 1 FROM recipes WHERE id = ?').get(id)) throw new Error('The save did not stick');
+          actions.push({ type: 'saved', label: `Saved ${r.title}`, recipeId: id });
+          return `Saved "${r.title}" to the recipe book.`;
+        }
+        throw new Error(`Unknown tool ${name}`);
+      },
     });
   });
 }

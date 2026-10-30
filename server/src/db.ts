@@ -225,6 +225,21 @@ const MIGRATIONS: string[] = [
   ALTER TABLE home_settings ADD COLUMN categories TEXT;
   ALTER TABLE items ADD COLUMN marked_low INTEGER NOT NULL DEFAULT 0;
   `,
+  // AI chats with Rocco and Gordy, kept per person so old ones can be archived and reopened.
+  `
+  CREATE TABLE ai_chats (
+    id TEXT PRIMARY KEY,
+    home_id TEXT NOT NULL REFERENCES homes(id) ON DELETE CASCADE,
+    user_id TEXT REFERENCES users(id) ON DELETE CASCADE,
+    kind TEXT NOT NULL,
+    title TEXT NOT NULL,
+    messages TEXT NOT NULL DEFAULT '[]',
+    archived INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+  CREATE INDEX ai_chats_owner ON ai_chats(home_id, user_id, kind, updated_at);
+  `,
 ];
 
 export function openDb(dataDir: string): DatabaseSync {

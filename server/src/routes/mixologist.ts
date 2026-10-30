@@ -8,6 +8,7 @@ import { HttpError, num, str } from '../util.ts';
 import type { Ingredient } from '../../../shared/recipe.ts';
 import { checkIngredients, saveRecipe, stockIndex } from './recipes.ts';
 import { addShoppingItem } from './shopping.ts';
+import { runChat, TOOL_RULES } from './aichat.ts';
 
 const PERSONA = `You are the Mixologist inside Nighttime Ninja, a home kitchen app run by a raccoon chef.
 
@@ -246,7 +247,6 @@ export async function keepAlive(reply: FastifyReply, work: () => Promise<unknown
 
 const REFUSED = "I can't help with that one. Ask me about another drink, or tell me what's in your bar and I'll mix something up.";
 
-interface ChatAction { type: 'shopping' | 'saved'; label: string; recipeId?: string }
 
 export function mixologistRoutes(app: FastifyInstance, db: DatabaseSync): void {
   app.get('/api/mixologist/status', async () => ({ available: !!config.anthropic, model: mixologistModel(db) }));
@@ -268,66 +268,38 @@ export function mixologistRoutes(app: FastifyInstance, db: DatabaseSync): void {
 
   app.post('/api/homes/:homeId/mixologist/chat', async (req, reply) => {
     const ctx = homeCtx(db, req);
-    const b = (req.body ?? {}) as Row;
-    const history = (Array.isArray(b.messages) ? b.messages : [])
-      .filter((m: Row) => (m?.role === 'user' || m?.role === 'assistant') && typeof m.content === 'string' && m.content.trim())
-      .slice(-30)
-      .map((m: Row): Anthropic.Beta.BetaMessageParam => ({ role: m.role as 'user' | 'assistant', content: String(m.content).slice(0, 8000) }));
-    while (history.length && history[0].role !== 'user') history.shift();
-    if (!history.length || history[history.length - 1].role !== 'user') throw new HttpError(400, 'Ask the Mixologist something');
-    claude(db);
-
-    // Earlier turns come back from the browser as plain text, so nothing here replays old thinking.
-    // Within this request the tool loop appends whole responses, which keeps the history append-only.
-    const system: Anthropic.Beta.BetaTextBlockParam[] = [
-      { type: 'text', text: PERSONA, cache_control: { type: 'ephemeral' } },
-      { type: 'text', text: stockForPrompt(db, ctx.homeId) },
-    ];
-    const messages = [...history];
-    const actions: ChatAction[] = [];
-    const replies: string[] = [];
-    await keepAlive(reply, async () => {
-    for (let round = 0; round < 6; round++) {
-      // Low effort keeps chat snappy; the Idea Zone thinks harder.
-      const res = await ask(db, { system, tools: TOOLS, messages, output_config: { effort: 'low' } });
-      if (res.stop_reason === 'refusal') return { reply: REFUSED, actions };
-      const text = textOf(res);
-      if (text) replies.push(text);
-      if (res.stop_reason !== 'tool_use') break;
-      messages.push({ role: 'assistant', content: res.content });
-      const results: Anthropic.Beta.BetaToolResultBlockParam[] = [];
-      for (const block of res.content) {
-        if (block.type !== 'tool_use') continue;
-        try {
-          results.push({ type: 'tool_result', tool_use_id: block.id, content: runTool(block.name, block.input as Row) });
-        } catch (err) {
-          results.push({ type: 'tool_result', tool_use_id: block.id, content: (err as Error).message, is_error: true });
+    await runChat(db, req, reply, {
+      kind: 'mixologist',
+      system: [
+        { type: 'text', text: PERSONA + TOOL_RULES, cache_control: { type: 'ephemeral' } },
+        { type: 'text', text: stockForPrompt(db, ctx.homeId) },
+      ],
+      tools: TOOLS,
+      saveTool: 'save_drink_recipe',
+      refused: REFUSED,
+      empty: "Let me know what you're in the mood for.",
+      runTool(name, input, actions) {
+        const userId = ctx.user?.id ?? null;
+        if (name === 'add_to_shopping_list') {
+          const items = (Array.isArray(input.items) ? input.items : []).slice(0, 20) as Row[];
+          const forDrink = str(input.forDrink, 120);
+          const added = items.map((i) => addShoppingItem(db, ctx.homeId, {
+            name: str(i.name, 120) ?? '', quantity: num(i.quantity), unit: str(i.unit, 20), note: forDrink ? `for ${forDrink}` : 'from Rocco',
+          }, userId));
+          for (const a of added) actions.push({ type: 'shopping', label: `Added ${a.name} to the shopping list` });
+          return `Added to the shopping list: ${added.map((a) => a.name).join(', ')}`;
         }
-      }
-      messages.push({ role: 'user', content: results });
-    }
-    return { reply: replies.join('\n\n') || "Let me know what you're in the mood for.", actions };
+        if (name === 'save_drink_recipe') {
+          const drink = cleanDrink(input as Partial<Drink>);
+          if (!drink.ingredients.length) throw new Error('A drink needs its ingredients to be saved. Include them.');
+          const id = saveDrink(db, ctx.homeId, drink, userId);
+          if (!db.prepare('SELECT 1 FROM recipes WHERE id = ?').get(id)) throw new Error('The save did not stick');
+          actions.push({ type: 'saved', label: `Saved ${drink.title}`, recipeId: id });
+          return `Saved "${drink.title}" to the recipe book.`;
+        }
+        throw new Error(`Unknown tool ${name}`);
+      },
     });
-
-    function runTool(name: string, input: Row): string {
-      const userId = ctx.user?.id ?? null;
-      if (name === 'add_to_shopping_list') {
-        const items = (Array.isArray(input.items) ? input.items : []).slice(0, 20) as Row[];
-        const forDrink = str(input.forDrink, 120);
-        const added = items.map((i) => addShoppingItem(db, ctx.homeId, {
-          name: str(i.name, 120) ?? '', quantity: num(i.quantity), unit: str(i.unit, 20), note: forDrink ? `for ${forDrink}` : 'from the Mixologist',
-        }, userId));
-        for (const a of added) actions.push({ type: 'shopping', label: `Added ${a.name} to the shopping list` });
-        return `Added to the shopping list: ${added.map((a) => a.name).join(', ')}`;
-      }
-      if (name === 'save_drink_recipe') {
-        const drink = cleanDrink(input as Partial<Drink>);
-        const id = saveDrink(db, ctx.homeId, drink, userId);
-        actions.push({ type: 'saved', label: `Saved ${drink.title}`, recipeId: id });
-        return `Saved "${drink.title}" to the recipe book.`;
-      }
-      throw new Error(`Unknown tool ${name}`);
-    }
   });
 
   // Idea Zone: pick a style, get recipes built from what's in stock.

@@ -99,10 +99,6 @@ const STARTERS = [
   'Party punch for 10 people',
 ];
 
-function loadChat(key: string): ChatMsg[] {
-  try { return JSON.parse(sessionStorage.getItem(key) ?? '[]') as ChatMsg[]; } catch { return []; }
-}
-
 export interface ChatPersona {
   /** API path under the home, e.g. "mixologist/chat". */
   endpoint: string;
@@ -135,18 +131,79 @@ export function ChatAvatar({ p, size = 40 }: { p: ChatPersona; size?: number }) 
     : <img className="chat-avatar" src={p.avatar} alt={p.name} width={size} height={size} onError={() => setBroken(true)} />;
 }
 
+interface PastChat { id: string; title: string; archived: boolean; updatedAt: string; messages: number; saved: string[] }
+
+/** Past chats with this persona: reopen one, archive it, or delete it. */
+function PastChats({ kind, current, onOpen, onClose }: { kind: string; current: string | null; onOpen: (id: string) => void; onClose: () => void }) {
+  const { base, toast } = useApp();
+  const [showArchived, setShowArchived] = useState(true);
+  const [list, reload] = useLoad<PastChat[]>(`${base}/ai-chats?kind=${kind}`);
+  const shown = (list ?? []).filter((c) => showArchived || !c.archived);
+  return (
+    <div className="card stack">
+      <div className="row">
+        <h2 style={{ margin: 0, flex: 1 }}>📚 Past chats</h2>
+        <label className="row small" style={{ gap: 6 }}>
+          <input type="checkbox" checked={showArchived} onChange={(e) => setShowArchived(e.target.checked)} style={{ width: 20, minHeight: 20 }} /> Show archived
+        </label>
+        <button className="ghost" onClick={onClose}>Close</button>
+      </div>
+      {list && !shown.length && <p className="muted" style={{ margin: 0 }}>No past chats yet. Every chat is kept here, and “New chat” archives the one you're in.</p>}
+      <div className="list">
+        {shown.map((c) => (
+          <div key={c.id} className="list-item" style={{ alignItems: 'flex-start' }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontWeight: 600 }}>{c.title}{c.id === current && <span className="pill ok" style={{ marginLeft: 6 }}>open</span>}{c.archived && <span className="pill" style={{ marginLeft: 6 }}>archived</span>}</div>
+              <div className="small muted">{new Date(`${c.updatedAt.replace(' ', 'T')}Z`).toLocaleString()} · {c.messages} messages</div>
+              {!!c.saved.length && <div className="small">📖 {c.saved.join(', ')}</div>}
+            </div>
+            <button onClick={() => onOpen(c.id)}>Open</button>
+            <button className="ghost" onClick={async () => { await api(`${base}/ai-chats/${c.id}`, { method: 'PATCH', body: { archived: !c.archived } }); await reload(); }}>{c.archived ? 'Unarchive' : 'Archive'}</button>
+            <button className="ghost danger" onClick={async () => { if (!confirm('Delete this chat for good? Recipes you saved from it stay in your recipe book.')) return; await api(`${base}/ai-chats/${c.id}`, { method: 'DELETE' }); toast('Deleted'); await reload(); }}>Delete</button>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export function Chat({ disabled, persona = ROCCO }: { disabled: boolean; persona?: ChatPersona }) {
   const { base, homeId, toast } = useApp();
-  const key = `nn-${persona.endpoint.replace(/W+/g, '-')}-${homeId}`;
-  const [msgs, setMsgs] = useState<ChatMsg[]>(() => loadChat(key));
+  const kind = persona.endpoint.split('/')[0];
+  const key = `nn-chat-${kind}-${homeId}`;
+  const [chatId, setChatId] = useState<string | null>(() => { try { return localStorage.getItem(key); } catch { return null; } });
+  const [msgs, setMsgs] = useState<ChatMsg[]>([]);
   const [draft, setDraft] = useState('');
   const [busy, setBusy] = useState(false);
+  const [showPast, setShowPast] = useState(false);
   const end = useRef<HTMLDivElement>(null);
 
+  // Chats live on the server, so they survive closing the app and show up on every device.
   useEffect(() => {
-    try { sessionStorage.setItem(key, JSON.stringify(msgs.slice(-40))); } catch { /* private mode */ }
-    end.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
-  }, [msgs, key]);
+    try { if (chatId) localStorage.setItem(key, chatId); else localStorage.removeItem(key); } catch { /* private mode */ }
+  }, [chatId, key]);
+
+  useEffect(() => {
+    if (!chatId) return;
+    api<{ messages: ChatMsg[] }>(`${base}/ai-chats/${chatId}`).then((c) => setMsgs(c.messages), () => setChatId(null));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [base]);
+
+  useEffect(() => { end.current?.scrollIntoView({ behavior: 'smooth', block: 'end' }); }, [msgs]);
+
+  async function open(id: string) {
+    const c = await api<{ id: string; messages: ChatMsg[] }>(`${base}/ai-chats/${id}`);
+    setChatId(c.id);
+    setMsgs(c.messages);
+    setShowPast(false);
+  }
+
+  async function newChat() {
+    if (chatId) await api(`${base}/ai-chats/${chatId}`, { method: 'PATCH', body: { archived: true } }).catch(() => {});
+    setChatId(null);
+    setMsgs([]);
+    if (chatId) toast('Archived. Find it under Past chats.');
+  }
 
   async function send(text: string) {
     const content = text.trim();
@@ -156,9 +213,11 @@ export function Chat({ disabled, persona = ROCCO }: { disabled: boolean; persona
     setDraft('');
     setBusy(true);
     try {
-      const res = await api<{ reply: string; actions: ChatAction[] }>(`${base}/${persona.endpoint}`, {
-        body: { messages: next.map(({ role, content: c }) => ({ role, content: c })) },
+      // Send what the app did after each reply too, so the chef knows what's already saved.
+      const res = await api<{ reply: string; actions: ChatAction[]; chatId: string }>(`${base}/${persona.endpoint}`, {
+        body: { chatId, messages: next.map(({ role, content: c, actions }) => ({ role, content: c, actions })) },
       });
+      setChatId(res.chatId);
       setMsgs([...next, { role: 'assistant', content: res.reply, actions: res.actions }]);
     } catch (e) {
       toast((e as Error).message);
@@ -171,6 +230,12 @@ export function Chat({ disabled, persona = ROCCO }: { disabled: boolean; persona
 
   return (
     <div className="stack">
+      <div className="row">
+        <span className="spacer" />
+        <button className="ghost" onClick={() => setShowPast(!showPast)}>📚 Past chats</button>
+        {!!msgs.length && <button className="ghost" onClick={newChat} disabled={busy}>＋ New chat</button>}
+      </div>
+      {showPast && <PastChats kind={kind} current={chatId} onOpen={open} onClose={() => setShowPast(false)} />}
       <div className="card stack chat-log">
         {!msgs.length && (
           <div className="stack">
@@ -206,7 +271,6 @@ export function Chat({ disabled, persona = ROCCO }: { disabled: boolean; persona
           onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void send(draft); } }}
         />
         <button className="primary" disabled={disabled || busy || !draft.trim()}>Send</button>
-        {!!msgs.length && <button type="button" className="ghost" onClick={() => setMsgs([])}>Clear</button>}
       </form>
     </div>
   );
