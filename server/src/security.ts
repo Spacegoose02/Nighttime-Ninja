@@ -1,5 +1,7 @@
 // Password hashing, two-factor codes, rate limiting and HTTP hardening. Built on node:crypto only.
 import crypto from 'node:crypto';
+import dns from 'node:dns/promises';
+import net from 'node:net';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { HttpError } from './util.ts';
 
@@ -126,7 +128,7 @@ const buckets = new Map<string, Bucket>();
  * Allows `limit` hits per `windowMs` for a key (an IP, a username, ...). Throws 429 when exceeded.
  * In-memory is enough for a single self-hosted server.
  */
-export function rateLimit(key: string, limit: number, windowMs: number): void {
+export function rateLimit(key: string, limit: number, windowMs: number, message?: (mins: number) => string): void {
   const now = Date.now();
   if (buckets.size > 50_000) for (const [k, b] of buckets) if (b.resetAt < now) buckets.delete(k);
   const b = buckets.get(key);
@@ -137,7 +139,7 @@ export function rateLimit(key: string, limit: number, windowMs: number): void {
   b.count++;
   if (b.count > limit) {
     const mins = Math.ceil((b.resetAt - now) / 60000);
-    throw new HttpError(429, `Too many tries. Wait ${mins} minute${mins === 1 ? '' : 's'} and try again.`);
+    throw new HttpError(429, message?.(mins) ?? `Too many tries. Wait ${mins} minute${mins === 1 ? '' : 's'} and try again.`);
   }
 }
 
@@ -163,6 +165,49 @@ export function isPrivateAddress(ip: string): boolean {
   if (/^100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\./.test(v)) return true; // Tailscale / CGNAT
   if (/^f[cd][0-9a-f]{2}:/i.test(v) || /^fe80:/i.test(v)) return true;
   return false;
+}
+
+/** Addresses a server-side fetch must never reach: the home network plus "this host", multicast and reserved ranges. */
+export function isBlockedAddress(ip: string): boolean {
+  const v = ip.replace(/^::ffff:/i, '');
+  if (isPrivateAddress(v)) return true;
+  if (net.isIPv4(v)) {
+    const first = Number(v.split('.')[0]);
+    return first === 0 || first >= 224;
+  }
+  return v === '::' || /^ff/i.test(v) || /^fe[c-f]/i.test(v);
+}
+
+/**
+ * fetch() for addresses people type in (recipe links, feeds). Refuses anything that resolves to the home network,
+ * checking every redirect too, so an account on the server can't use it to poke at the router or other devices.
+ * ALLOW_PRIVATE_FETCH=true turns the check off for setups that import from their own LAN servers.
+ */
+export async function publicFetch(input: string | URL, init: RequestInit = {}, allowPrivate = process.env.ALLOW_PRIVATE_FETCH === 'true'): Promise<Response> {
+  let url = new URL(input);
+  for (let hop = 0; hop <= 5; hop++) {
+    if (url.protocol !== 'http:' && url.protocol !== 'https:') throw new HttpError(400, 'Only http and https links work');
+    if (!allowPrivate) await assertPublicHost(url.hostname);
+    const res = await fetch(url, { ...init, redirect: 'manual' });
+    const next = res.status >= 300 && res.status < 400 ? res.headers.get('location') : null;
+    if (!next) return res;
+    await res.body?.cancel();
+    url = new URL(next, url);
+  }
+  throw new HttpError(502, 'That link redirects too many times');
+}
+
+async function assertPublicHost(hostname: string): Promise<void> {
+  const host = hostname.replace(/^\[|\]$/g, '');
+  let addresses: string[];
+  try {
+    addresses = net.isIP(host) ? [host] : (await dns.lookup(host, { all: true })).map((a) => a.address);
+  } catch {
+    throw new HttpError(400, `Couldn't find ${hostname}`);
+  }
+  if (!addresses.length || addresses.some(isBlockedAddress)) {
+    throw new HttpError(400, "That link points into a private network, so the server won't fetch it");
+  }
 }
 
 // ---------- HTTP hardening ----------

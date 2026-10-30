@@ -8,7 +8,7 @@ import { HttpError, num, str } from '../util.ts';
 import type { Ingredient } from '../../../shared/recipe.ts';
 import { checkIngredients, loadRecipe, saveRecipe, stockIndex } from './recipes.ts';
 import { addShoppingItem } from './shopping.ts';
-import { ask, claude, keepAlive, stockForPrompt, textOf } from './mixologist.ts';
+import { ask, claude, keepAlive, limitAi, stockForPrompt, textOf } from './mixologist.ts';
 import { existingRecipeId, runChat, TOOL_RULES } from './aichat.ts';
 
 const PERSONA = `You are Gordy Scavengé, the master chef inside Nighttime Ninja, a home kitchen app run by raccoon chefs. You're a raccoon yourself: an absolute masterchef with warm Southern hospitality.
@@ -197,6 +197,7 @@ export function chefRoutes(app: FastifyInstance, db: DatabaseSync): void {
     const notes = str(b.notes, 1000);
     const ideas = Math.min(5, Math.max(1, num(b.ideas) ?? 3));
     claude(db);
+    limitAi(ctx);
     await keepAlive(reply, async () => {
       const res = await ask(db, {
         system: [

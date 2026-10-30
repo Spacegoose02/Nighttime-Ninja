@@ -1,10 +1,11 @@
 import Anthropic from '@anthropic-ai/sdk';
 import type { FastifyInstance, FastifyReply } from 'fastify';
 import type { DatabaseSync } from 'node:sqlite';
-import { getSetting, homeCtx, requireAdmin, setSetting } from '../auth.ts';
+import { getSetting, homeCtx, requireAdmin, setSetting, type HomeCtx } from '../auth.ts';
 import type { Row } from '../db.ts';
 import { config } from '../config.ts';
 import { HttpError, num, str } from '../util.ts';
+import { rateLimit } from '../security.ts';
 import type { Ingredient } from '../../../shared/recipe.ts';
 import { checkIngredients, saveRecipe, stockIndex } from './recipes.ts';
 import { addShoppingItem } from './shopping.ts';
@@ -101,6 +102,17 @@ export function claude(db: DatabaseSync): { client: Anthropic; model: string } {
   if (!config.anthropic) throw new HttpError(503, 'The Mixologist needs a Claude API key. Add ANTHROPIC_API_KEY to the server settings and restart.');
   client ??= new Anthropic({ apiKey: config.anthropic.apiKey });
   return { client, model: mixologistModel(db)! };
+}
+
+/**
+ * Each AI request can cost real money on the server owner's Claude key, so cap how many one person (or one home's
+ * API token) can send. AI_MESSAGES_PER_HOUR changes the cap; 0 turns it off.
+ */
+export function limitAi(ctx: HomeCtx): void {
+  const perHour = Number(process.env.AI_MESSAGES_PER_HOUR ?? 30);
+  if (!(perHour > 0)) return;
+  rateLimit(`ai:${ctx.user?.id ?? `home:${ctx.homeId}`}`, perHour, 3600e3,
+    (mins) => `That's a lot of questions for one hour. Gordy and Rocco need a break; try again in ${mins} minute${mins === 1 ? '' : 's'}.`);
 }
 
 /** Claude's own explanation from an API error, e.g. "model: claude-x is not available". */
@@ -318,6 +330,7 @@ export function mixologistRoutes(app: FastifyInstance, db: DatabaseSync): void {
       'Use the household item names exactly as listed for anything in stock. Amounts in oz for liquids.',
     ].filter(Boolean).join('\n');
     claude(db);
+    limitAi(ctx);
     await keepAlive(reply, async () => {
     const res = await ask(db, {
       system: [

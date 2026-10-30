@@ -4,6 +4,7 @@ import { XMLParser } from 'fast-xml-parser';
 import { homeCtx } from '../auth.ts';
 import type { Row } from '../db.ts';
 import { HttpError, newId, requireStr, str } from '../util.ts';
+import { publicFetch } from '../security.ts';
 
 export interface FeedEntry {
   feedId: string;
@@ -28,7 +29,7 @@ const BROWSER_HEADERS = {
 };
 
 async function get(url: string, browser = false): Promise<string> {
-  const res = await fetch(url, {
+  const res = await publicFetch(url, {
     headers: browser ? BROWSER_HEADERS : { 'user-agent': 'Mozilla/5.0 (compatible; NighttimeNinja/0.1)' },
     signal: AbortSignal.timeout(12000),
   });

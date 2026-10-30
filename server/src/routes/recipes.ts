@@ -5,6 +5,7 @@ import { tx, type Row } from '../db.ts';
 import { HttpError, newId, num, parseJson, randomToken, str } from '../util.ts';
 import { importAny, ingredientMatches, matchKey, type Ingredient, type Recipe } from '../../../shared/recipe.ts';
 import { convert } from '../../../shared/units.ts';
+import { publicFetch } from '../security.ts';
 import { adjustItem } from './inventory.ts';
 import { addShoppingItem } from './shopping.ts';
 
@@ -126,10 +127,9 @@ async function fetchPage(url: string): Promise<string> {
   let u: URL;
   try { u = new URL(url); } catch { throw new HttpError(400, 'That is not a valid link'); }
   if (u.protocol !== 'http:' && u.protocol !== 'https:') throw new HttpError(400, 'Only http and https links can be imported');
-  const res = await fetch(u, {
+  const res = await publicFetch(u, {
     headers: { 'user-agent': 'Mozilla/5.0 (compatible; NighttimeNinja/0.1; +https://github.com/)', accept: 'text/html,application/json' },
     signal: AbortSignal.timeout(15000),
-    redirect: 'follow',
   });
   if (!res.ok) throw new HttpError(502, `The site answered ${res.status}`);
   const text = await res.text();

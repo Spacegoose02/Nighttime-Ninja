@@ -9,8 +9,11 @@ process.env.ALLOW_LOCAL_LOGIN = 'true';
 
 const { openMemoryDb } = await import('./db.ts');
 const { buildApp } = await import('./app.ts');
+const { clearRateLimit } = await import('./security.ts');
 
 async function setup() {
+  // Every test signs people in from the same address; give each test its own sign-in allowance.
+  clearRateLimit('local:ip:127.0.0.1');
   const app = await buildApp(openMemoryDb(), { serveWeb: false });
   const login = async (name: string) => {
     const res = await app.inject({ method: 'POST', url: '/api/auth/local', payload: { name } });
@@ -379,4 +382,74 @@ test('AI chat history starts empty and the chat route needs a Claude key', async
   assert.equal((await call(a, 'GET', `${base}/ai-chats/nope`)).status, 404);
   const sent = await call(a, 'POST', `${base}/chef/chat`, { messages: [{ role: 'user', content: 'Save my biscuits' }] });
   assert.equal(sent.status, process.env.ANTHROPIC_API_KEY ? 200 : 503);
+});
+
+test('recipe import and feeds refuse links into the home network, even through a redirect', async () => {
+  const { isBlockedAddress, publicFetch } = await import('./security.ts');
+  for (const ip of ['127.0.0.1', '10.0.0.5', '192.168.1.1', '172.20.0.1', '169.254.169.254', '0.0.0.0', '::1', '::ffff:192.168.1.1', 'fd00::1', 'ff02::1']) {
+    assert.equal(isBlockedAddress(ip), true, ip);
+  }
+  for (const ip of ['93.184.216.34', '2606:4700::1111']) assert.equal(isBlockedAddress(ip), false, ip);
+
+  const { login, call } = await setup();
+  const a = await login('Prober');
+  const { body: home } = await call(a, 'POST', '/api/homes', { name: 'Probe' });
+  const imp = await call(a, 'POST', `/api/homes/${home.id}/recipes/import`, { url: 'http://192.168.1.1/admin' });
+  assert.equal(imp.status, 400);
+  assert.match(imp.body.error, /private network/);
+  const feed = await call(a, 'POST', `/api/homes/${home.id}/feeds`, { url: 'http://[::1]:8080/feed.xml' });
+  assert.equal(feed.status, 400);
+
+  const realFetch = globalThis.fetch;
+  const hits: string[] = [];
+  globalThis.fetch = (async (url: string | URL | Request) => {
+    hits.push(String(url));
+    if (String(url).includes('127.0.0.1')) return new Response('secret');
+    return new Response(null, { status: 302, headers: { location: 'http://127.0.0.1:9000/secret' } });
+  }) as typeof fetch;
+  try {
+    await assert.rejects(publicFetch('http://93.184.216.34/recipe'), /private network/);
+    assert.deepEqual(hits, ['http://93.184.216.34/recipe']);
+    // Self-hosters who import from their own LAN servers can turn the check off.
+    assert.equal((await publicFetch('http://93.184.216.34/recipe', {}, true)).status, 200);
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+});
+
+test('AI requests are capped per person per hour', async () => {
+  const { config } = await import('./config.ts');
+  const saved = config.anthropic;
+  const realFetch = globalThis.fetch;
+  config.anthropic = { apiKey: 'test-key', model: 'claude-haiku-5-5' };
+  process.env.AI_MESSAGES_PER_HOUR = '2';
+  const ev = (type: string, data: object) => `event: ${type}\ndata: ${JSON.stringify({ type, ...data })}\n\n`;
+  globalThis.fetch = (async (url: string | URL | Request, init?: RequestInit) => {
+    if (!String(url).includes('anthropic.com')) return realFetch(url, init);
+    return new Response(
+      ev('message_start', { message: { id: 'm', type: 'message', role: 'assistant', model: 'claude-haiku-5-5', content: [], stop_reason: null, usage: { input_tokens: 1, output_tokens: 1 } } })
+      + ev('content_block_start', { index: 0, content_block: { type: 'text', text: '' } }) + ev('content_block_delta', { index: 0, delta: { type: 'text_delta', text: 'Cheers' } })
+      + ev('content_block_stop', { index: 0 }) + ev('message_delta', { delta: { stop_reason: 'end_turn' }, usage: { output_tokens: 1 } }) + ev('message_stop', {}),
+      { headers: { 'content-type': 'text/event-stream' } });
+  }) as typeof fetch;
+  try {
+    const { login, call } = await setup();
+    const a = await login('Thirsty');
+    const b = await login('Patient');
+    const { body: home } = await call(a, 'POST', '/api/homes', { name: 'Limits' });
+    const chat = (who: Record<string, string>) => call(who, 'POST', `/api/homes/${home.id}/mixologist/chat`, { messages: [{ role: 'user', content: 'Surprise me' }] });
+    assert.equal((await chat(a)).status, 200);
+    assert.equal((await chat(a)).status, 200);
+    const third = await chat(a);
+    assert.equal(third.status, 429);
+    assert.match(third.body.error, /try again in/);
+    // Someone else in the house still gets their own allowance.
+    const { body: join } = await call(a, 'GET', `/api/homes/${home.id}`);
+    await call(b, 'POST', '/api/homes/join', { code: join.joinCode });
+    assert.equal((await chat(b)).status, 200);
+  } finally {
+    globalThis.fetch = realFetch;
+    config.anthropic = saved;
+    delete process.env.AI_MESSAGES_PER_HOUR;
+  }
 });
