@@ -6,7 +6,7 @@ import type { DatabaseSync } from 'node:sqlite';
 import { homeCtx, type HomeCtx } from '../auth.ts';
 import type { Row } from '../db.ts';
 import { HttpError, newId, str } from '../util.ts';
-import { ask, claude, keepAlive, textOf } from './mixologist.ts';
+import { ask, claude, keepAlive, limitAi, textOf } from './mixologist.ts';
 
 export type ChatKind = 'mixologist' | 'chef';
 export interface ChatAction { type: 'shopping' | 'saved'; label: string; recipeId?: string }
@@ -82,6 +82,7 @@ export async function runChat(db: DatabaseSync, req: FastifyRequest, reply: Fast
   const history = readHistory(b);
   if (!history.length || history[history.length - 1].role !== 'user') throw new HttpError(400, 'Say something first');
   claude(db);
+  limitAi(ctx);
   const chatId = str(b.chatId, 60);
   const lastUser = history[history.length - 1].content;
   const wantsSave = wantsToSave(lastUser);

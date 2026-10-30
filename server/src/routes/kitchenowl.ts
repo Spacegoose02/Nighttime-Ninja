@@ -112,8 +112,9 @@ function koClient(baseUrl: string, token: string) {
   };
   return {
     json: async <T>(path: string): Promise<T> => (await call(path)).json() as Promise<T>,
+    // Only KitchenOwl's own uploads come through here (full links are kept as links), so the token never leaves its server.
     photo: async (name: string) => {
-      const res = await call(/^https?:/.test(name) ? name : `api/upload/${encodeURIComponent(name)}`);
+      const res = await call(`api/upload/${encodeURIComponent(name)}`);
       const mime = (res.headers.get('content-type') ?? '').split(';')[0];
       return { bytes: Buffer.from(await res.arrayBuffer()), mime };
     },

@@ -54,6 +54,8 @@ All settings are environment variables. See [.env.example](.env.example).
 | `SESSION_SECRET` | Optional. Generated and saved in the data folder if empty. |
 | `KROGER_CLIENT_ID`, `KROGER_CLIENT_SECRET` | Optional, free from [developer.kroger.com](https://developer.kroger.com). Turns on live prices and sale matching. |
 | `ANTHROPIC_API_KEY` | Optional, from [console.anthropic.com](https://console.anthropic.com). Turns on the Mixologist's chat and drink ideas. `ANTHROPIC_MODEL` sets the default Claude model (`claude-opus-5-5`); admins can switch it in **Settings → Server admin**. |
+| `AI_MESSAGES_PER_HOUR` | How many AI requests one person can send per hour, so a busy household can't run up the Claude bill. Default `30`; `0` turns the cap off. |
+| `ALLOW_PRIVATE_FETCH` | Recipe import and feeds won't fetch links that point into your home network. Set to `true` if you import from your own LAN servers. |
 
 ## Putting it on the internet
 
@@ -107,6 +109,8 @@ cd web && npx cap add android && npx cap open android   # then Build → Build A
 ```
 
 Tagging a release (`git tag v0.1.0 && git push --tags`) builds the Docker image, the EXE and the APK in GitHub Actions.
+
+To publish a signed Android release instead of a debug build, add four repository secrets: `ANDROID_KEYSTORE_BASE64` (your `.jks` file, base64-encoded), `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS` and `ANDROID_KEY_PASSWORD`. Keep the keystore safe: every future update has to be signed with the same key. Phones that installed an older debug-signed APK need to uninstall it once before installing the signed one.
 
 ## Privacy
 
