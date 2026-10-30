@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { lazy, Suspense, useEffect, useState } from 'react';
 import { NavLink, Route, Routes, useLocation } from 'react-router-dom';
 import { useApp } from './state.tsx';
 import { RaccoonAvatar } from './components/Raccoon.tsx';
@@ -8,17 +8,19 @@ import { Dashboard } from './pages/Dashboard.tsx';
 import { Inventory } from './pages/Inventory.tsx';
 import { Recipes } from './pages/Recipes.tsx';
 import { RecipeDetail } from './pages/RecipeDetail.tsx';
-import { RecipeEdit } from './pages/RecipeEdit.tsx';
-import { ImportPage } from './pages/Import.tsx';
 import { Shopping } from './pages/Shopping.tsx';
 import { MealPlan } from './pages/MealPlan.tsx';
-import { Deals } from './pages/Deals.tsx';
-import { Mixologist } from './pages/Mixologist.tsx';
-import { Feed } from './pages/Feed.tsx';
-import { Settings } from './pages/Settings.tsx';
 import { PublicRecipe, Community } from './pages/Public.tsx';
-import { Chef } from './pages/Chef.tsx';
 import { Modal } from './components/Dialog.tsx';
+
+// The bigger, less-visited pages load the first time they're opened, so the app starts faster on tablets.
+const RecipeEdit = lazy(() => import('./pages/RecipeEdit.tsx').then((m) => ({ default: m.RecipeEdit })));
+const ImportPage = lazy(() => import('./pages/Import.tsx').then((m) => ({ default: m.ImportPage })));
+const Deals = lazy(() => import('./pages/Deals.tsx').then((m) => ({ default: m.Deals })));
+const Mixologist = lazy(() => import('./pages/Mixologist.tsx').then((m) => ({ default: m.Mixologist })));
+const Feed = lazy(() => import('./pages/Feed.tsx').then((m) => ({ default: m.Feed })));
+const Settings = lazy(() => import('./pages/Settings.tsx').then((m) => ({ default: m.Settings })));
+const Chef = lazy(() => import('./pages/Chef.tsx').then((m) => ({ default: m.Chef })));
 
 const NAV = [
   { to: '/', ico: '🏠', label: 'Home', end: true },
@@ -101,25 +103,27 @@ export function App() {
     <div className="layout">
       <Rail />
       <main className="main">
-        <Routes>
-          <Route path="/" element={<Dashboard />} />
-          <Route path="/inventory" element={<Inventory />} />
-          <Route path="/recipes" element={<Recipes />} />
-          <Route path="/recipes/new" element={<RecipeEdit />} />
-          <Route path="/recipes/import" element={<ImportPage />} />
-          <Route path="/recipes/community" element={<Community />} />
-          <Route path="/recipes/:id" element={<RecipeDetail />} />
-          <Route path="/recipes/:id/edit" element={<RecipeEdit />} />
-          <Route path="/shopping" element={<Shopping />} />
-          <Route path="/plan" element={<MealPlan />} />
-          <Route path="/mixologist" element={<Mixologist />} />
-          <Route path="/chef" element={<Chef />} />
-          <Route path="/deals" element={<Deals />} />
-          <Route path="/feed" element={<Feed />} />
-          <Route path="/settings" element={<Settings />} />
-          <Route path="/home/new" element={<HomeSetup inline />} />
-          <Route path="*" element={<div className="card">That page wandered off. <NavLink to="/">Go home</NavLink></div>} />
-        </Routes>
+        <Suspense fallback={<div className="center-screen"><RaccoonAvatar variant="chef" size={72} title="Loading" /></div>}>
+          <Routes>
+            <Route path="/" element={<Dashboard />} />
+            <Route path="/inventory" element={<Inventory />} />
+            <Route path="/recipes" element={<Recipes />} />
+            <Route path="/recipes/new" element={<RecipeEdit />} />
+            <Route path="/recipes/import" element={<ImportPage />} />
+            <Route path="/recipes/community" element={<Community />} />
+            <Route path="/recipes/:id" element={<RecipeDetail />} />
+            <Route path="/recipes/:id/edit" element={<RecipeEdit />} />
+            <Route path="/shopping" element={<Shopping />} />
+            <Route path="/plan" element={<MealPlan />} />
+            <Route path="/mixologist" element={<Mixologist />} />
+            <Route path="/chef" element={<Chef />} />
+            <Route path="/deals" element={<Deals />} />
+            <Route path="/feed" element={<Feed />} />
+            <Route path="/settings" element={<Settings />} />
+            <Route path="/home/new" element={<HomeSetup inline />} />
+            <Route path="*" element={<div className="card">That page wandered off. <NavLink to="/">Go home</NavLink></div>} />
+          </Routes>
+        </Suspense>
       </main>
       <BottomBar />
     </div>

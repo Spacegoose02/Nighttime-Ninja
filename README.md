@@ -19,6 +19,7 @@
 - **Feed**: follow cooks' YouTube channels, blogs or any RSS feed and watch new videos in the app.
 - **Home Assistant**: token-based API with a summary sensor and a shopping-list service.
 - **Themes and raccoons**: six themes and eight raccoon chef avatars.
+- **Live and offline**: changes show up on every screen in the home right away, and the shopping list keeps working with no signal in the store (it syncs when you're back). Install it from the browser like an app. Offline use needs https, which browsers require for it.
 - **Runs everywhere**: Docker (with an Unraid template), the browser, an Android APK, and a Windows EXE.
 
 ## Quick start with Docker

@@ -17,3 +17,8 @@ createRoot(document.getElementById('root')!).render(
     </BrowserRouter>
   </StrictMode>,
 );
+
+// Installable app and offline shopping list. Browsers only allow this on https (or localhost).
+if ('serviceWorker' in navigator && import.meta.env.PROD) {
+  window.addEventListener('load', () => { void navigator.serviceWorker.register('/sw.js'); });
+}
