@@ -64,3 +64,17 @@ test('if the save still fails, the reply says so instead of pretending', async (
   assert.match(out.reply, /didn't actually save/);
   assert.equal(out.actions.length, 0);
 });
+
+test('a repeat save finds the recipe already in the book', async () => {
+  const { openMemoryDb } = await import('../db.ts');
+  const { existingRecipeId } = await import('./aichat.ts');
+  const { saveRecipe } = await import('./recipes.ts');
+  const db = openMemoryDb();
+  db.prepare("INSERT INTO homes (id, name, join_code, calendar_token) VALUES ('h', 'Home', 'CODE1234', 'tok')").run();
+  const base = { description: '', servings: 4, prepMinutes: null, cookMinutes: null, sourceUrl: null, image: null, ingredients: [], instructions: [], tags: [] };
+  assert.equal(existingRecipeId(db, 'h', 'Biscuits'), undefined);
+  const id = saveRecipe(db, 'h', { ...base, title: 'Biscuits' }, null);
+  assert.equal(existingRecipeId(db, 'h', '  biscuits '), id);
+  saveRecipe(db, 'h', { ...base, title: 'Biscuits', servings: 8 }, null, existingRecipeId(db, 'h', 'Biscuits'));
+  assert.equal((db.prepare("SELECT COUNT(*) AS n FROM recipes WHERE title = 'Biscuits'").get() as { n: number }).n, 1);
+});

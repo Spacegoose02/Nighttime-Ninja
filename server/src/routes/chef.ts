@@ -9,7 +9,7 @@ import type { Ingredient } from '../../../shared/recipe.ts';
 import { checkIngredients, loadRecipe, saveRecipe, stockIndex } from './recipes.ts';
 import { addShoppingItem } from './shopping.ts';
 import { ask, claude, keepAlive, stockForPrompt, textOf } from './mixologist.ts';
-import { runChat, TOOL_RULES } from './aichat.ts';
+import { existingRecipeId, runChat, TOOL_RULES } from './aichat.ts';
 
 const PERSONA = `You are Gordy Scavengé, the master chef inside Nighttime Ninja, a home kitchen app run by raccoon chefs. You're a raccoon yourself: an absolute masterchef with warm Southern hospitality.
 
@@ -275,10 +275,12 @@ export function chefRoutes(app: FastifyInstance, db: DatabaseSync): void {
           const r = cleanRecipe(input as Partial<PlainRecipe>);
           if (!r.ingredients.length) throw new Error('A recipe needs its ingredients to be saved. Include them.');
           const tags = Array.isArray(input.tags) ? input.tags.map(String).slice(0, 8) : [];
-          const id = saveRecipe(db, ctx.homeId, { ...r, sourceUrl: null, image: null, tags: ['gordy', ...tags] }, userId);
+          // Saving the same recipe again updates it instead of adding another copy.
+          const existing = existingRecipeId(db, ctx.homeId, r.title);
+          const id = saveRecipe(db, ctx.homeId, { ...r, sourceUrl: null, image: null, tags: ['gordy', ...tags] }, userId, existing);
           if (!db.prepare('SELECT 1 FROM recipes WHERE id = ?').get(id)) throw new Error('The save did not stick');
-          actions.push({ type: 'saved', label: `Saved ${r.title}`, recipeId: id });
-          return `Saved "${r.title}" to the recipe book.`;
+          actions.push({ type: 'saved', label: `${existing ? 'Updated' : 'Saved'} ${r.title}`, recipeId: id });
+          return existing ? `"${r.title}" was already in the recipe book, so it was updated instead of copied.` : `Saved "${r.title}" to the recipe book.`;
         }
         throw new Error(`Unknown tool ${name}`);
       },

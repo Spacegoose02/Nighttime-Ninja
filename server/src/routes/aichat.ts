@@ -17,7 +17,7 @@ export const TOOL_RULES = `
 ## Saving and the shopping list (important)
 - Only say something is saved, kept, or added after the tool for it has run in this reply and succeeded. Never claim it otherwise.
 - When asked to save, call the save tool with the full recipe. Then reply with one short line confirming it. Do not write the recipe out again.
-- Earlier replies note what the app already did, like "(Done in the app: Saved Biscuits)". Don't save the same recipe again unless asked.
+- Earlier replies note what the app already did, like "(Done in the app: Saved Biscuits)". Don't save the same recipe again unless asked. Saving a recipe with the same title updates it rather than making a copy, so keep the title the same when saving changes.
 - Don't repeat a recipe you already gave unless the person asks for changes.`;
 
 const SAVE_INTENT = /\b(save|saving|keep|store|remember|bookmark)\b|\badd (it|this|that|them) to (my |the )?(recipes?|recipe book|book|drinks)\b/i;
@@ -194,4 +194,10 @@ export function chatHistoryRoutes(app: FastifyInstance, db: DatabaseSync): void 
     db.prepare('DELETE FROM ai_chats WHERE id = ? AND home_id = ? AND user_id IS ?').run((req.params as { id: string }).id, ctx.homeId, ctx.user?.id ?? null);
     return { ok: true };
   });
+}
+
+/** A recipe with this title already in the home, so a repeat save updates it instead of adding a copy. */
+export function existingRecipeId(db: DatabaseSync, homeId: string, title: string): string | undefined {
+  const row = db.prepare('SELECT id FROM recipes WHERE home_id = ? AND title = ? COLLATE NOCASE ORDER BY updated_at DESC').get(homeId, title.trim()) as Row | undefined;
+  return (row?.id as string | undefined) ?? undefined;
 }

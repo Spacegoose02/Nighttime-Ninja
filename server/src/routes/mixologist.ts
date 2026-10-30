@@ -8,7 +8,7 @@ import { HttpError, num, str } from '../util.ts';
 import type { Ingredient } from '../../../shared/recipe.ts';
 import { checkIngredients, saveRecipe, stockIndex } from './recipes.ts';
 import { addShoppingItem } from './shopping.ts';
-import { runChat, TOOL_RULES } from './aichat.ts';
+import { existingRecipeId, runChat, TOOL_RULES } from './aichat.ts';
 
 const PERSONA = `You are the Mixologist inside Nighttime Ninja, a home kitchen app run by a raccoon chef.
 
@@ -193,7 +193,7 @@ function cleanDrink(d: Partial<Drink>): Drink {
   };
 }
 
-export function saveDrink(db: DatabaseSync, homeId: string, d: Drink, userId: string | null): string {
+export function saveDrink(db: DatabaseSync, homeId: string, d: Drink, userId: string | null, id?: string): string {
   const extra = [d.glass && `Glass: ${d.glass}.`, d.garnish && `Garnish: ${d.garnish}.`].filter(Boolean).join(' ');
   return saveRecipe(db, homeId, {
     title: d.title,
@@ -202,7 +202,7 @@ export function saveDrink(db: DatabaseSync, homeId: string, d: Drink, userId: st
     ingredients: d.ingredients,
     instructions: d.instructions,
     tags: ['cocktail', ...(d.style ? [d.style.toLowerCase()] : [])],
-  }, userId);
+  }, userId, id);
 }
 
 /** Marks each ingredient have/missing against the pantry. Drinks missing one or two things are "almost". */
@@ -292,10 +292,12 @@ export function mixologistRoutes(app: FastifyInstance, db: DatabaseSync): void {
         if (name === 'save_drink_recipe') {
           const drink = cleanDrink(input as Partial<Drink>);
           if (!drink.ingredients.length) throw new Error('A drink needs its ingredients to be saved. Include them.');
-          const id = saveDrink(db, ctx.homeId, drink, userId);
+          // Saving the same drink again updates it instead of adding another copy.
+          const existing = existingRecipeId(db, ctx.homeId, drink.title);
+          const id = saveDrink(db, ctx.homeId, drink, userId, existing);
           if (!db.prepare('SELECT 1 FROM recipes WHERE id = ?').get(id)) throw new Error('The save did not stick');
-          actions.push({ type: 'saved', label: `Saved ${drink.title}`, recipeId: id });
-          return `Saved "${drink.title}" to the recipe book.`;
+          actions.push({ type: 'saved', label: `${existing ? 'Updated' : 'Saved'} ${drink.title}`, recipeId: id });
+          return existing ? `"${drink.title}" was already in the recipe book, so it was updated instead of copied.` : `Saved "${drink.title}" to the recipe book.`;
         }
         throw new Error(`Unknown tool ${name}`);
       },
