@@ -491,3 +491,26 @@ test('AI chat streams its reply as lines of JSON when the browser asks for it', 
     config.anthropic = saved;
   }
 });
+
+test('changes in a home reach every open screen in that home, and only that home', async () => {
+  const { subscribe } = await import('./live.ts');
+  const { app, login, call } = await setup();
+  const a = await login('Shopper');
+  const { body: home } = await call(a, 'POST', '/api/homes', { name: 'Live' });
+  const { body: other } = await call(a, 'POST', '/api/homes', { name: 'Elsewhere' });
+  const heard: { area: string; by: string | null }[] = [];
+  const off = subscribe(home.id, (c) => heard.push(c));
+  try {
+    await app.inject({ method: 'POST', url: `/api/homes/${home.id}/shopping`, payload: { name: 'Milk' }, headers: { ...a, 'x-nn-client': 'tab-1' } });
+    await call(a, 'POST', `/api/homes/${other.id}/shopping`, { name: 'Eggs' });
+    await call(a, 'GET', `/api/homes/${home.id}/shopping`);
+    await call(a, 'POST', `/api/homes/${home.id}/shopping`, {});
+    assert.deepEqual(heard, [{ area: 'shopping', by: 'tab-1' }]);
+  } finally {
+    off();
+  }
+  // Someone outside the home can't listen in.
+  const stranger = await login('Stranger');
+  const res = await app.inject({ method: 'GET', url: `/api/homes/${home.id}/events`, headers: stranger });
+  assert.equal(res.statusCode, 404);
+});

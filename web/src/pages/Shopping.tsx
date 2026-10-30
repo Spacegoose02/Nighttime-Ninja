@@ -1,14 +1,31 @@
 import { useMemo, useState } from 'react';
 import { api, type HomeDetail, type ShoppingItem } from '../api.ts';
 import { useApp, useLoad } from '../state.tsx';
+import { pending, sendOrQueue } from '../offline.ts';
 import { amount } from '../format.ts';
 import { CATEGORIES, guessItem } from '../../../shared/catalog.ts';
 
 interface Suggestion { name: string; category: string; timesBought: number }
 
+function withPending(list: ShoppingItem[], base: string): ShoppingItem[] {
+  let out = list;
+  pending().forEach((p, n) => {
+    const id = p.path.startsWith(`${base}/shopping/`) ? p.path.slice(base.length + 10) : null;
+    const body = (p.body ?? {}) as { checked?: boolean; text?: string };
+    if (id && p.method === 'PATCH' && body.checked != null) out = out.map((i) => (i.id === id ? { ...i, checked: body.checked! } : i));
+    else if (id && p.method === 'DELETE') out = out.filter((i) => i.id !== id);
+    else if (p.path === `${base}/shopping` && p.method === 'POST' && body.text && !out.some((i) => i.id === `pending-${n}`)) {
+      out = [...out, { id: `pending-${n}`, name: body.text, quantity: null, unit: null, category: guessItem(body.text).category, note: null, checked: false, createdAt: '', checkedAt: null, addedBy: null }];
+    }
+  });
+  return out;
+}
+
 export function Shopping() {
   const { base, me, toast } = useApp();
-  const [items, reload] = useLoad<ShoppingItem[]>(`${base}/shopping`);
+  const [loaded, reload, , setItems] = useLoad<ShoppingItem[]>(`${base}/shopping`);
+  // Opened with no signal: show the list as it will be once the waiting changes are sent.
+  const items = useMemo(() => loaded && withPending(loaded, base), [loaded, base]);
   const [home] = useLoad<HomeDetail>(base);
   const order = home?.settings.categories ?? [...CATEGORIES];
   const [suggestions, reloadSugg] = useLoad<Suggestion[]>(`${base}/shopping/suggestions`);
@@ -18,17 +35,47 @@ export function Shopping() {
   const [stock, setStock] = useState(true);
 
   const refresh = () => Promise.all([reload(), reloadSugg()]);
+  const offline = () => toast("No signal. Saved on this device; it'll sync when you're back online.");
 
+  // The list updates on screen straight away; with no signal the change waits on this device and syncs later.
   async function add(t: string) {
     if (!t.trim()) return;
-    await api(`${base}/shopping`, { body: { text: t } });
     setText('');
-    await refresh();
+    const tempId = `pending-${Date.now()}`;
+    setItems((cur) => [...(cur ?? []), { id: tempId, name: t.trim(), quantity: null, unit: null, category: guessItem(t).category, note: null, checked: false, createdAt: '', checkedAt: null, addedBy: null }]);
+    try {
+      if (await sendOrQueue(`${base}/shopping`, 'POST', { text: t })) await refresh();
+      else {
+        // The waiting change itself now shows the item (see withPending), so drop the stand-in.
+        setItems((cur) => (cur ?? []).filter((i) => i.id !== tempId));
+        offline();
+      }
+    } catch (e) {
+      setItems((cur) => (cur ?? []).filter((i) => i.id !== tempId));
+      setText(t);
+      toast((e as Error).message);
+    }
   }
 
   async function toggle(i: ShoppingItem) {
-    await api(`${base}/shopping/${i.id}`, { method: 'PATCH', body: { checked: !i.checked, addToInventory: stock } });
-    await refresh();
+    setItems((cur) => (cur ?? []).map((x) => (x.id === i.id ? { ...x, checked: !i.checked } : x)));
+    try {
+      if (await sendOrQueue(`${base}/shopping/${i.id}`, 'PATCH', { checked: !i.checked, addToInventory: stock })) await refresh();
+      else offline();
+    } catch (e) {
+      toast((e as Error).message);
+      await reload();
+    }
+  }
+
+  async function remove(i: ShoppingItem) {
+    setItems((cur) => (cur ?? []).filter((x) => x.id !== i.id));
+    try {
+      if (!(await sendOrQueue(`${base}/shopping/${i.id}`, 'DELETE', undefined))) offline();
+    } catch (e) {
+      toast((e as Error).message);
+      await reload();
+    }
   }
 
   const groups = useMemo(() => {
@@ -78,13 +125,13 @@ export function Shopping() {
               <div className="list">
                 {list.map((i) => (
                   <div key={i.id} className="list-item">
-                    <button className="check" onClick={() => toggle(i)} aria-label={`Check off ${i.name}`} />
+                    <button className="check" onClick={() => toggle(i)} disabled={i.id.startsWith('pending-')} aria-label={`Check off ${i.name}`} />
                     <span style={{ fontSize: '1.5rem' }} aria-hidden>{guessItem(i.name).icon}</span>
                     <div style={{ flex: 1 }}>
                       <div style={{ fontWeight: 600 }}>{i.quantity != null && <span>{amount(i.quantity, i.unit, me?.user.units)} </span>}{i.name}</div>
                       {(i.note || i.addedBy) && <div className="small muted">{[i.note, i.addedBy && `added by ${i.addedBy}`].filter(Boolean).join(' · ')}</div>}
                     </div>
-                    <button className="ghost icon" aria-label="Remove" onClick={async () => { await api(`${base}/shopping/${i.id}`, { method: 'DELETE' }); await reload(); }}>✕</button>
+                    <button className="ghost icon" aria-label={`Remove ${i.name}`} disabled={i.id.startsWith('pending-')} onClick={() => remove(i)}>✕</button>
                   </div>
                 ))}
               </div>

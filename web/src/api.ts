@@ -8,10 +8,16 @@ export class ApiError extends Error {
   }
 }
 
+/**
+ * Names this browser tab in every request, so live updates can skip the tab's own changes.
+ * (Not crypto.randomUUID: that only exists on https, and plenty of home servers are plain http.)
+ */
+export const CLIENT_ID = Math.random().toString(36).slice(2) + Date.now().toString(36);
+
 export async function api<T = unknown>(path: string, opts: { method?: string; body?: unknown } = {}): Promise<T> {
   const res = await fetch(path, {
     method: opts.method ?? (opts.body === undefined ? 'GET' : 'POST'),
-    headers: opts.body === undefined ? {} : { 'content-type': 'application/json' },
+    headers: { 'x-nn-client': CLIENT_ID, ...(opts.body === undefined ? {} : { 'content-type': 'application/json' }) },
     body: opts.body === undefined ? undefined : JSON.stringify(opts.body),
     credentials: 'same-origin',
   });
@@ -33,7 +39,7 @@ export async function api<T = unknown>(path: string, opts: { method?: string; bo
 export async function apiStream<T = unknown>(path: string, body: unknown, onText: (text: string) => void): Promise<T> {
   const res = await fetch(path, {
     method: 'POST',
-    headers: { 'content-type': 'application/json', accept: 'application/x-ndjson' },
+    headers: { 'content-type': 'application/json', accept: 'application/x-ndjson', 'x-nn-client': CLIENT_ID },
     body: JSON.stringify(body),
     credentials: 'same-origin',
   });

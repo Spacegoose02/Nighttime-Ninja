@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useDialogs } from '../components/Dialog.tsx';
+import { forgetDevice } from '../offline.ts';
 import { api, type HomeDetail } from '../api.ts';
 import { useApp, useLoad } from '../state.tsx';
 import { AVATARS, AVATAR_LABELS, RaccoonAvatar } from '../components/Raccoon.tsx';
@@ -76,7 +77,7 @@ function Profile() {
       </div>
       <div className="row">
         <span className="spacer" />
-        <button className="danger" onClick={async () => { await api('/api/auth/logout', { body: {} }); location.href = '/'; }}>Sign out</button>
+        <button className="danger" onClick={async () => { await api('/api/auth/logout', { body: {} }); await forgetDevice(); location.href = '/'; }}>Sign out</button>
       </div>
     </div>
   );
