@@ -236,7 +236,8 @@ export function installHardening(app: FastifyInstance): void {
     if (!req.url.startsWith('/api/') || req.url.startsWith('/api/calendar/')) {
       reply.header('content-security-policy', [
         "default-src 'self'",
-        "script-src 'self'",
+        // wasm-unsafe-eval lets the barcode reader (WebAssembly) start; it does not allow eval() of JavaScript.
+        "script-src 'self' 'wasm-unsafe-eval'",
         "style-src 'self' 'unsafe-inline'",
         "img-src 'self' data: blob: https: http:",
         "frame-src https://www.youtube-nocookie.com",

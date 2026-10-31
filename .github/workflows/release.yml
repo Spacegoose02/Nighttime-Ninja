@@ -56,6 +56,12 @@ jobs:
       #   npx capacitor-assets generate --android --iconBackgroundColor "#2f7d4f" --splashBackgroundColor "#f3f7f2" --splashBackgroundColorDark "#0f1612"
       - name: Add the raccoon app icon and splash screen
         run: cp -r web/android-res/. web/android/app/src/main/res/
+      # Barcode scanning uses the camera from the web page; Android only offers it to apps that declare it.
+      - name: Let the app ask for the camera
+        run: |
+          manifest=web/android/app/src/main/AndroidManifest.xml
+          grep -q 'android.permission.CAMERA' "$manifest" || sed -i 's#</manifest>#    <uses-permission android:name="android.permission.CAMERA" />\n    <uses-feature android:name="android.hardware.camera" android:required="false" />\n</manifest>#' "$manifest"
+          grep -n 'CAMERA' "$manifest"
       # A signed release build needs four repository secrets (Settings > Secrets and variables > Actions):
       #   ANDROID_KEYSTORE_BASE64  the .jks file, base64-encoded (base64 -w0 release.jks)
       #   ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS, ANDROID_KEY_PASSWORD
