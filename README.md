@@ -9,7 +9,7 @@
 - **Recipes** in one standard format, imported from recipe websites (schema.org), pasted text, files, or **KitchenOwl**. Scale servings, cook mode, and share any recipe with a public link.
 - **Ready to cook**: every recipe shows whether your pantry has what it needs. Tap **I cooked this** and the ingredients are taken out of inventory.
 - **Pantry inventory** with green photo/icon tiles, low-stock warnings, expiry dates and a full **history** of every change.
-- **Shopping list** with quick add (“2 lb chicken, milk, 3 avocados”), suggestions from what you buy most, purchase history, and checked-off items flowing into the pantry.
+- **Shopping lists**: Main plus as many as you like (a quick trip, long-term buys), with items you can move between them. Quick add (“2 lb chicken, milk, 3 avocados”), suggestions from what you buy most, purchase history, and checked-off items flowing into the pantry.
 - **7-day meal plan** that can fill the shopping list for the week and shows up in **Google Calendar** as a subscribed calendar.
 - **Homes**: create a home or join one with a code. **Home managers** run members and settings; **server admins** see everyone.
 - **Strong sign-in** that's safe to put on the internet: passwords (scrypt), **two-factor codes** with recovery codes, **passkeys**, **Google** (OIDC), invite-only sign-up, rate limiting, a list of signed-in devices you can sign out, and **pairing codes** for tablets. Name-only quick sign-in only works from your home network.
@@ -68,7 +68,7 @@ All settings are environment variables. See [.env.example](.env.example).
 
 ## Moving from KitchenOwl
 
-Open **Recipes → Import**. Either connect straight to your KitchenOwl server with a long-lived token (Settings → Account in KitchenOwl), or upload the JSON from KitchenOwl's household export. Recipes come over with photos, tags, times and servings; KitchenOwl's item catalog becomes quick-add suggestions; shopping lists land on your list. Recipes you already have are skipped, so you can run it again safely.
+Open **Recipes → Import**. Either connect straight to your KitchenOwl server with a long-lived token (Settings → Account in KitchenOwl), or upload the JSON from KitchenOwl's household export. Recipes come over with photos, tags, times and servings; KitchenOwl's item catalog becomes quick-add suggestions; each KitchenOwl shopping list comes over as its own list (the first one on Main). Recipes you already have are skipped, so you can run it again safely.
 
 ## Apps
 

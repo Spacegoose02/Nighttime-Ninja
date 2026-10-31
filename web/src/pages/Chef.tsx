@@ -3,6 +3,7 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { useDialogs } from '../components/Dialog.tsx';
 import { api, type RecipeSummary } from '../api.ts';
 import { useApp, useLoad } from '../state.tsx';
+import { useListPicker } from '../components/ListPicker.tsx';
 import { amount, todayIso } from '../format.ts';
 import { Chat, ChatAvatar, Markdown, type ChatPersona } from '../components/Chat.tsx';
 
@@ -155,6 +156,7 @@ function Perfect({ disabled }: { disabled: boolean }) {
 
 function RecipeResult({ recipe, heading, pitch, replaceId, planner }: { recipe: GordyRecipe; heading?: string; pitch?: string; replaceId?: string | null; planner?: boolean }) {
   const { base, toast, me } = useApp();
+  const { pick, picker } = useListPicker();
   const dialogs = useDialogs();
   const [savedId, setSavedId] = useState<string | null>(null);
   const [date, setDate] = useState(todayIso());
@@ -175,15 +177,18 @@ function RecipeResult({ recipe, heading, pitch, replaceId, planner }: { recipe: 
   }
 
   async function shop() {
+    const list = await pick();
+    if (!list) return;
     for (const m of recipe.missing) {
-      await api(`${base}/shopping`, { body: { name: m.name, quantity: m.quantity, unit: m.unit, note: `for ${recipe.title}` } });
+      await api(`${base}/shopping`, { body: { name: m.name, quantity: m.quantity, unit: m.unit, note: `for ${recipe.title}`, listId: list.id } });
     }
     setListed(true);
-    toast(`Added ${recipe.missing.length} item${recipe.missing.length === 1 ? '' : 's'} to the shopping list`);
+    toast(`Added ${recipe.missing.length} item${recipe.missing.length === 1 ? '' : 's'} to ${list.label}`);
   }
 
   return (
     <div className="card stack">
+      {picker}
       {heading && <span className="small muted">{heading}</span>}
       <div className="row">
         <h2 style={{ margin: 0, flex: 1 }}>{recipe.title}</h2>

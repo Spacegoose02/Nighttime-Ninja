@@ -3,6 +3,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import { Modal, useDialogs } from '../components/Dialog.tsx';
 import { api, type Item, type Nutrition, type RecipeFull } from '../api.ts';
 import { useApp, useLoad } from '../state.tsx';
+import { useListPicker } from '../components/ListPicker.tsx';
 import { amount, minutes, todayIso } from '../format.ts';
 import { celsiusToFahrenheitText } from '../../../shared/units.ts';
 import { findTimers } from '../../../shared/timers.ts';
@@ -96,6 +97,7 @@ const AVAIL = { have: ['ok', '✓'], unknown: ['ok', '✓'], low: ['warn', 'low'
 export function RecipeDetail() {
   const { id } = useParams();
   const { base, me, toast } = useApp();
+  const { pick, picker } = useListPicker();
   const dialogs = useDialogs();
   const nav = useNavigate();
   const [servings, setServings] = useState<number | null>(null);
@@ -156,8 +158,10 @@ export function RecipeDetail() {
   }
 
   async function toList(all: boolean) {
-    const r = await api<{ added: unknown[] }>(`${base}/recipes/${id}/to-shopping`, { body: { servings, all } });
-    toast(r.added.length ? `Added ${r.added.length} items to the shopping list` : 'You already have everything');
+    const list = await pick();
+    if (!list) return;
+    const r = await api<{ added: unknown[] }>(`${base}/recipes/${id}/to-shopping`, { body: { servings, all, listId: list.id } });
+    toast(r.added.length ? `Added ${r.added.length} items to ${list.label}` : 'You already have everything');
   }
 
   async function meta(change: { favorite?: boolean; rating?: number | null; notes?: string; collections?: string[] }) {
@@ -188,6 +192,7 @@ export function RecipeDetail() {
 
   return (
     <div className={`stack${cookMode ? ' cook-mode' : ''}`}>
+      {picker}
       <div className="topbar">
         <button className="ghost" onClick={() => nav(-1)}>← Back</button>
         <h1>{recipe.title}</h1>
