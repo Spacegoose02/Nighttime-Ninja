@@ -5,7 +5,7 @@ import { tx, type Row } from '../db.ts';
 import { config } from '../config.ts';
 import { HttpError, localDate, newId, num, str } from '../util.ts';
 import { checkIngredients, loadRecipe, stockIndex } from './recipes.ts';
-import { addShoppingItem } from './shopping.ts';
+import { addShoppingItem, listFor } from './shopping.ts';
 import { body, date, flag, number, text } from '../schemas.ts';
 import { matchKey } from '../../../shared/recipe.ts';
 import { convert } from '../../../shared/units.ts';
@@ -121,7 +121,7 @@ export function mealPlanRoutes(app: FastifyInstance, db: DatabaseSync): void {
   });
 
   // Puts every ingredient for the planned meals on the shopping list, minus what's already in stock.
-  app.post('/api/homes/:homeId/mealplan/to-shopping', { schema: body({ start: date, days: number }) }, async (req) => {
+  app.post('/api/homes/:homeId/mealplan/to-shopping', { schema: body({ start: date, days: number, listId: text }) }, async (req) => {
     const ctx = homeCtx(db, req);
     const b = (req.body ?? {}) as Row;
     const start = isDate(b.start) ? b.start : localDate();
@@ -151,7 +151,9 @@ export function mealPlanRoutes(app: FastifyInstance, db: DatabaseSync): void {
         if (n.unit == null && i.unit) n.unit = i.unit;
       }
     }
-    const open = db.prepare('SELECT * FROM shopping_items WHERE home_id = ? AND checked = 0').all(ctx.homeId) as Row[];
+    // Tops up the list it's going to (Main unless another was picked).
+    const listId = listFor(db, ctx.homeId, (req.body as Row | null)?.listId);
+    const open = db.prepare('SELECT * FROM shopping_items WHERE list_id = ? AND checked = 0').all(listId) as Row[];
     let count = 0;
     tx(db, () => {
       for (const n of needs.values()) {
@@ -165,7 +167,7 @@ export function mealPlanRoutes(app: FastifyInstance, db: DatabaseSync): void {
           quantity = Math.round((quantity - have) * 100) / 100;
           if (quantity <= 0) continue;
         }
-        addShoppingItem(db, ctx.homeId, { name: (onList?.name as string | undefined) ?? n.name, quantity, unit: n.unit, note: `for ${n.titles.join(', ')}` }, ctx.user?.id ?? null);
+        addShoppingItem(db, ctx.homeId, { name: (onList?.name as string | undefined) ?? n.name, quantity, unit: n.unit, note: `for ${n.titles.join(', ')}`, listId }, ctx.user?.id ?? null);
         count++;
       }
     });

@@ -91,6 +91,75 @@ test('shopping list quick-add, merge, check-off to inventory', async () => {
   assert.equal(sugg[0].name, 'chicken thighs');
 });
 
+test('more than one shopping list: Main, quick trips and long-term lists', async () => {
+  const { login, call } = await setup();
+  const a = await login('Lister');
+  const { body: home } = await call(a, 'POST', '/api/homes', { name: 'Home' });
+  const base = `/api/homes/${home.id}`;
+  type List = { id: string; name: string; open: number; main: boolean };
+  type Item = { id: string; name: string; quantity: number | null; checked: boolean; listId: string };
+
+  // Every home starts with Main, and adding with no list (older apps) goes there.
+  const [main] = (await call(a, 'GET', `${base}/shopping/lists`)).body as List[];
+  assert.equal(main.name, 'Main');
+  assert.equal(main.main, true);
+  await call(a, 'POST', `${base}/shopping`, { text: '2 milk, bread' });
+
+  const quick = (await call(a, 'POST', `${base}/shopping/lists`, { name: 'Quick trip' })).body as List;
+  const longTerm = (await call(a, 'POST', `${base}/shopping/lists`, { name: 'Long term' })).body as List;
+  assert.equal((await call(a, 'POST', `${base}/shopping/lists`, { name: 'quick TRIP' })).status, 409, 'names are unique');
+
+  // Each list only shows its own items, and merging only happens inside one list.
+  await call(a, 'POST', `${base}/shopping`, { text: '1 milk', listId: quick.id });
+  await call(a, 'POST', `${base}/shopping`, { name: 'Stand mixer', listId: longTerm.id });
+  const mainItems = (await call(a, 'GET', `${base}/shopping?list=${main.id}`)).body as Item[];
+  const quickItems = (await call(a, 'GET', `${base}/shopping?list=${quick.id}`)).body as Item[];
+  assert.deepEqual(mainItems.map((i) => i.name).sort(), ['bread', 'milk']);
+  assert.equal(mainItems.find((i) => i.name === 'milk')!.quantity, 2);
+  assert.deepEqual(quickItems.map((i) => [i.name, i.quantity]), [['milk', 1]]);
+  assert.deepEqual(((await call(a, 'GET', `${base}/shopping`)).body as Item[]).map((i) => i.listId).filter((id) => id !== main.id), [], 'no list means Main');
+  const counts = (await call(a, 'GET', `${base}/shopping/lists`)).body as List[];
+  assert.deepEqual(counts.map((l) => [l.name, l.open]), [['Main', 2], ['Quick trip', 1], ['Long term', 1]]);
+
+  // Moving milk from Main to the quick trip adds the amounts together there.
+  const milk = mainItems.find((i) => i.name === 'milk')!;
+  const moved = (await call(a, 'PATCH', `${base}/shopping/${milk.id}`, { listId: quick.id })).body as Item;
+  assert.equal(moved.listId, quick.id);
+  assert.equal(moved.quantity, 3);
+  assert.equal(((await call(a, 'GET', `${base}/shopping?list=${quick.id}`)).body as Item[]).length, 1);
+
+  // Ticking off on any list still stocks the pantry, and the pantry knows what's on any list.
+  await call(a, 'PATCH', `${base}/shopping/${moved.id}`, { checked: true });
+  await call(a, 'POST', `${base}/items`, { name: 'Stand mixer', quantity: 0 });
+  const pantry = (await call(a, 'GET', `${base}/items`)).body as { name: string; quantity: number; onShoppingList: boolean }[];
+  assert.equal(pantry.find((i) => i.name === 'milk')!.quantity, 3);
+  assert.equal(pantry.find((i) => i.name === 'Stand mixer')!.onShoppingList, true);
+
+  // Pantry "add to list" can pick a list.
+  const mixer = pantry.find((i) => i.name === 'Stand mixer') as unknown as { id: string };
+  const fromPantry = (await call(a, 'POST', `${base}/items/${mixer.id}/to-shopping`, { listId: quick.id })).body as Item;
+  assert.equal(fromPantry.listId, quick.id);
+
+  // Clearing the cart on one list leaves the others alone.
+  await call(a, 'POST', `${base}/shopping/clear-checked`, { listId: main.id });
+  assert.equal(((await call(a, 'GET', `${base}/shopping?list=${quick.id}`)).body as Item[]).filter((i) => i.checked).length, 1);
+
+  // Renaming, then deleting: what was left to buy moves to Main, and the purchase history stays.
+  assert.equal((await call(a, 'PATCH', `${base}/shopping/lists/${quick.id}`, { name: 'Corner shop' })).status, 200);
+  const del = (await call(a, 'DELETE', `${base}/shopping/lists/${quick.id}`)).body as { moved: number };
+  assert.equal(del.moved, 1);
+  const after = (await call(a, 'GET', `${base}/shopping?list=${main.id}`)).body as Item[];
+  assert.ok(after.some((i) => i.name === 'Stand mixer' && !i.checked));
+  assert.ok(((await call(a, 'GET', `${base}/shopping/history`)).body as Item[]).some((i) => i.name === 'milk'));
+  // A change that waited offline for a list that's gone lands on Main instead of being lost.
+  const late = (await call(a, 'POST', `${base}/shopping`, { name: 'Butter', listId: quick.id })).body as Item[];
+  assert.equal(late[0].listId, main.id);
+
+  // The last list can't go.
+  await call(a, 'DELETE', `${base}/shopping/lists/${longTerm.id}`);
+  assert.equal((await call(a, 'DELETE', `${base}/shopping/lists/${main.id}`)).status, 400);
+});
+
 test('meal plan, calendar feed, public sharing and API tokens', async () => {
   const { login, call, app } = await setup();
   const a = await login('Planner');

@@ -200,7 +200,9 @@ export function inventoryRoutes(app: FastifyInstance, db: DatabaseSync): void {
     const ctx = homeCtx(db, req);
     const item = db.prepare('SELECT * FROM items WHERE id = ? AND home_id = ?').get((req.params as { itemId: string }).itemId, ctx.homeId) as Row | undefined;
     if (!item) throw new HttpError(404, 'Item not found');
-    return addShoppingItem(db, ctx.homeId, { name: item.name as string, category: item.category as string, unit: item.unit as string | null }, ctx.user?.id ?? null);
+    return addShoppingItem(db, ctx.homeId, {
+      name: item.name as string, category: item.category as string, unit: item.unit as string | null, listId: str((req.body as Row | null)?.listId, 64),
+    }, ctx.user?.id ?? null);
   });
 
   // Puts back the pantry changes behind these history rows (e.g. everything one "I cooked this" took out).

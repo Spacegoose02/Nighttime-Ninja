@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Modal } from '../components/Dialog.tsx';
-import { api, type HomeDetail, type ShoppingItem } from '../api.ts';
+import { Modal, useDialogs } from '../components/Dialog.tsx';
+import { api, type HomeDetail, type ShoppingItem, type ShoppingList } from '../api.ts';
+import { rememberList } from '../components/ListPicker.tsx';
 import { useApp, useLoad } from '../state.tsx';
 import { useUrlState } from '../urlState.ts';
 import { pending, sendOrQueue } from '../offline.ts';
@@ -50,14 +51,29 @@ function LayoutEditor({ layout, all, onSave, onDelete, onClose }: {
   );
 }
 
-function withPending(list: ShoppingItem[], base: string): ShoppingItem[] {
+/** Pick where an item goes: every list but the one it's on. */
+function MoveTo({ item, lists, onPick, onClose }: { item: ShoppingItem; lists: ShoppingList[]; onPick: (l: ShoppingList) => void; onClose: () => void }) {
+  return (
+    <Modal label={`Move ${item.name}`} onClose={onClose}>
+      <h2>Move {item.name} to…</h2>
+      <div className="stack">
+        {lists.filter((l) => l.id !== item.listId).map((l) => <button key={l.id} onClick={() => onPick(l)}>🛒 {l.name}</button>)}
+      </div>
+      <div className="row"><span className="spacer" /><button onClick={onClose}>Cancel</button></div>
+    </Modal>
+  );
+}
+
+/** The list as it will be once changes waiting on this device are sent. isMain: adds that named no list go on this one. */
+function withPending(list: ShoppingItem[], base: string, listId: string, isMain: boolean): ShoppingItem[] {
   let out = list;
   pending().forEach((p, n) => {
     const id = p.path.startsWith(`${base}/shopping/`) ? p.path.slice(base.length + 10) : null;
-    const body = (p.body ?? {}) as { checked?: boolean; text?: string };
+    const body = (p.body ?? {}) as { checked?: boolean; text?: string; listId?: string };
+    const forThisList = body.listId ? body.listId === listId : isMain;
     if (id && p.method === 'PATCH' && body.checked != null) out = out.map((i) => (i.id === id ? { ...i, checked: body.checked! } : i));
     else if (id && p.method === 'DELETE') out = out.filter((i) => i.id !== id);
-    else if (p.path === `${base}/shopping` && p.method === 'POST' && body.text && !out.some((i) => i.id === `pending-${n}`)) {
+    else if (p.path === `${base}/shopping` && p.method === 'POST' && body.text && forThisList && !out.some((i) => i.id === `pending-${n}`)) {
       out = [...out, { id: `pending-${n}`, name: body.text, quantity: null, unit: null, category: guessItem(body.text).category, note: null, checked: false, createdAt: '', checkedAt: null, addedBy: null }];
     }
   });
@@ -66,9 +82,22 @@ function withPending(list: ShoppingItem[], base: string): ShoppingItem[] {
 
 export function Shopping() {
   const { base, me, toast, homeId } = useApp();
-  const [loaded, reload, , setItems] = useLoad<ShoppingItem[]>(`${base}/shopping`);
+  const dialogs = useDialogs();
+  // Which list is open: remembered on this device, Main when it's new or that list was deleted.
+  const [lists, reloadLists] = useLoad<ShoppingList[]>(`${base}/shopping/lists`);
+  const openKey = `nn-open-list-${homeId}`;
+  const [chosen, setChosen] = useState<string>(() => { try { return localStorage.getItem(openKey) ?? ''; } catch { return ''; } });
+  const current = lists?.find((l) => l.id === chosen) ?? lists?.find((l) => l.main) ?? lists?.[0] ?? null;
+  const listId = current?.id ?? null;
+  const many = (lists?.length ?? 0) > 1;
+  function openList(id: string) {
+    setChosen(id);
+    try { localStorage.setItem(openKey, id); } catch { /* private mode */ }
+  }
+  const [moving, setMoving] = useState<ShoppingItem | null>(null);
+  const [loaded, reload, , setItems] = useLoad<ShoppingItem[]>(listId ? `${base}/shopping?list=${listId}` : null);
   // Opened with no signal: show the list as it will be once the waiting changes are sent.
-  const items = useMemo(() => loaded && withPending(loaded, base), [loaded, base]);
+  const items = useMemo(() => (loaded && listId ? withPending(loaded, base, listId, !!current?.main) : null), [loaded, base, listId, current?.main]);
   const [home] = useLoad<HomeDetail>(base);
   const homeOrder = home?.settings.categories ?? [...CATEGORIES];
   const [layouts, reloadLayouts] = useLoad<Layout[]>(`${base}/store-layouts`);
@@ -85,7 +114,7 @@ export function Shopping() {
     setStore(pick);
     await reloadLayouts();
   }
-  const [suggestions, reloadSugg] = useLoad<Suggestion[]>(`${base}/shopping/suggestions`);
+  const [suggestions, reloadSugg] = useLoad<Suggestion[]>(listId ? `${base}/shopping/suggestions?list=${listId}` : null);
   const [tabParam, setTab] = useUrlState('tab', 'list');
   const tab = (['history', 'spending'].includes(tabParam) ? tabParam : 'list') as 'list' | 'history' | 'spending';
   const [history] = useLoad<ShoppingItem[]>(tab === 'history' ? `${base}/shopping/history` : null, [tab]);
@@ -93,17 +122,60 @@ export function Shopping() {
   const [stock, setStock] = useState(true);
   const [ai] = useLoad<{ available: boolean }>('/api/mixologist/status');
 
-  const refresh = () => Promise.all([reload(), reloadSugg()]);
+  const refresh = () => Promise.all([reload(), reloadSugg(), reloadLists()]);
+
+  async function newList() {
+    const name = (await dialogs.prompt('Name the new list', '', { okLabel: 'Create' }))?.trim();
+    if (!name) return;
+    try {
+      const l = await api<ShoppingList>(`${base}/shopping/lists`, { body: { name } });
+      await reloadLists();
+      openList(l.id);
+    } catch (e) { toast((e as Error).message); }
+  }
+
+  async function renameList(l: ShoppingList) {
+    const name = (await dialogs.prompt(`Rename ${l.name}`, l.name, { okLabel: 'Rename' }))?.trim();
+    if (!name || name === l.name) return;
+    try { await api(`${base}/shopping/lists/${l.id}`, { method: 'PATCH', body: { name } }); await reloadLists(); } catch (e) { toast((e as Error).message); }
+  }
+
+  async function deleteList(l: ShoppingList) {
+    // What's left to buy goes to the first list that stays (Main, or the next one when Main itself goes).
+    const main = lists?.find((x) => x.id !== l.id);
+    const ok = await dialogs.confirm(
+      l.open ? `Delete ${l.name}? The ${l.open} thing${l.open === 1 ? '' : 's'} still to buy move to ${main?.name ?? 'Main'}.` : `Delete ${l.name}?`,
+      { okLabel: 'Delete', danger: true },
+    );
+    if (!ok) return;
+    try {
+      await api(`${base}/shopping/lists/${l.id}`, { method: 'DELETE' });
+      if (main) openList(main.id);
+      await reloadLists();
+      toast(`Deleted ${l.name}`);
+    } catch (e) { toast((e as Error).message); }
+  }
+
+  async function move(i: ShoppingItem, to: ShoppingList) {
+    setMoving(null);
+    setItems((cur) => (cur ?? []).filter((x) => x.id !== i.id));
+    try {
+      await api(`${base}/shopping/${i.id}`, { method: 'PATCH', body: { listId: to.id } });
+      toast(`Moved ${i.name} to ${to.name}`);
+    } catch (e) { toast((e as Error).message); }
+    await refresh();
+  }
   const offline = () => toast("No signal. Saved on this device; it'll sync when you're back online.");
 
   // The list updates on screen straight away; with no signal the change waits on this device and syncs later.
   async function add(t: string) {
-    if (!t.trim()) return;
+    if (!t.trim() || !listId) return;
     setText('');
+    rememberList(homeId, listId);
     const tempId = `pending-${Date.now()}`;
-    setItems((cur) => [...(cur ?? []), { id: tempId, name: t.trim(), quantity: null, unit: null, category: guessItem(t).category, note: null, checked: false, createdAt: '', checkedAt: null, addedBy: null }]);
+    setItems((cur) => [...(cur ?? []), { id: tempId, name: t.trim(), quantity: null, unit: null, category: guessItem(t).category, note: null, checked: false, createdAt: '', checkedAt: null, addedBy: null, listId }]);
     try {
-      if (await sendOrQueue(`${base}/shopping`, 'POST', { text: t })) await refresh();
+      if (await sendOrQueue(`${base}/shopping`, 'POST', { text: t, listId })) await refresh();
       else {
         // The waiting change itself now shows the item (see withPending), so drop the stand-in.
         setItems((cur) => (cur ?? []).filter((i) => i.id !== tempId));
@@ -166,8 +238,21 @@ export function Shopping() {
 
       {tab === 'list' ? (
         <>
+          <div className="row list-tabs">
+            <div className="chips" role="tablist" aria-label="Shopping lists">
+              {lists?.map((l) => (
+                <button key={l.id} role="tab" aria-selected={l.id === listId} className={`chip${l.id === listId ? ' on' : ''}`} onClick={() => openList(l.id)}>
+                  🛒 {l.name}{l.open ? ` · ${l.open}` : ''}
+                </button>
+              ))}
+              {current && <button className="chip" onClick={() => renameList(current)} aria-label={`Rename ${current.name}`}>✎</button>}
+              {current && many && <button className="chip" onClick={() => deleteList(current)} aria-label={`Delete ${current.name}`}>🗑</button>}
+              <button className="chip" onClick={newList}>＋ List</button>
+            </div>
+          </div>
+          {moving && lists && <MoveTo item={moving} lists={lists} onPick={(l) => void move(moving, l)} onClose={() => setMoving(null)} />}
           <form className="row" onSubmit={(e) => { e.preventDefault(); void add(text); }}>
-            <input value={text} onChange={(e) => setText(e.target.value)} placeholder="Quick add: “2 lb chicken, milk, 3 avocados”" style={{ flex: 1 }} />
+            <input value={text} onChange={(e) => setText(e.target.value)} placeholder={many && current ? `Add to ${current.name}: “2 lb chicken, milk”` : 'Quick add: “2 lb chicken, milk, 3 avocados”'} style={{ flex: 1 }} aria-label={current ? `Add to ${current.name}` : 'Quick add'} />
             <button className="primary" disabled={!text.trim()}>Add</button>
           </form>
           {!!suggestions?.length && (
@@ -201,7 +286,7 @@ export function Shopping() {
             <input type="checkbox" checked={stock} onChange={(e) => setStock(e.target.checked)} style={{ width: 22, minHeight: 22 }} />
             Put checked-off items in the pantry
           </label>
-          {items && !groups.length && <div className="card">The list is empty. Nice work, ninja. 🦝</div>}
+          {items && !groups.length && <div className="card">{many && current ? `${current.name} is empty.` : 'The list is empty.'} Nice work, ninja. 🦝</div>}
           {groups.map(([cat, list]) => (
             <div key={cat} className="card">
               <h2>{cat}</h2>
@@ -214,6 +299,7 @@ export function Shopping() {
                       <div style={{ fontWeight: 600 }}>{i.quantity != null && <span>{amount(i.quantity, i.unit, me?.user.units)} </span>}{i.name}</div>
                       {(i.note || i.addedBy || i.lastPrice != null) && <div className="small muted">{[i.note, i.addedBy && `added by ${i.addedBy}`, i.lastPrice != null && `last paid ${dollars(i.lastPrice)}`].filter(Boolean).join(' · ')}</div>}
                     </div>
+                    {many && <button className="ghost icon" aria-label={`Move ${i.name} to another list`} title="Move to another list" disabled={i.id.startsWith('pending-')} onClick={() => setMoving(i)}>⇄</button>}
                     <button className="ghost icon" aria-label={`Remove ${i.name}`} disabled={i.id.startsWith('pending-')} onClick={() => remove(i)}>✕</button>
                   </div>
                 ))}
@@ -224,7 +310,7 @@ export function Shopping() {
             <div className="card">
               <div className="row">
                 <h2 style={{ flex: 1, margin: 0 }}>In the cart</h2>
-                <button onClick={async () => { await api(`${base}/shopping/clear-checked`, { body: {} }); await reload(); toast('Cleared'); }}>Clear</button>
+                <button onClick={async () => { await api(`${base}/shopping/clear-checked`, { body: { listId } }); await reload(); toast('Cleared'); }}>Clear</button>
               </div>
               <div className="list">
                 {checked.map((i) => (

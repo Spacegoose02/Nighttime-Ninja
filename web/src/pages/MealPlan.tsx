@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { Modal } from '../components/Dialog.tsx';
 import { api, type HomeDetail, type Meal, type RecipeSummary } from '../api.ts';
 import { useApp, useLoad } from '../state.tsx';
+import { useListPicker } from '../components/ListPicker.tsx';
 import { useUrlState } from '../urlState.ts';
 import { addDays, todayIso } from '../format.ts';
 
@@ -103,6 +104,7 @@ interface Proposal {
 /** "Plan my week": Gordy fills the open days from the recipe book and the pantry; you pick which to keep. */
 function PlanWithGordy({ start, onClose }: { start: string; onClose: (changed: boolean) => void }) {
   const { base, toast } = useApp();
+  const { pick, picker } = useListPicker();
   const [slots, setSlots] = useState(['dinner']);
   const [notes, setNotes] = useState('');
   const [busy, setBusy] = useState(false);
@@ -127,9 +129,10 @@ function PlanWithGordy({ start, onClose }: { start: string; onClose: (changed: b
         const recipeId = m.recipeId ?? (m.recipe ? (await api<{ id: string }>(`${base}/chef/save`, { body: { recipe: m.recipe, tags: ['plan'] } })).id : null);
         await api(`${base}/mealplan`, { body: { date: m.date, slot: m.slot, ...(recipeId ? { recipeId } : { title: m.title }) } });
       }
-      if (shop) {
-        const r = await api<{ added: number }>(`${base}/mealplan/to-shopping`, { body: { start, days: 7 } });
-        toast(`Planned ${keep.size} meals and added ${r.added} things to the shopping list`);
+      const list = shop ? await pick({ prefer: 'main', title: 'Shop for the week on which list?' }) : null;
+      if (list) {
+        const r = await api<{ added: number }>(`${base}/mealplan/to-shopping`, { body: { start, days: 7, listId: list.id } });
+        toast(`Planned ${keep.size} meals and added ${r.added} things to ${list.label}`);
       } else toast(`Planned ${keep.size} meals`);
       onClose(true);
     } catch (e) { toast((e as Error).message); setBusy(false); }
@@ -137,6 +140,7 @@ function PlanWithGordy({ start, onClose }: { start: string; onClose: (changed: b
 
   return (
     <Modal label="Plan my week with Gordy" onClose={() => onClose(false)}>
+      {picker}
       <h2>✨ Plan my week with Gordy</h2>
       {!plan ? (
         <>
@@ -185,6 +189,7 @@ function PlanWithGordy({ start, onClose }: { start: string; onClose: (changed: b
 
 export function MealPlan() {
   const { base, toast } = useApp();
+  const { pick, picker } = useListPicker();
   const [week, setWeek] = useUrlState('week');
   const start = /^\d{4}-\d{2}-\d{2}$/.test(week) ? week : todayIso();
   const setStart = (d: string) => setWeek(d === todayIso() ? '' : d);
@@ -214,12 +219,15 @@ export function MealPlan() {
   }
 
   async function shopForWeek() {
-    const r = await api<{ added: number; meals: number }>(`${base}/mealplan/to-shopping`, { body: { start, days: 7 } });
-    toast(r.added ? `Added ${r.added} items for ${r.meals} meals` : 'You have everything for this week');
+    const list = await pick({ prefer: 'main', title: 'Shop for the week on which list?' });
+    if (!list) return;
+    const r = await api<{ added: number; meals: number }>(`${base}/mealplan/to-shopping`, { body: { start, days: 7, listId: list.id } });
+    toast(r.added ? `Added ${r.added} items for ${r.meals} meals to ${list.label}` : 'You have everything for this week');
   }
 
   return (
     <div className="stack">
+      {picker}
       <div className="topbar">
         <h1>Meal plan</h1>
         <button className="icon" onClick={() => setStart(addDays(start, -7))} aria-label="Previous week">‹</button>

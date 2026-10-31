@@ -7,7 +7,7 @@ import { HttpError, requireStr, str } from '../util.ts';
 import { CATEGORIES, guessItem } from '../../../shared/catalog.ts';
 import { fromKitchenOwlRecipe, matchKey, parseIngredient } from '../../../shared/recipe.ts';
 import { saveRecipe } from './recipes.ts';
-import { addShoppingItem } from './shopping.ts';
+import { addShoppingItem, listNamed, mainList } from './shopping.ts';
 import { saveImage } from './integrations.ts';
 
 interface KoItem { name: string; description?: string; category?: string | { name?: string } | null; icon?: string | null }
@@ -80,7 +80,10 @@ export async function importKitchenOwl(
   });
 
   const lists = (data.shoppinglists ?? []).filter((l): l is KoList => typeof l === 'object' && Array.isArray(l.items));
-  for (const list of lists) {
+  lists.forEach((list, n) => {
+    // KitchenOwl's lists stay separate here too: the first goes on Main, the rest on lists of the same name.
+    const name = String(list.name ?? '').trim().slice(0, 40);
+    const listId = n === 0 || !name ? mainList(db, homeId) : listNamed(db, homeId, name);
     for (const it of list.items) {
       if (!it?.name) continue;
       const parsed = it.description ? parseIngredient(`${it.description} ${it.name}`) : null;
@@ -89,11 +92,12 @@ export async function importKitchenOwl(
         quantity: parsed?.quantity ?? null,
         unit: parsed?.unit ?? null,
         category: mapCategory(it.name, categoryName(it.category)),
-        note: [parsed?.quantity == null ? it.description : null, lists.length > 1 ? list.name : null].filter(Boolean).join(' · ') || null,
+        note: (parsed?.quantity == null ? it.description : null) || null,
+        listId,
       }, userId);
       result.shopping++;
     }
-  }
+  });
   return result;
 }
 

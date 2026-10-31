@@ -118,8 +118,11 @@ export async function sendDue(db: DatabaseSync, now = new Date()): Promise<numbe
   return n;
 }
 
-/** Tells the rest of the home what someone just put on the shopping list, unless they heard about it a moment ago. */
-export async function listAdded(db: DatabaseSync, homeId: string, byUserId: string | null, names: string[]): Promise<void> {
+/**
+ * Tells the rest of the home what someone just put on the shopping list, unless they heard about it a moment ago.
+ * listName names the list when the home has more than one.
+ */
+export async function listAdded(db: DatabaseSync, homeId: string, byUserId: string | null, names: string[], listName: string | null = null): Promise<void> {
   if (!names.length || !byUserId) return;
   const by = db.prepare('SELECT name FROM users WHERE id = ?').get(byUserId) as Row | undefined;
   const others = db.prepare(`SELECT DISTINCT m.user_id FROM home_members m JOIN push_subscriptions p ON p.user_id = m.user_id
@@ -131,7 +134,7 @@ export async function listAdded(db: DatabaseSync, homeId: string, byUserId: stri
     const last = db.prepare('SELECT sent_at FROM reminders_sent WHERE key = ?').get(key) as Row | undefined;
     if (last && Date.parse(`${last.sent_at}Z`) > Date.now() - LIST_QUIET_MINUTES * 60_000) continue;
     db.prepare("INSERT INTO reminders_sent (key, sent_at) VALUES (?, datetime('now')) ON CONFLICT(key) DO UPDATE SET sent_at = excluded.sent_at").run(key);
-    await sendTo(db, userId, { title: `${by?.name ?? 'Someone'} added to the list`, body: list(names), url: '/shopping' });
+    await sendTo(db, userId, { title: `${by?.name ?? 'Someone'} added to ${listName ?? 'the list'}`, body: list(names), url: '/shopping' });
   }
 }
 

@@ -93,7 +93,12 @@ export interface ShoppingItem {
   checked: boolean; createdAt: string; checkedAt: string | null; addedBy: string | null;
   /** What it cost when bought, and what it cost the time before. */
   price?: number | null; store?: string | null; lastPrice?: number | null;
+  /** Which shopping list it's on (null from servers older than lists). */
+  listId?: string | null;
 }
+
+/** One of a home's shopping lists. The first is Main, where anything added without a list goes. */
+export interface ShoppingList { id: string; name: string; open: number; main: boolean }
 
 export type Availability = 'have' | 'low' | 'missing' | 'unknown';
 

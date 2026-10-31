@@ -11,6 +11,7 @@ const OFFLINE_API = [
   /^\/api\/homes\/[^/]+$/,
   /^\/api\/homes\/[^/]+\/shopping$/,
   /^\/api\/homes\/[^/]+\/shopping\/suggestions$/,
+  /^\/api\/homes\/[^/]+\/shopping\/lists$/,
 ];
 
 self.addEventListener('install', (event) => {

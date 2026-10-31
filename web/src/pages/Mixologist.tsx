@@ -3,6 +3,7 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { Chat, type ChatPersona } from '../components/Chat.tsx';
 import { api, tileState, type HomeDetail, type Item, type RecipeFull, type RecipeSummary } from '../api.ts';
 import { useApp, useLoad } from '../state.tsx';
+import { useListPicker } from '../components/ListPicker.tsx';
 import { useUrlState } from '../urlState.ts';
 import { amount } from '../format.ts';
 import { formatQuantity } from '../../../shared/units.ts';
@@ -86,6 +87,7 @@ function ingredientLine(i: { name: string; quantity: number | null; unit: string
 
 function IdeaCard({ d }: { d: Idea }) {
   const { base, toast } = useApp();
+  const { pick, picker } = useListPicker();
   const [savedId, setSavedId] = useState<string | null>(null);
   const [listed, setListed] = useState(false);
   const label = d.status === 'ready' ? ['ok', '✅ Make it now'] : d.status === 'almost' ? ['warn', `🟡 Missing ${d.missing.length}`] : ['bad', `Missing ${d.missing.length}`];
@@ -97,13 +99,16 @@ function IdeaCard({ d }: { d: Idea }) {
   }
 
   async function addMissing() {
-    for (const name of d.missing) await api(`${base}/shopping`, { body: { name, note: `for ${d.title}` } });
+    const list = await pick();
+    if (!list) return;
+    for (const name of d.missing) await api(`${base}/shopping`, { body: { name, note: `for ${d.title}`, listId: list.id } });
     setListed(true);
-    toast(`Added ${d.missing.join(', ')} to the shopping list`);
+    toast(`Added ${d.missing.join(', ')} to ${list.label}`);
   }
 
   return (
     <div className="card stack">
+      {picker}
       <div className="row" style={{ alignItems: 'flex-start' }}>
         <h3 style={{ margin: 0, flex: 1 }}>{d.title}</h3>
         <span className={`pill ${label[0]}`}>{label[1]}</span>

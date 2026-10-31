@@ -13,7 +13,7 @@ import { publicFetch } from '../security.ts';
 import { list, body, number, text } from '../schemas.ts';
 import { checkIngredients, loadRecipe, stockIndex } from './recipes.ts';
 import { stockForPrompt } from './mixologist.ts';
-import { checkOff } from './shopping.ts';
+import { checkOff, mainList } from './shopping.ts';
 import { stockByName } from './inventory.ts';
 import { cleanRecipe, PERSONA, type PlainRecipe, RECIPE_SCHEMA, REFUSED } from './chef.ts';
 
@@ -292,8 +292,8 @@ export function kitchenAiRoutes(app: FastifyInstance, db: DatabaseSync): void {
         if (!name) continue;
         // Not on the list: still count what it cost, already ticked off.
         const g = guessItem(name);
-        db.prepare(`INSERT INTO shopping_items (id, home_id, name, quantity, unit, category, note, checked, checked_at, added_by, price, store)
-          VALUES (?, ?, ?, ?, ?, ?, 'from a receipt', 1, datetime('now'), ?, ?, ?)`).run(newId(), ctx.homeId, name, num(l.quantity), str(l.unit, 20), g.category, userId, cents, store);
+        db.prepare(`INSERT INTO shopping_items (id, home_id, list_id, name, quantity, unit, category, note, checked, checked_at, added_by, price, store)
+          VALUES (?, ?, ?, ?, ?, ?, ?, 'from a receipt', 1, datetime('now'), ?, ?, ?)`).run(newId(), ctx.homeId, mainList(db, ctx.homeId), name, num(l.quantity), str(l.unit, 20), g.category, userId, cents, store);
         if (l.toPantry) { stockByName(db, ctx.homeId, name, num(l.quantity) ?? 1, str(l.unit, 20), 'bought', userId); stocked++; }
       }
     });

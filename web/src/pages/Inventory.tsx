@@ -4,6 +4,7 @@ import { Modal } from '../components/Dialog.tsx';
 import { BarcodeScanner } from '../components/BarcodeScanner.tsx';
 import { api, fileToDataUrl, freezerMonths, tileState, type Item } from '../api.ts';
 import { useApp, useLoad } from '../state.tsx';
+import { useListPicker } from '../components/ListPicker.tsx';
 import { useUrlState } from '../urlState.ts';
 import { amount } from '../format.ts';
 import { CATEGORIES, LOCATIONS, guessItem } from '../../../shared/catalog.ts';
@@ -62,6 +63,7 @@ export function ItemEditor({ item, draft, labels, canAdd, onClose }: {
   item: Item | null; draft?: ItemDraft; labels: Labels; canAdd: boolean; onClose: (changed: boolean) => void;
 }) {
   const { base, toast, me } = useApp();
+  const { pick, picker } = useListPicker();
   const [f, setF] = useState(() => ({
     name: item?.name ?? draft?.name ?? '', quantity: String(item?.quantity ?? 1), unit: item?.unit ?? '', category: item?.category ?? draft?.category ?? '',
     location: item?.location ?? 'Pantry', lowThreshold: item?.lowThreshold == null ? '' : String(item.lowThreshold),
@@ -152,7 +154,13 @@ export function ItemEditor({ item, draft, labels, canAdd, onClose }: {
           toast(`Deleted ${item.name}`, () => api(`${base}/items`, { body: rest }));
           onClose(true);
         }}>Delete</button>}
-        {item && <button onClick={async () => { await api(`${base}/items/${item.id}/to-shopping`, { body: {} }); toast(`${item.name} added to the shopping list`); }}>🛒 Add to list</button>}
+        {item && <button onClick={async () => {
+          const list = await pick();
+          if (!list) return;
+          await api(`${base}/items/${item.id}/to-shopping`, { body: { listId: list.id } });
+          toast(`${item.name} added to ${list.label}`);
+        }}>🛒 Add to list</button>}
+        {picker}
         <span className="spacer" />
         <button onClick={() => onClose(false)}>Cancel</button>
         <button className="primary" onClick={save} disabled={!f.name.trim()}>Save</button>

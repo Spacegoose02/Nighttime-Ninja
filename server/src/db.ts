@@ -303,6 +303,24 @@ const MIGRATIONS: string[] = [
   ALTER TABLE shopping_items ADD COLUMN stock_history_id INTEGER;
   ALTER TABLE shopping_items ADD COLUMN cleared INTEGER NOT NULL DEFAULT 0;
   `,
+  // More than one shopping list per home ("Main", "Quick trip", "Long term"). Every home's existing list becomes Main.
+  `
+  CREATE TABLE shopping_lists (
+    id TEXT PRIMARY KEY,
+    home_id TEXT NOT NULL REFERENCES homes(id) ON DELETE CASCADE,
+    name TEXT NOT NULL,
+    position INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+  CREATE INDEX shopping_lists_home ON shopping_lists(home_id, position);
+  INSERT INTO shopping_lists (id, home_id, name, position)
+    SELECT lower(hex(randomblob(4)) || '-' || hex(randomblob(2)) || '-4' || substr(hex(randomblob(2)), 2) || '-' ||
+      substr('89ab', 1 + (abs(random()) % 4), 1) || substr(hex(randomblob(2)), 2) || '-' || hex(randomblob(6))), id, 'Main', 0
+    FROM homes;
+  ALTER TABLE shopping_items ADD COLUMN list_id TEXT REFERENCES shopping_lists(id) ON DELETE CASCADE;
+  UPDATE shopping_items SET list_id = (SELECT l.id FROM shopping_lists l WHERE l.home_id = shopping_items.home_id);
+  CREATE INDEX shopping_list_items ON shopping_items(list_id, checked);
+  `,
 ];
 
 export function openDb(dataDir: string): DatabaseSync {

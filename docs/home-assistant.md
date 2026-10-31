@@ -107,9 +107,10 @@ Every route below accepts `Authorization: Bearer <token>`.
 | Method | Path | Body |
 | --- | --- | --- |
 | GET | `/api/homes/{id}/ha/summary` | |
-| GET | `/api/homes/{id}/shopping` | |
-| POST | `/api/homes/{id}/shopping` | `{"text": "2 lb chicken, milk"}` |
-| PATCH | `/api/homes/{id}/shopping/{itemId}` | `{"checked": true}` |
+| GET | `/api/homes/{id}/shopping/lists` | Your lists, Main first |
+| GET | `/api/homes/{id}/shopping` | `?list={listId}` for a list other than Main |
+| POST | `/api/homes/{id}/shopping` | `{"text": "2 lb chicken, milk"}`, plus `"listId"` for a list other than Main |
+| PATCH | `/api/homes/{id}/shopping/{itemId}` | `{"checked": true}`, or `{"listId": "..."}` to move it |
 | GET | `/api/homes/{id}/items` | `?low=true` for low stock |
 | POST | `/api/homes/{id}/items/{itemId}/adjust` | `{"delta": -1}` |
 | GET | `/api/homes/{id}/mealplan?start=YYYY-MM-DD&days=7` | |

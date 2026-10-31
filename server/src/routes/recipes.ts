@@ -323,6 +323,7 @@ export function recipeRoutes(app: FastifyInstance, db: DatabaseSync): void {
     const wanted = b.all ? checked.filter((i) => !i.optional) : checked.filter((i) => !i.optional && (i.availability === 'missing' || i.availability === 'low'));
     const added = wanted.map((i) => addShoppingItem(db, ctx.homeId, {
       name: i.name, quantity: i.quantity == null ? null : Math.round(i.quantity * factor * 100) / 100, unit: i.unit, note: `for ${full.title}`,
+      listId: str(b.listId, 64),
     }, ctx.user?.id ?? null));
     return { added };
   });
