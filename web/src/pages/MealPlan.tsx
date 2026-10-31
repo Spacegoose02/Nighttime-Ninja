@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { Modal } from '../components/Dialog.tsx';
 import { api, type HomeDetail, type Meal, type RecipeSummary } from '../api.ts';
 import { useApp, useLoad } from '../state.tsx';
+import { useUrlState } from '../urlState.ts';
 import { addDays, todayIso } from '../format.ts';
 
 const SLOTS = ['breakfast', 'lunch', 'dinner', 'snack'];
@@ -184,7 +185,9 @@ function PlanWithGordy({ start, onClose }: { start: string; onClose: (changed: b
 
 export function MealPlan() {
   const { base, toast } = useApp();
-  const [start, setStart] = useState(todayIso());
+  const [week, setWeek] = useUrlState('week');
+  const start = /^\d{4}-\d{2}-\d{2}$/.test(week) ? week : todayIso();
+  const setStart = (d: string) => setWeek(d === todayIso() ? '' : d);
   const [meals, reload] = useLoad<Meal[]>(`${base}/mealplan?start=${start}&days=7`, [start]);
   const [adding, setAdding] = useState<string | null>(null);
   const [editing, setEditing] = useState<Meal | null>(null);

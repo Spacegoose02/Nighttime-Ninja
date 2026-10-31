@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Modal } from '../components/Dialog.tsx';
 import { api, type HomeDetail, type ShoppingItem } from '../api.ts';
 import { useApp, useLoad } from '../state.tsx';
+import { useUrlState } from '../urlState.ts';
 import { pending, sendOrQueue } from '../offline.ts';
 import { amount } from '../format.ts';
 import { CATEGORIES, guessItem } from '../../../shared/catalog.ts';
@@ -85,7 +86,8 @@ export function Shopping() {
     await reloadLayouts();
   }
   const [suggestions, reloadSugg] = useLoad<Suggestion[]>(`${base}/shopping/suggestions`);
-  const [tab, setTab] = useState<'list' | 'history' | 'spending'>('list');
+  const [tabParam, setTab] = useUrlState('tab', 'list');
+  const tab = (['history', 'spending'].includes(tabParam) ? tabParam : 'list') as 'list' | 'history' | 'spending';
   const [history] = useLoad<ShoppingItem[]>(tab === 'history' ? `${base}/shopping/history` : null, [tab]);
   const [text, setText] = useState('');
   const [stock, setStock] = useState(true);

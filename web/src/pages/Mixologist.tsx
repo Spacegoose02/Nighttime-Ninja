@@ -3,6 +3,7 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { Chat, type ChatPersona } from '../components/Chat.tsx';
 import { api, tileState, type HomeDetail, type Item, type RecipeFull, type RecipeSummary } from '../api.ts';
 import { useApp, useLoad } from '../state.tsx';
+import { useUrlState } from '../urlState.ts';
 import { amount } from '../format.ts';
 import { formatQuantity } from '../../../shared/units.ts';
 import { BAR_UNITS, barConvert, batchDrink, bottlesOf750 } from '../../../shared/bar.ts';
@@ -168,8 +169,10 @@ function IdeaZone({ disabled }: { disabled: boolean }) {
 function Drinks() {
   const { base } = useApp();
   const [recipes] = useLoad<RecipeSummary[]>(`${base}/recipes`);
-  const [readyOnly, setReadyOnly] = useState(false);
-  const [q, setQ] = useState('');
+  const [ready, setReady] = useUrlState('ready');
+  const readyOnly = ready === '1';
+  const setReadyOnly = (on: boolean) => setReady(on ? '1' : '');
+  const [q, setQ] = useUrlState('q');
   const drinks = (recipes ?? []).filter((r) => r.tags.includes('cocktail'));
   const shown = drinks.filter((r) => (!readyOnly || r.ready === 'ready') && (!q || r.title.toLowerCase().includes(q.toLowerCase())));
 
