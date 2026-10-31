@@ -128,7 +128,7 @@ export const ROCCO: ChatPersona = {
 export function ChatAvatar({ p, size = 40 }: { p: ChatPersona; size?: number }) {
   const [broken, setBroken] = useState(false);
   return broken
-    ? <span className="chat-avatar" style={{ width: size, height: size, fontSize: size * 0.55 }} aria-label={p.name}>{p.emoji}</span>
+    ? <span className="chat-avatar" style={{ width: size, height: size, fontSize: size * 0.55 }} role="img" aria-label={p.name}>{p.emoji}</span>
     : <img className="chat-avatar" src={p.avatar} alt={p.name} width={size} height={size} onError={() => setBroken(true)} />;
 }
 

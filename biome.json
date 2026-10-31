@@ -1,0 +1,49 @@
+{
+  "$schema": "./node_modules/@biomejs/biome/configuration_schema.json",
+  "vcs": {
+    "enabled": true,
+    "clientKind": "git",
+    "useIgnoreFile": true
+  },
+  "files": {
+    "includes": [
+      "server/src/**",
+      "web/src/**",
+      "web/public/sw.js",
+      "shared/**",
+      "apps/desktop/main.cjs",
+      "apps/launcher/**/*.js",
+      "web/*.ts"
+    ]
+  },
+  "formatter": {
+    "enabled": false
+  },
+  "assist": {
+    "enabled": false
+  },
+  "linter": {
+    "enabled": true,
+    "rules": {
+      "recommended": true,
+      "a11y": {
+        "useButtonType": "off",
+        "noAutofocus": "off"
+      },
+      "suspicious": {
+        "noArrayIndexKey": "off",
+        "noExplicitAny": "warn"
+      },
+      "style": {
+        "noNonNullAssertion": "off",
+        "useTemplate": "off"
+      },
+      "complexity": {
+        "noImportantStyles": "off"
+      },
+      "correctness": {
+        "useExhaustiveDependencies": "warn"
+      }
+    }
+  }
+}

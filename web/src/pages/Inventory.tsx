@@ -33,6 +33,7 @@ function LabelSelect({ label, value, options: list, onChange, placeholder, empty
   const known = !value || options.some((o) => o.toLowerCase() === value.toLowerCase());
   const [typing, setTyping] = useState(!known);
   return (
+    // biome-ignore lint/a11y/noLabelWithoutControl: the input or select is inside, chosen by the typing state.
     <label className="field" style={{ flex: 1 }}>{label}
       {typing ? (
         <span className="row" style={{ flexWrap: 'nowrap', gap: 6 }}>
@@ -175,7 +176,7 @@ export function Inventory() {
           <div className="row">
             <input placeholder="Search the pantry" value={q} onChange={(e) => setQ(e.target.value)} style={{ maxWidth: 380 }} />
             <button className={`chip${lowOnly ? ' on' : ''}`} onClick={() => setParams(lowOnly ? {} : { low: '1' })}>⚠️ Running low</button>
-            <span className="row small muted" style={{ gap: 10 }} aria-label="Tile colors">
+            <span className="row small muted" style={{ gap: 10 }}>
               <span><span className="key-dot" style={{ background: "var(--tile)" }} /> In stock</span>
               <span><span className="key-dot" style={{ background: "#c98a00" }} /> Low</span>
               <span><span className="key-dot" style={{ background: "#d64545" }} /> Out or on the list</span>

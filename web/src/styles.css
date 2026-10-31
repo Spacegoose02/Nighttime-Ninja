@@ -153,6 +153,7 @@ img { max-width: 100%; }
 .rail {
   width: 104px; flex-shrink: 0; background: var(--surface); border-right: 1px solid var(--border);
   display: flex; flex-direction: column; align-items: stretch; padding: 12px 8px; gap: 4px;
+  /* biome-ignore lint/suspicious/noDuplicateProperties: 100vh is the fallback for browsers without dvh. */
   position: sticky; top: 0; height: 100vh; height: 100dvh; overflow-y: auto;
 }
 .rail .brand { display: flex; justify-content: center; padding: 4px 0 10px; }
@@ -278,6 +279,7 @@ label.field { display: flex; flex-direction: column; gap: 6px; font-weight: 600;
 
 .modal {
   background: var(--surface); color: var(--text); border: none; border-radius: 22px; padding: 20px; width: min(560px, calc(100% - 32px));
+  /* biome-ignore lint/suspicious/noDuplicateProperties: 100vh is the fallback for browsers without dvh. */
   max-height: calc(100vh - 32px); max-height: calc(100dvh - 32px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
   overflow: auto; overscroll-behavior: contain;
 }

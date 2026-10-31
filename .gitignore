@@ -23,3 +23,5 @@ web/ios/
 apps/desktop/launcher/
 !apps/desktop/build/
 web/src/avatars/*/
+test-results/
+playwright-report/

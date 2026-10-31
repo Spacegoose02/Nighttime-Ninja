@@ -91,7 +91,10 @@ export function SecurityCard() {
         <div className="stack">
           <p className="small muted" style={{ margin: 0 }}>Scan this with an authenticator app (Google Authenticator, Microsoft Authenticator, 1Password, Bitwarden, Aegis…), then type the 6-digit code it shows.</p>
           <div className="row" style={{ alignItems: 'flex-start' }}>
-            <div style={{ background: '#fff', padding: 8, borderRadius: 12, width: 236 }} dangerouslySetInnerHTML={{ __html: totp.qrSvg }} />
+            <img
+              src={`data:image/svg+xml;charset=utf-8,${encodeURIComponent(totp.qrSvg)}`} alt="QR code for your authenticator app"
+              width={220} height={220} style={{ background: '#fff', padding: 8, borderRadius: 12, boxSizing: 'content-box' }}
+            />
             <div className="stack" style={{ flex: 1 }}>
               <span className="small muted">Can't scan? Enter this key:</span>
               <code style={{ wordBreak: 'break-all' }}>{totp.secret}</code>

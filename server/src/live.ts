@@ -11,8 +11,8 @@ type Listener = (change: Change) => void;
 const listeners = new Map<string, Set<Listener>>();
 
 export function subscribe(homeId: string, fn: Listener): () => void {
-  let set = listeners.get(homeId);
-  if (!set) listeners.set(homeId, (set = new Set()));
+  const set = listeners.get(homeId) ?? new Set<Listener>();
+  listeners.set(homeId, set);
   set.add(fn);
   return () => {
     set.delete(fn);

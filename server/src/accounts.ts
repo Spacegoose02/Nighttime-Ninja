@@ -251,7 +251,7 @@ export function accountRoutes(app: FastifyInstance, db: DatabaseSync): void {
     const { challenge, userId } = takeChallenge(db, req, reply);
     if (userId !== user.id) throw new HttpError(400, 'Passkey request expired. Try again.');
     const b = body(req);
-    let result;
+    let result: Awaited<ReturnType<typeof verifyRegistrationResponse>>;
     try {
       result = await verifyRegistrationResponse({
         response: b.response as RegistrationResponseJSON,
@@ -283,7 +283,7 @@ export function accountRoutes(app: FastifyInstance, db: DatabaseSync): void {
     const response = body(req).response as AuthenticationResponseJSON;
     const pk = db.prepare('SELECT * FROM passkeys WHERE id = ?').get(String(response?.id ?? '')) as Row | undefined;
     if (!pk) throw new HttpError(401, "This server doesn't know that passkey");
-    let result;
+    let result: Awaited<ReturnType<typeof verifyAuthenticationResponse>>;
     try {
       result = await verifyAuthenticationResponse({
         response,
