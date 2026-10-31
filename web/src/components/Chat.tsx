@@ -106,13 +106,14 @@ function PastChats({ kind, current, onOpen, onClose }: { kind: string; current: 
   );
 }
 
-export function Chat({ disabled, persona }: { disabled: boolean; persona: ChatPersona }) {
+/** initialDraft fills the message box, for links like "Ask Gordy" that start a conversation for you. */
+export function Chat({ disabled, persona, initialDraft }: { disabled: boolean; persona: ChatPersona; initialDraft?: string }) {
   const { base, homeId, toast } = useApp();
   const kind = persona.endpoint.split('/')[0];
   const key = `nn-chat-${kind}-${homeId}`;
   const [chatId, setChatId] = useState<string | null>(() => { try { return localStorage.getItem(key); } catch { return null; } });
   const [msgs, setMsgs] = useState<ChatMsg[]>([]);
-  const [draft, setDraft] = useState('');
+  const [draft, setDraft] = useState(initialDraft ?? '');
   const [busy, setBusy] = useState(false);
   /** The reply so far while it's being written. */
   const [streaming, setStreaming] = useState('');

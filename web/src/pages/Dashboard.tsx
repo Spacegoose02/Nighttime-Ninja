@@ -63,7 +63,15 @@ export function Dashboard() {
         <div className="card stat">
           <span className="num" style={{ color: s?.expiring_soon.length ? 'var(--danger)' : undefined }}>{s?.expiring_soon.length ?? '–'}</span>
           <span>expiring in 3 days</span>
-          {!!s?.expiring_soon.length && <span className="muted small">{s.expiring_soon.map((e) => e.name).join(', ')}</span>}
+          {!!s?.expiring_soon.length && (
+            <>
+              <span className="muted small">{s.expiring_soon.map((e) => e.name).join(', ')}</span>
+              <div className="row" style={{ marginTop: 6 }}>
+                <Link className="btn" to="/recipes?useup=1">⏳ Use it up</Link>
+                <Link className="btn" to="/chef?ask=useup">👨‍🍳 Ask Gordy</Link>
+              </div>
+            </>
+          )}
         </div>
       </div>
 

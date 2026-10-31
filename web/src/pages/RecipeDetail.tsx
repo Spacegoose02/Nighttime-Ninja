@@ -5,6 +5,8 @@ import { api, type Item, type RecipeFull } from '../api.ts';
 import { useApp, useLoad } from '../state.tsx';
 import { amount, minutes, todayIso } from '../format.ts';
 import { celsiusToFahrenheitText } from '../../../shared/units.ts';
+import { findTimers } from '../../../shared/timers.ts';
+import { startTimer, useWakeLock } from '../components/Timers.tsx';
 import { READY_LABEL } from './Recipes.tsx';
 
 /** Lets someone say "this ingredient is that pantry item". Saved for the whole home, so every recipe uses it. */
@@ -42,7 +44,22 @@ function MatchPicker({ ingredient, onClose }: { ingredient: string; onClose: (ch
   );
 }
 
-const AVAIL ={ have: ['ok', '✓'], unknown: ['ok', '✓'], low: ['warn', 'low'], missing: ['bad', 'need'] } as const;
+/** Tap-to-start timers for the times a step mentions. */
+function StepTimers({ step, title }: { step: string; title: string }) {
+  const found = findTimers(step);
+  if (!found.length) return null;
+  return (
+    <span className="row" style={{ gap: 6, marginTop: 6 }}>
+      {found.map((t) => (
+        <button key={t.label} className="chip" onClick={() => startTimer(`${title}: ${t.label}`, t.seconds)}>
+          ⏱ {t.label}
+        </button>
+      ))}
+    </span>
+  );
+}
+
+const AVAIL = { have: ['ok', '✓'], unknown: ['ok', '✓'], low: ['warn', 'low'], missing: ['bad', 'need'] } as const;
 
 export function RecipeDetail() {
   const { id } = useParams();
@@ -53,6 +70,10 @@ export function RecipeDetail() {
   const [recipe, reload] = useLoad<RecipeFull>(`${base}/recipes/${id}${servings ? `?servings=${servings}` : ''}`, [servings]);
   const [cookMode, setCookMode] = useState(false);
   const [done, setDone] = useState<Set<number>>(new Set());
+  /** Ingredients ticked off in cook mode, once they're measured out. */
+  const [got, setGot] = useState<Set<number>>(new Set());
+  const [stepAt, setStepAt] = useState(0);
+  useWakeLock(cookMode);
   const [planDate, setPlanDate] = useState<string | null>(null);
   const [matching, setMatching] = useState<string | null>(null);
 
@@ -66,6 +87,12 @@ export function RecipeDetail() {
     const r = await api<{ used: unknown[]; skipped: string[] }>(`${base}/recipes/${id}/cook`, { body: { servings } });
     toast(`Used ${r.used.length} pantry items${r.skipped.length ? `; not in pantry: ${r.skipped.join(', ')}` : ''}`);
     void reload();
+    const left = await dialogs.prompt('Any leftovers? Say how many servings and they go in the fridge for 4 days.', '', { okLabel: 'Save leftovers' });
+    const n = Number(left);
+    if (left && n > 0) {
+      await api(`${base}/recipes/${id}/leftovers`, { body: { servings: n } });
+      toast(`Saved ${n} serving${n === 1 ? '' : 's'} of leftovers`);
+    }
   }
 
   async function toList(all: boolean) {
@@ -94,7 +121,7 @@ export function RecipeDetail() {
       <div className="topbar">
         <button className="ghost" onClick={() => nav(-1)}>← Back</button>
         <h1>{recipe.title}</h1>
-        <button onClick={() => setCookMode(!cookMode)}>{cookMode ? 'Exit cook mode' : '👩‍🍳 Cook mode'}</button>
+        <button onClick={() => { setCookMode(!cookMode); setStepAt(0); }}>{cookMode ? 'Exit cook mode' : '👩‍🍳 Cook mode'}</button>
         <Link className="btn" to={`/recipes/${id}/edit`}>✏️ Edit</Link>
       </div>
       {recipe.image && !cookMode && <img src={recipe.image} alt="" style={{ borderRadius: 20, maxHeight: 380, objectFit: 'cover', width: '100%' }} />}
@@ -106,6 +133,20 @@ export function RecipeDetail() {
         {recipe.sourceUrl && <a className="small" href={recipe.sourceUrl} target="_blank" rel="noreferrer">Original</a>}
       </div>
       {recipe.description && !cookMode && <p style={{ whiteSpace: 'pre-wrap' }}>{recipe.description}</p>}
+      {cookMode && recipe.instructions.length > 0 && (
+        <div className="card cook-focus stack" aria-live="polite">
+          <div className="muted small">Step {stepAt + 1} of {recipe.instructions.length}</div>
+          <p className="cook-focus-step">{units === 'us' ? celsiusToFahrenheitText(recipe.instructions[stepAt]) : recipe.instructions[stepAt]}</p>
+          <StepTimers step={recipe.instructions[stepAt]} title={recipe.title} />
+          <div className="row">
+            <button disabled={stepAt === 0} onClick={() => setStepAt(stepAt - 1)}>← Back</button>
+            <span className="spacer" />
+            {stepAt < recipe.instructions.length - 1
+              ? <button className="primary" onClick={() => { setDone((d) => new Set(d).add(stepAt)); setStepAt(stepAt + 1); }}>Next step →</button>
+              : <button className="primary" onClick={() => { setDone((d) => new Set(d).add(stepAt)); void cook(); }}>🍳 Done, I cooked this</button>}
+          </div>
+        </div>
+      )}
       <div className="row">
         <button className="primary" onClick={cook}>🍳 I cooked this</button>
         <button onClick={() => toList(false)}>🛒 Add missing to list</button>
@@ -135,10 +176,15 @@ export function RecipeDetail() {
           <ul className="ingredients" style={{ paddingLeft: 0, listStyle: 'none' }}>
             {recipe.ingredients.map((i, n) => {
               const [c, l] = AVAIL[i.availability];
+              const ticked = cookMode && got.has(n);
               return (
-                <li key={n} className="row" style={{ flexWrap: 'nowrap' }}>
+                <li key={n} className={`row${ticked ? ' got' : ''}`} style={{ flexWrap: 'nowrap' }}>
                   <button className={`pill ${c}`} style={{ minWidth: 56, minHeight: 36, justifyContent: 'center', border: 'none', cursor: 'pointer' }}
                     title="Choose which pantry item this is" onClick={() => setMatching(i.name)}>{l}</button>
+                  {cookMode && (
+                    <input type="checkbox" className="got-box" aria-label={`Got ${i.name} ready`} checked={ticked}
+                      onChange={() => setGot((g) => { const x = new Set(g); if (x.has(n)) x.delete(n); else x.add(n); return x; })} />
+                  )}
                   <span>
                     <strong>{amount(i.quantity == null ? null : i.quantity * factor, i.unit, units)}</strong> {i.name}
                     {i.note && <span className="muted">, {i.note}</span>}
@@ -160,6 +206,7 @@ export function RecipeDetail() {
                 <button className="step" aria-pressed={done.has(n)} onClick={() => setDone((d) => { const x = new Set(d); if (x.has(n)) x.delete(n); else x.add(n); return x; })}>
                   {units === 'us' ? celsiusToFahrenheitText(s) : s}
                 </button>
+                <StepTimers step={s} title={recipe.title} />
               </li>
             ))}
           </ol>
