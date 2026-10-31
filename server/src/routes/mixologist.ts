@@ -8,6 +8,8 @@ import { HttpError, num, str } from '../util.ts';
 import type { Ingredient } from '../../../shared/recipe.ts';
 import { checkIngredients, saveRecipe, stockIndex } from './recipes.ts';
 import { addShoppingItem } from './shopping.ts';
+import { homeEaters } from './homes.ts';
+import { dietsForPrompt } from '../../../shared/diets.ts';
 import { existingRecipeId, runChat, TOOL_RULES } from './aichat.ts';
 import { ask, claude, keepAlive, limitAi, MODEL_CHOICES, mixologistModel, textOf } from '../claude.ts';
 
@@ -95,6 +97,7 @@ export function stockForPrompt(db: DatabaseSync, homeId: string): string {
     '',
     'Everything else in stock (juices, sodas, fruit, dairy, sweeteners and so on are fair game):',
     rest.length ? rest.map(line).join('\n') : '- (pantry is empty)',
+    ...[dietsForPrompt(homeEaters(db, homeId))].filter((x): x is string => !!x).flatMap((d) => ['', d]),
   ].join('\n');
 }
 

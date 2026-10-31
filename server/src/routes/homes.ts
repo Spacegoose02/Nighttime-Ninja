@@ -5,9 +5,17 @@ import { tx, type Row } from '../db.ts';
 import { HttpError, newId, randomToken, readableCode, requireStr, sha256, str } from '../util.ts';
 import { CATEGORIES, LOCATIONS } from '../../../shared/catalog.ts';
 import { body, flag, list, oneOf, text } from '../schemas.ts';
+import { DIETS, type Eater } from '../../../shared/diets.ts';
 
 export type LabelKind = 'locations' | 'categories';
 const DEFAULT_LABELS: Record<LabelKind, readonly string[]> = { locations: LOCATIONS, categories: CATEGORIES };
+
+/** Everyone in the home with a diet or allergy, for recipe warnings and AI prompts. */
+export function homeEaters(db: DatabaseSync, homeId: string): Eater[] {
+  return (db.prepare(`SELECT u.name, m.diets, m.allergies FROM home_members m JOIN users u ON u.id = m.user_id
+    WHERE m.home_id = ? AND (m.diets != '[]' OR m.allergies != '[]')`).all(homeId) as Row[])
+    .map((r) => ({ name: r.name as string, diets: JSON.parse(r.diets as string), allergies: JSON.parse(r.allergies as string) }));
+}
 
 /** A home's pantry locations and category labels, falling back to the built-in lists. */
 export function homeLabels(db: DatabaseSync, homeId: string): Record<LabelKind, string[]> {
@@ -80,8 +88,8 @@ export function homeRoutes(app: FastifyInstance, db: DatabaseSync): void {
     const ctx = homeCtx(db, req);
     const home = db.prepare('SELECT id, name, join_code, calendar_token, created_at FROM homes WHERE id = ?').get(ctx.homeId) as Row;
     const members = db.prepare(`
-      SELECT u.id, u.name, u.avatar, m.role, m.joined_at FROM home_members m JOIN users u ON u.id = m.user_id
-      WHERE m.home_id = ? ORDER BY m.role, u.name`).all(ctx.homeId);
+      SELECT u.id, u.name, u.avatar, m.role, m.joined_at, m.diets, m.allergies FROM home_members m JOIN users u ON u.id = m.user_id
+      WHERE m.home_id = ? ORDER BY m.role, u.name`).all(ctx.homeId) as Row[];
     const settings = db.prepare('SELECT zip_code, stores, kroger_location_id FROM home_settings WHERE home_id = ?').get(ctx.homeId) as Row | undefined;
     const isManager = ctx.role === 'manager';
     return {
@@ -90,7 +98,7 @@ export function homeRoutes(app: FastifyInstance, db: DatabaseSync): void {
       role: ctx.role,
       joinCode: home.join_code,
       calendarUrl: isManager || !ctx.viaToken ? `/api/calendar/${home.calendar_token}.ics` : null,
-      members,
+      members: members.map((m) => ({ ...m, diets: JSON.parse(m.diets as string), allergies: JSON.parse(m.allergies as string) })),
       settings: {
         zipCode: settings?.zip_code ?? null,
         stores: JSON.parse((settings?.stores as string) ?? '[]'),
@@ -165,6 +173,19 @@ export function homeRoutes(app: FastifyInstance, db: DatabaseSync): void {
     if (role === 'member') assertNotLastManager(db, ctx.homeId, userId);
     db.prepare('UPDATE home_members SET role = ? WHERE home_id = ? AND user_id = ?').run(role, ctx.homeId, userId);
     return { ok: true };
+  });
+
+  // Diets and allergies: people set their own; managers can set them for anyone (kids without accounts of their own).
+  app.put('/api/homes/:homeId/members/:userId/diet', { schema: body({ diets: list(text, 10), allergies: list(text, 20) }) }, async (req) => {
+    const { userId } = req.params as { userId: string };
+    const ctx = homeCtx(db, req, userId === req.user?.id ? 'member' : 'manager');
+    if (!db.prepare('SELECT 1 FROM home_members WHERE home_id = ? AND user_id = ?').get(ctx.homeId, userId)) throw new HttpError(404, 'Not in this home');
+    const b = (req.body ?? {}) as Row;
+    const clean = (v: unknown, max: number) => [...new Set((Array.isArray(v) ? v : []).map((x) => str(x, 40)).filter((x): x is string => !!x))].slice(0, max);
+    const diets = clean(b.diets, 10).filter((d) => (DIETS as readonly string[]).includes(d));
+    const allergies = clean(b.allergies, 20);
+    db.prepare('UPDATE home_members SET diets = ?, allergies = ? WHERE home_id = ? AND user_id = ?').run(JSON.stringify(diets), JSON.stringify(allergies), ctx.homeId, userId);
+    return { diets, allergies };
   });
 
   app.delete('/api/homes/:homeId/members/:userId', async (req) => {

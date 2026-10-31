@@ -4,10 +4,12 @@ import { homeCtx } from '../auth.ts';
 import { tx, type Row } from '../db.ts';
 import { HttpError, newId, num, parseJson, randomToken, str } from '../util.ts';
 import { importAny, ingredientMatches, matchKey, type Ingredient, type Recipe } from '../../../shared/recipe.ts';
-import { convert } from '../../../shared/units.ts';
+import { convertFor } from '../../../shared/units.ts';
 import { publicFetch } from '../security.ts';
 import { adjustItem, recordHistory } from './inventory.ts';
-import { homeLabels } from './homes.ts';
+import { homeEaters, homeLabels } from './homes.ts';
+import { dietClashes } from '../../../shared/diets.ts';
+import { body, flag, list, number, text } from '../schemas.ts';
 import { addShoppingItem } from './shopping.ts';
 
 /** Things nobody tracks in inventory. */
@@ -19,7 +21,7 @@ export function saveRecipe(db: DatabaseSync, homeId: string, r: Recipe, userId: 
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT (id) DO UPDATE SET title = excluded.title, description = excluded.description, servings = excluded.servings,
         prep_minutes = excluded.prep_minutes, cook_minutes = excluded.cook_minutes, source_url = excluded.source_url,
-        image = excluded.image, instructions = excluded.instructions, tags = excluded.tags, updated_at = datetime('now')`).run(
+        image = excluded.image, instructions = excluded.instructions, tags = excluded.tags, nutrition = NULL, updated_at = datetime('now')`).run(
       id, homeId, (r.title || 'Untitled recipe').slice(0, 200), (r.description ?? '').slice(0, 5000),
       r.servings ?? null, r.prepMinutes ?? null, r.cookMinutes ?? null, r.sourceUrl ?? null, r.image ?? null,
       JSON.stringify((r.instructions ?? []).map(String).slice(0, 200)),
@@ -122,7 +124,7 @@ export function checkIngredients(index: StockIndex, ingredients: Ingredient[], f
     let have = 0;
     let comparable = false;
     for (const s of stock) {
-      const c = convert(s.quantity, s.unit, ing.unit);
+      const c = convertFor(s.quantity, s.unit, ing.unit, ing.name);
       if (c != null) { have += c; comparable = true; }
     }
     // Units we can't compare (e.g. "2 cloves" vs "1 head") count as present.
@@ -161,14 +163,17 @@ export function recipeRoutes(app: FastifyInstance, db: DatabaseSync): void {
     const rows = db.prepare(`SELECT * FROM recipes WHERE ${where} ORDER BY title COLLATE NOCASE`).all(...args) as Row[];
     const index = stockIndex(db, ctx.homeId);
     const expiring = expiringIds(db, ctx.homeId);
+    const eaters = homeEaters(db, ctx.homeId);
     const list = rows.map((r) => {
       const full = loadRecipe(db, r);
       const { status, missing } = readiness(checkIngredients(index, full.ingredients));
       return {
         usesExpiring: usesExpiring(index, full.ingredients, expiring),
+        dietWarnings: dietClashes(full.ingredients.filter((i) => !i.optional), eaters).length,
         id: full.id, title: full.title, image: full.image, servings: full.servings, tags: full.tags,
         totalMinutes: (full.prepMinutes ?? 0) + (full.cookMinutes ?? 0) || null,
         ingredientCount: full.ingredients.length, isPublic: full.isPublic, ready: status, missing,
+        favorite: !!r.favorite, rating: r.rating as number | null, collections: parseJson<string[]>(r.collections, []),
       };
     });
     return q.ready === 'true' ? list.filter((r) => r.ready === 'ready') : list;
@@ -182,7 +187,14 @@ export function recipeRoutes(app: FastifyInstance, db: DatabaseSync): void {
     const servings = num((req.query as Row).servings);
     const factor = servings && full.servings ? servings / full.servings : 1;
     const checked = checkIngredients(stockIndex(db, ctx.homeId), full.ingredients, factor);
-    return { ...full, ingredients: checked, ...readiness(checked) };
+    const cooks = db.prepare('SELECT COUNT(*) AS n, MAX(cooked_at) AS last FROM recipe_cooks WHERE recipe_id = ?').get(full.id) as Row;
+    return {
+      ...full, ingredients: checked, ...readiness(checked),
+      favorite: !!row.favorite, rating: row.rating as number | null, notes: row.notes as string, collections: parseJson<string[]>(row.collections, []),
+      cookCount: Number(cooks.n), lastCooked: cooks.last as string | null,
+      dietClashes: dietClashes(full.ingredients, homeEaters(db, ctx.homeId)),
+      nutrition: parseJson<Record<string, number> | null>(row.nutrition, null),
+    };
   });
 
   app.post('/api/homes/:homeId/recipes', async (req) => {
@@ -230,7 +242,9 @@ export function recipeRoutes(app: FastifyInstance, db: DatabaseSync): void {
     const index = stockIndex(db, ctx.homeId);
     const used: { name: string; amount: number; unit: string | null }[] = [];
     const skipped: string[] = [];
+    const before = Number((db.prepare('SELECT COALESCE(MAX(id), 0) AS id FROM inventory_history').get() as Row).id);
     tx(db, () => {
+      db.prepare('INSERT INTO recipe_cooks (home_id, recipe_id, user_id) VALUES (?, ?, ?)').run(ctx.homeId, full.id, ctx.user?.id ?? null);
       for (const ing of full.ingredients) {
         if (ALWAYS_HAVE.has(ing.name.toLowerCase())) continue;
         const stock = findStock(index, ing.name).stock.filter((s) => s.quantity > 0);
@@ -242,20 +256,42 @@ export function recipeRoutes(app: FastifyInstance, db: DatabaseSync): void {
             if (!s.unit || s.unit === 'each') { adjustItem(db, ctx.homeId, s.id, -1, `cooked ${full.title}`, ctx.user?.id ?? null); used.push({ name: s.name, amount: 1, unit: s.unit }); }
             break;
           }
-          const inStockUnits = convert(remaining, ing.unit, s.unit);
+          const inStockUnits = convertFor(remaining, ing.unit, s.unit, ing.name);
           if (inStockUnits == null) continue;
           const take = Math.min(s.quantity, inStockUnits);
           adjustItem(db, ctx.homeId, s.id, -take, `cooked ${full.title}`, ctx.user?.id ?? null);
           s.quantity -= take;
           used.push({ name: s.name, amount: Math.round(take * 100) / 100, unit: s.unit });
-          remaining -= convert(take, s.unit, ing.unit) ?? remaining;
+          remaining -= convertFor(take, s.unit, ing.unit, ing.name) ?? remaining;
           if (remaining <= 1e-9) break;
         }
       }
       const mealId = str((req.body as Row)?.mealPlanId, 60);
       if (mealId) db.prepare("UPDATE meal_plan SET cooked_at = datetime('now') WHERE id = ? AND home_id = ?").run(mealId, ctx.homeId);
     });
-    return { used, skipped };
+    // So the app can offer to put it all back.
+    const historyIds = (db.prepare('SELECT id FROM inventory_history WHERE home_id = ? AND id > ?').all(ctx.homeId, before) as Row[]).map((h) => Number(h.id));
+    return { used, skipped, historyIds };
+  });
+
+  // The household's own take on a recipe: favorite, 1 to 5 stars, notes ("double the garlic").
+  app.patch('/api/homes/:homeId/recipes/:id/meta', { schema: body({ favorite: flag, rating: number, notes: text, collections: list(text, 20) }) }, async (req) => {
+    const ctx = homeCtx(db, req);
+    const id = (req.params as { id: string }).id;
+    if (!db.prepare('SELECT 1 FROM recipes WHERE id = ? AND home_id = ?').get(id, ctx.homeId)) throw new HttpError(404, 'Recipe not found');
+    const b = (req.body ?? {}) as Row;
+    if ('favorite' in b) db.prepare('UPDATE recipes SET favorite = ? WHERE id = ?').run(b.favorite ? 1 : 0, id);
+    if ('rating' in b) {
+      const r = num(b.rating);
+      db.prepare('UPDATE recipes SET rating = ? WHERE id = ?').run(r && r >= 1 && r <= 5 ? Math.round(r) : null, id);
+    }
+    if ('notes' in b) db.prepare('UPDATE recipes SET notes = ? WHERE id = ?').run(str(b.notes, 4000) ?? '', id);
+    if (Array.isArray(b.collections)) {
+      const names = [...new Set((b.collections as unknown[]).map((c) => str(c, 40)).filter((c): c is string => !!c))];
+      db.prepare('UPDATE recipes SET collections = ? WHERE id = ?').run(JSON.stringify(names), id);
+    }
+    const row = db.prepare('SELECT favorite, rating, notes, collections FROM recipes WHERE id = ?').get(id) as Row;
+    return { favorite: !!row.favorite, rating: row.rating, notes: row.notes, collections: parseJson<string[]>(row.collections, []) };
   });
 
   // Puts what's left after a meal in the fridge as its own item, good for 4 days, so it shows up in "use it up".

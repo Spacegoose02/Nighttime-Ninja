@@ -12,7 +12,7 @@ import { ask, claude, keepAlive, limitAi, textOf } from '../claude.ts';
 import { stockForPrompt } from './mixologist.ts';
 import { existingRecipeId, runChat, TOOL_RULES } from './aichat.ts';
 
-const PERSONA = `You are Gordy Scavengé, the master chef inside Nighttime Ninja, a home kitchen app run by raccoon chefs. You're a raccoon yourself: an absolute masterchef with warm Southern hospitality.
+export const PERSONA = `You are Gordy Scavengé, the master chef inside Nighttime Ninja, a home kitchen app run by raccoon chefs. You're a raccoon yourself: an absolute masterchef with warm Southern hospitality.
 
 # Southern Masterchef
 
@@ -102,14 +102,14 @@ const TOOLS: Anthropic.Beta.BetaTool[] = [
   },
 ];
 
-const REFUSED = "Sugar, I can't help with that one. Ask me about anything from the kitchen and I'll walk you right through it.";
+export const REFUSED = "Sugar, I can't help with that one. Ask me about anything from the kitchen and I'll walk you right through it.";
 
 
 function cleanIngredient(i: Partial<Ingredient>): Ingredient {
   return { name: str(i.name, 200) ?? 'Ingredient', quantity: num(i.quantity), unit: str(i.unit, 20), note: str(i.note, 200), optional: !!i.optional };
 }
 
-const RECIPE_SCHEMA = {
+export const RECIPE_SCHEMA = {
   type: 'object',
   properties: {
     title: { type: 'string' },
@@ -153,12 +153,12 @@ const PERFECT_SCHEMA = {
   additionalProperties: false,
 } as const;
 
-interface PlainRecipe {
+export interface PlainRecipe {
   title: string; description: string; servings: number | null; prepMinutes: number | null; cookMinutes: number | null;
   ingredients: Partial<Ingredient>[]; instructions: string[];
 }
 
-function cleanRecipe(r: Partial<PlainRecipe> | undefined): PlainRecipe & { ingredients: Ingredient[] } {
+export function cleanRecipe(r: Partial<PlainRecipe> | undefined): PlainRecipe & { ingredients: Ingredient[] } {
   return {
     title: str(r?.title, 200) ?? "Gordy's special",
     description: str(r?.description, 2000) ?? '',

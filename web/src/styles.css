@@ -257,6 +257,8 @@ label.field { display: flex; flex-direction: column; gap: 6px; font-weight: 600;
 @media (max-width: 1100px) { .week { grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); } }
 .day { min-height: 200px; }
 .day.today { border-color: var(--primary); border-width: 2px; }
+.day.drop { border-color: var(--primary); border-style: dashed; border-width: 2px; background: var(--surface-2); }
+.meal[draggable] { cursor: grab; }
 .meal { background: var(--surface-2); border-radius: 12px; padding: 8px 10px; display: flex; gap: 8px; align-items: center; }
 .meal .slot { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); font-weight: 700; }
 
@@ -454,3 +456,38 @@ td, th { text-align: left; padding: 8px; border-bottom: 1px solid var(--border);
 .timer.ringing { border-color: var(--danger); animation: ring 1s ease-in-out infinite; }
 @keyframes ring { 50% { background: color-mix(in srgb, var(--danger) 18%, var(--surface)); } }
 @media (prefers-reduced-motion: reduce) { .timer.ringing { animation: none; background: color-mix(in srgb, var(--danger) 18%, var(--surface)); } }
+
+.toast { display: flex; align-items: center; gap: 14px; }
+.toast-undo { min-height: 36px; padding: 4px 14px; background: transparent; color: inherit; border: 2px solid currentColor; font-weight: 700; }
+
+.stars { display: inline-flex; border: 0; padding: 0; margin: 0; }
+.star { all: unset; cursor: pointer; font-size: 1.6rem; line-height: 1; padding: 4px 3px; color: var(--warn); }
+.star:focus-visible { outline: 3px solid color-mix(in srgb, var(--primary) 40%, transparent); border-radius: 6px; }
+.scanner-video { width: 100%; max-height: 50vh; border-radius: 16px; background: #000; object-fit: cover; }
+.layout-list { list-style: none; padding: 0; margin: 0; max-height: 50vh; overflow: auto; }
+.tile .frozen { font-size: 0.75rem; font-weight: 700; background: rgba(0,0,0,.25); padding: 2px 8px; border-radius: 99px; }
+
+/* Printing a recipe or the shopping list: just the content, in black on white. */
+@media print {
+  .rail, .bottom-bar, .timer-bar, .toast, .topbar button, .topbar .btn, .topbar .chips, .no-print,
+  .main button:not(.step):not(.check), .main form, .main input[type="checkbox"], .main .chips { display: none !important; }
+  :root, body, .main, .card { background: #fff !important; color: #000 !important; box-shadow: none !important; }
+  .main { padding: 0; max-width: none; }
+  .card { border: 1px solid #ccc; break-inside: avoid; }
+  .grid-2 { grid-template-columns: 1fr 1fr; }
+  .pill { border: 1px solid #999; background: none !important; color: #000 !important; }
+  textarea { border: none; min-height: 0; resize: none; }
+  .field:has(textarea:placeholder-shown) { display: none; }
+}
+.welcome { border: 2px solid var(--primary); }
+.welcome-steps { margin: 0; padding-left: 22px; display: flex; flex-direction: column; gap: 6px; }
+.diet-warning { border: 2px solid var(--danger); }
+.nutrition { display: grid; grid-template-columns: repeat(auto-fill, minmax(90px, 1fr)); gap: 10px; }
+.nutrition > div { display: flex; flex-direction: column; background: var(--surface-2); border-radius: 12px; padding: 8px 10px; }
+.nutrition strong { font-size: 1.2rem; }
+
+/* Spending */
+.spend-bars { display: flex; align-items: flex-end; gap: 10px; overflow-x: auto; padding-top: 8px; }
+.spend-bar { display: flex; flex-direction: column; align-items: center; gap: 4px; min-width: 56px; flex: 1; }
+.spend-bar > div { width: 100%; max-width: 48px; background: var(--primary); border-radius: 6px 6px 0 0; }
+.price-input { width: 84px; min-height: 36px; padding: 4px 8px; }

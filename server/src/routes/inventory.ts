@@ -1,18 +1,22 @@
 import type { FastifyInstance } from 'fastify';
 import type { DatabaseSync } from 'node:sqlite';
 import { homeCtx } from '../auth.ts';
-import type { Row } from '../db.ts';
+import { tx, type Row } from '../db.ts';
 import { HttpError, newId, num, requireStr, str } from '../util.ts';
 import { guessItem } from '../../../shared/catalog.ts';
 import { matchKey } from '../../../shared/recipe.ts';
 import { addShoppingItem } from './shopping.ts';
 import { useLabel } from './homes.ts';
-import { body, flag, number, text } from '../schemas.ts';
+import { body, flag, list, number, text } from '../schemas.ts';
+import { publicFetch } from '../security.ts';
+import { saveImage } from './integrations.ts';
 
 const ITEM = {
   name: text, category: text, location: text, icon: text, photo: text, quantity: number, unit: text,
-  lowThreshold: number, barcode: text, expiresOn: text,
+  lowThreshold: number, barcode: text, expiresOn: text, frozenOn: text,
 };
+
+const isFreezer = (location: unknown) => /freez/i.test(String(location ?? ''));
 
 /** An item is low when someone tapped "running low", or its amount dropped to the warning level. */
 export const LOW_SQL = '(marked_low = 1 OR (low_threshold IS NOT NULL AND quantity <= low_threshold))';
@@ -60,7 +64,7 @@ function shape(r: Row, shopping?: Set<string>) {
   return {
     id: r.id, name: r.name, category: r.category, location: r.location, icon: r.icon, photo: r.photo,
     quantity: r.quantity, unit: r.unit, lowThreshold: r.low_threshold, barcode: r.barcode, expiresOn: r.expires_on,
-    markedLow: !!r.marked_low,
+    markedLow: !!r.marked_low, frozenOn: r.frozen_on ?? null,
     isLow: !!r.marked_low || (r.low_threshold != null && (r.quantity as number) <= (r.low_threshold as number)),
     onShoppingList: shopping ? shopping.has(matchKey(r.name as string)) : false,
     updatedAt: r.updated_at,
@@ -91,11 +95,14 @@ export function inventoryRoutes(app: FastifyInstance, db: DatabaseSync): void {
     const guess = guessItem(name);
     const id = newId();
     const quantity = num(b.quantity) ?? 1;
-    db.prepare(`INSERT INTO items (id, home_id, name, category, location, icon, photo, quantity, unit, low_threshold, barcode, expires_on)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
-      id, ctx.homeId, name, str(b.category, 40) ?? guess.category, str(b.location, 40) ?? 'Pantry',
+    const location = str(b.location, 40) ?? 'Pantry';
+    // Freezer food gets a "frozen on" date, today unless given, so it can be nudged before it gets freezer burn.
+    const frozenOn = isFreezer(location) ? str(b.frozenOn, 10) ?? new Date().toISOString().slice(0, 10) : null;
+    db.prepare(`INSERT INTO items (id, home_id, name, category, location, icon, photo, quantity, unit, low_threshold, barcode, expires_on, frozen_on)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
+      id, ctx.homeId, name, str(b.category, 40) ?? guess.category, location,
       str(b.icon, 16) ?? guess.icon, str(b.photo, 500), quantity, str(b.unit, 20), num(b.lowThreshold),
-      str(b.barcode, 40), str(b.expiresOn, 10),
+      str(b.barcode, 40), str(b.expiresOn, 10), frozenOn,
     );
     recordHistory(db, { homeId: ctx.homeId, itemId: id, itemName: name, delta: quantity, unit: str(b.unit, 20), after: quantity, reason: 'added', userId: ctx.user?.id ?? null });
     return shape(db.prepare('SELECT * FROM items WHERE id = ?').get(id) as Row);
@@ -114,6 +121,11 @@ export function inventoryRoutes(app: FastifyInstance, db: DatabaseSync): void {
     if ('name' in b) fields.name = requireStr(b.name, 'Name', 120);
     if ('category' in b) fields.category = str(b.category, 40) ?? 'Other';
     if ('location' in b) fields.location = str(b.location, 40) ?? 'Pantry';
+    // Moving into the freezer starts the clock; moving out clears it.
+    const freezer = isFreezer(fields.location ?? item.location);
+    if ('frozenOn' in b) fields.frozen_on = freezer ? str(b.frozenOn, 10) : null;
+    if (freezer && !item.frozen_on && !fields.frozen_on) fields.frozen_on = new Date().toISOString().slice(0, 10);
+    if (!freezer && item.frozen_on) fields.frozen_on = null;
     if ('icon' in b) fields.icon = str(b.icon, 16);
     if ('photo' in b) fields.photo = str(b.photo, 500);
     if ('unit' in b) fields.unit = str(b.unit, 20);
@@ -137,7 +149,18 @@ export function inventoryRoutes(app: FastifyInstance, db: DatabaseSync): void {
     const delta = num(b.delta);
     if (delta == null) throw new HttpError(400, 'delta is required');
     const reason = str(b.reason, 40) ?? (delta > 0 ? 'restocked' : 'used');
-    return shape(adjustItem(db, ctx.homeId, (req.params as { itemId: string }).itemId, delta, reason, ctx.user?.id ?? null));
+    const item = shape(adjustItem(db, ctx.homeId, (req.params as { itemId: string }).itemId, delta, reason, ctx.user?.id ?? null));
+    return { ...item, historyId: Number((db.prepare('SELECT last_insert_rowid() AS id').get() as Row).id) };
+  });
+
+  // A scanned barcode: the pantry item that already has it, or else what Open Food Facts knows about the product.
+  app.get('/api/homes/:homeId/barcode/:code', async (req) => {
+    const ctx = homeCtx(db, req);
+    const code = (req.params as { code: string }).code;
+    if (!/^\d{6,14}$/.test(code)) throw new HttpError(400, "That doesn't look like a barcode");
+    const mine = db.prepare('SELECT * FROM items WHERE home_id = ? AND barcode = ?').get(ctx.homeId, code) as Row | undefined;
+    if (mine) return { item: shape(mine), product: null };
+    return { item: null, product: await lookupProduct(code) };
   });
 
   app.delete('/api/homes/:homeId/items/:itemId', async (req) => {
@@ -157,6 +180,23 @@ export function inventoryRoutes(app: FastifyInstance, db: DatabaseSync): void {
     return addShoppingItem(db, ctx.homeId, { name: item.name as string, category: item.category as string, unit: item.unit as string | null }, ctx.user?.id ?? null);
   });
 
+  // Puts back the pantry changes behind these history rows (e.g. everything one "I cooked this" took out).
+  app.post('/api/homes/:homeId/history/undo', { schema: body({ ids: list(number, 200) }, ['ids']) }, async (req) => {
+    const ctx = homeCtx(db, req);
+    const ids = ((req.body as Row).ids as number[]).filter((n) => Number.isInteger(n));
+    let undone = 0;
+    tx(db, () => {
+      for (const id of ids) {
+        const h = db.prepare('SELECT * FROM inventory_history WHERE id = ? AND home_id = ? AND undone_at IS NULL').get(id, ctx.homeId) as Row | undefined;
+        if (!h?.item_id || !db.prepare('SELECT 1 FROM items WHERE id = ? AND home_id = ?').get(h.item_id as string, ctx.homeId)) continue;
+        adjustItem(db, ctx.homeId, h.item_id as string, -(h.delta as number), `undo: ${h.reason}`, ctx.user?.id ?? null);
+        db.prepare("UPDATE inventory_history SET undone_at = datetime('now') WHERE id = ?").run(id);
+        undone++;
+      }
+    });
+    return { undone };
+  });
+
   app.get('/api/homes/:homeId/history', async (req) => {
     const ctx = homeCtx(db, req);
     const q = req.query as Row;
@@ -171,4 +211,33 @@ export function inventoryRoutes(app: FastifyInstance, db: DatabaseSync): void {
       FROM inventory_history h LEFT JOIN users u ON u.id = h.user_id
       WHERE h.home_id = ?${extra} ORDER BY h.id DESC LIMIT ?`).all(...args);
   });
+}
+
+export interface Product { name: string; brand: string | null; size: string | null; photo: string | null; category: string }
+
+/** Open Food Facts: free, no key, and good coverage of US groceries. The photo is copied to this server. */
+export async function lookupProduct(code: string): Promise<Product | null> {
+  try {
+    const res = await publicFetch(`https://world.openfoodfacts.org/api/v2/product/${code}.json?fields=product_name,brands,quantity,image_front_small_url`, {
+      headers: { 'user-agent': 'NighttimeNinja/1.0 (self-hosted kitchen app)' },
+      signal: AbortSignal.timeout(8000),
+    });
+    if (!res.ok) return null;
+    const data = await res.json() as { status?: number; product?: Record<string, string | undefined> };
+    const p = data.product;
+    const name = p?.product_name?.trim();
+    if (!p || !data.status || !name) return null;
+    let photo: string | null = null;
+    if (p.image_front_small_url) {
+      try {
+        const img = await publicFetch(p.image_front_small_url, { signal: AbortSignal.timeout(8000) });
+        const mime = img.headers.get('content-type')?.split(';')[0] ?? '';
+        if (img.ok) photo = saveImage(Buffer.from(await img.arrayBuffer()), mime);
+      } catch { /* no photo is fine */ }
+    }
+    const brand = p.brands?.split(',')[0]?.trim() || null;
+    return { name: name.slice(0, 120), brand, size: p.quantity?.trim() || null, photo, category: guessItem(name).category };
+  } catch {
+    return null;
+  }
 }

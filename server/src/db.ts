@@ -240,6 +240,63 @@ const MIGRATIONS: string[] = [
   );
   CREATE INDEX ai_chats_owner ON ai_chats(home_id, user_id, kind, updated_at);
   `,
+  // Favorite recipes, star ratings and the household's own notes; a log of every time a recipe was cooked;
+  // pantry changes that were undone.
+  `
+  ALTER TABLE recipes ADD COLUMN favorite INTEGER NOT NULL DEFAULT 0;
+  ALTER TABLE recipes ADD COLUMN rating INTEGER;
+  ALTER TABLE recipes ADD COLUMN notes TEXT NOT NULL DEFAULT '';
+  CREATE TABLE recipe_cooks (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    home_id TEXT NOT NULL REFERENCES homes(id) ON DELETE CASCADE,
+    recipe_id TEXT NOT NULL REFERENCES recipes(id) ON DELETE CASCADE,
+    user_id TEXT REFERENCES users(id) ON DELETE SET NULL,
+    cooked_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+  CREATE INDEX recipe_cooks_recipe ON recipe_cooks(recipe_id, cooked_at);
+  INSERT INTO recipe_cooks (home_id, recipe_id, cooked_at)
+    SELECT home_id, recipe_id, cooked_at FROM meal_plan WHERE recipe_id IS NOT NULL AND cooked_at IS NOT NULL;
+  ALTER TABLE inventory_history ADD COLUMN undone_at TEXT;
+  `,
+  // Who's cooking each planned meal, and each home's shopping orders for the stores it goes to.
+  `
+  ALTER TABLE meal_plan ADD COLUMN cook_id TEXT REFERENCES users(id) ON DELETE SET NULL;
+  ALTER TABLE home_settings ADD COLUMN store_layouts TEXT NOT NULL DEFAULT '[]';
+  `,
+  // When something went into the freezer, and recipe collections ("Weeknight", "Holidays").
+  `
+  ALTER TABLE items ADD COLUMN frozen_on TEXT;
+  UPDATE items SET frozen_on = date(updated_at) WHERE lower(location) LIKE '%freez%';
+  ALTER TABLE recipes ADD COLUMN collections TEXT NOT NULL DEFAULT '[]';
+  `,
+  // Each person's diets and allergies in a home, and AI nutrition estimates per recipe.
+  `
+  ALTER TABLE home_members ADD COLUMN diets TEXT NOT NULL DEFAULT '[]';
+  ALTER TABLE home_members ADD COLUMN allergies TEXT NOT NULL DEFAULT '[]';
+  ALTER TABLE recipes ADD COLUMN nutrition TEXT;
+  `,
+  // What things cost: the price paid for each shopping list item, and where.
+  `
+  ALTER TABLE shopping_items ADD COLUMN price REAL;
+  ALTER TABLE shopping_items ADD COLUMN store TEXT;
+  CREATE INDEX shopping_bought ON shopping_items(home_id, checked, checked_at);
+  `,
+  // Phone and browser reminders: where to send them, which ones each person wants, and which already went out.
+  `
+  CREATE TABLE push_subscriptions (
+    endpoint TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    p256dh TEXT NOT NULL,
+    auth TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+  CREATE INDEX push_user ON push_subscriptions(user_id);
+  ALTER TABLE users ADD COLUMN reminders TEXT NOT NULL DEFAULT '{"expiring":true,"plan":true,"list":true}';
+  CREATE TABLE reminders_sent (
+    key TEXT PRIMARY KEY,
+    sent_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+  `,
 ];
 
 export function openDb(dataDir: string): DatabaseSync {

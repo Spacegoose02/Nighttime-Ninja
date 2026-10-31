@@ -1,7 +1,8 @@
-import { useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Modal } from '../components/Dialog.tsx';
-import { api, fileToDataUrl, tileState, type Item } from '../api.ts';
+import { BarcodeScanner } from '../components/BarcodeScanner.tsx';
+import { api, fileToDataUrl, freezerMonths, tileState, type Item } from '../api.ts';
 import { useApp, useLoad } from '../state.tsx';
 import { amount } from '../format.ts';
 import { CATEGORIES, LOCATIONS, guessItem } from '../../../shared/catalog.ts';
@@ -53,13 +54,21 @@ function LabelSelect({ label, value, options: list, onChange, placeholder, empty
   );
 }
 
-export function ItemEditor({ item, labels, canAdd, onClose }: { item: Item | null; labels: Labels; canAdd: boolean; onClose: (changed: boolean) => void }) {
+/** What a barcode lookup knows about a new item, used to fill in the form. */
+export type ItemDraft = Partial<Pick<Item, 'name' | 'barcode' | 'photo' | 'category'>>;
+
+export function ItemEditor({ item, draft, labels, canAdd, onClose }: {
+  item: Item | null; draft?: ItemDraft; labels: Labels; canAdd: boolean; onClose: (changed: boolean) => void;
+}) {
   const { base, toast, me } = useApp();
   const [f, setF] = useState(() => ({
-    name: item?.name ?? '', quantity: String(item?.quantity ?? 1), unit: item?.unit ?? '', category: item?.category ?? '',
+    name: item?.name ?? draft?.name ?? '', quantity: String(item?.quantity ?? 1), unit: item?.unit ?? '', category: item?.category ?? draft?.category ?? '',
     location: item?.location ?? 'Pantry', lowThreshold: item?.lowThreshold == null ? '' : String(item.lowThreshold),
-    expiresOn: item?.expiresOn ?? '', icon: item?.icon ?? '', photo: item?.photo ?? '', markedLow: item?.markedLow ?? false,
+    expiresOn: item?.expiresOn ?? '', icon: item?.icon ?? '', photo: item?.photo ?? draft?.photo ?? '', markedLow: item?.markedLow ?? false,
+    barcode: item?.barcode ?? draft?.barcode ?? '', frozenOn: item?.frozenOn ?? '',
   }));
+  const [scanning, setScanning] = useState(false);
+  const scanned = useCallback((code: string) => { setScanning(false); setF((cur) => ({ ...cur, barcode: code })); }, []);
   const [showThreshold, setShowThreshold] = useState(item?.lowThreshold != null);
   const set = (k: keyof typeof f) => (e: { target: { value: string } }) => setF({ ...f, [k]: e.target.value });
 
@@ -67,6 +76,7 @@ export function ItemEditor({ item, labels, canAdd, onClose }: { item: Item | nul
     const body = {
       ...f, quantity: Number(f.quantity) || 0, lowThreshold: f.lowThreshold === '' ? null : Number(f.lowThreshold),
       category: f.category || undefined, icon: f.icon || undefined, photo: f.photo || null, expiresOn: f.expiresOn || null, unit: f.unit || null,
+      barcode: f.barcode || null, frozenOn: f.frozenOn || null,
     };
     let saved: Item;
     if (item) saved = await api<Item>(`${base}/items/${item.id}`, { method: 'PATCH', body });
@@ -120,6 +130,9 @@ export function ItemEditor({ item, labels, canAdd, onClose }: { item: Item | nul
       <div className="row">
         {showThreshold && <label className="field" style={{ flex: 1 }}>Mark low automatically at or below<input inputMode="decimal" value={f.lowThreshold} onChange={set('lowThreshold')} placeholder="e.g. 1" /></label>}
         <label className="field" style={{ flex: 1 }}>Expires<input type="date" value={f.expiresOn} onChange={set('expiresOn')} /></label>
+        {/freez/i.test(f.location) && (
+          <label className="field" style={{ flex: 1 }}>Frozen on<input type="date" value={f.frozenOn} onChange={set('frozenOn')} placeholder="Today" /></label>
+        )}
       </div>
       <div className="row">
         <label className="field" style={{ width: 110 }}>Icon<input value={f.icon} onChange={set('icon')} placeholder={guessItem(f.name).icon} /></label>
@@ -127,7 +140,17 @@ export function ItemEditor({ item, labels, canAdd, onClose }: { item: Item | nul
         {f.photo && <button className="ghost" onClick={() => setF({ ...f, photo: '' })}>Remove photo</button>}
       </div>
       <div className="row">
-        {item && <button className="danger" onClick={async () => { await api(`${base}/items/${item.id}`, { method: 'DELETE' }); onClose(true); }}>Delete</button>}
+        <label className="field" style={{ flex: 1 }}>Barcode<input inputMode="numeric" value={f.barcode} onChange={set('barcode')} placeholder="Scan it once to restock with a scan later" /></label>
+        <button onClick={() => setScanning(true)} aria-label="Scan the barcode">📷</button>
+      </div>
+      {scanning && <BarcodeScanner onCode={scanned} onClose={() => setScanning(false)} />}
+      <div className="row">
+        {item && <button className="danger" onClick={async () => {
+          await api(`${base}/items/${item.id}`, { method: 'DELETE' });
+          const { id: _id, isLow: _l, onShoppingList: _s, updatedAt: _u, ...rest } = item;
+          toast(`Deleted ${item.name}`, () => api(`${base}/items`, { body: rest }));
+          onClose(true);
+        }}>Delete</button>}
         {item && <button onClick={async () => { await api(`${base}/items/${item.id}/to-shopping`, { body: {} }); toast(`${item.name} added to the shopping list`); }}>🛒 Add to list</button>}
         <span className="spacer" />
         <button onClick={() => onClose(false)}>Cancel</button>
@@ -138,7 +161,7 @@ export function ItemEditor({ item, labels, canAdd, onClose }: { item: Item | nul
 }
 
 export function Inventory() {
-  const { base, me } = useApp();
+  const { base, me, toast } = useApp();
   const [params, setParams] = useSearchParams();
   const [items, reload] = useLoad<Item[]>(`${base}/items`);
   const [home] = useLoad<HomeDetail>(base);
@@ -147,7 +170,27 @@ export function Inventory() {
   const [history, reloadHistory] = useLoad<HistoryRow[]>(tab === 'history' ? `${base}/history?limit=200` : null);
   const [q, setQ] = useState('');
   const [loc, setLoc] = useState('All');
-  const [editing, setEditing] = useState<Item | null | 'new'>(null);
+  const [editing, setEditing] = useState<Item | null | 'new' | { draft: ItemDraft }>(null);
+  const [scanning, setScanning] = useState(false);
+
+  // Something already in the pantry gets one more; anything else opens the form, filled in from Open Food Facts.
+  const scanned = useCallback(async (code: string) => {
+    setScanning(false);
+    try {
+      const r = await api<{ item: Item | null; product: { name: string; brand: string | null; size: string | null; photo: string | null; category: string } | null }>(`${base}/barcode/${code}`);
+      if (r.item) {
+        const updated = await api<Item & { historyId: number }>(`${base}/items/${r.item.id}/adjust`, { body: { delta: 1, reason: 'scanned' } });
+        toast(`${updated.name}: now ${amount(updated.quantity, updated.unit, me?.user.units)}`, () => api(`${base}/history/undo`, { body: { ids: [updated.historyId] } }));
+        void reload();
+        return;
+      }
+      const p = r.product;
+      if (!p) toast("Couldn't find that product. Type its name and it'll be remembered next time.");
+      setEditing({ draft: { barcode: code, name: p ? [p.brand, p.name].filter(Boolean).join(' ') : '', photo: p?.photo ?? null, category: p?.category } });
+    } catch (e) {
+      toast((e as Error).message);
+    }
+  }, [base, me?.user.units, reload, toast]);
   const lowOnly = params.get('low') === '1';
 
   const shown = useMemo(() => (items ?? []).filter((i) =>
@@ -168,8 +211,10 @@ export function Inventory() {
           <button className={`chip${tab === 'items' ? ' on' : ''}`} onClick={() => setTab('items')}>Items</button>
           <button className={`chip${tab === 'history' ? ' on' : ''}`} onClick={() => { setTab('history'); void reloadHistory(); }}>History</button>
         </div>
+        <button onClick={() => setScanning(true)}>📷 Scan</button>
         <button className="primary" onClick={() => setEditing('new')}>＋ Add item</button>
       </div>
+      {scanning && <BarcodeScanner onCode={scanned} onClose={() => setScanning(false)} />}
 
       {tab === 'items' ? (
         <>
@@ -196,6 +241,7 @@ export function Inventory() {
                     <ItemArt item={i} />
                     <span className="name">{i.name}</span>
                     <span className="qty">{amount(i.quantity, i.unit, me?.user.units)} · {i.location}</span>
+                    {freezerMonths(i) != null && <span className="frozen">❄️ {freezerMonths(i)} months in the freezer</span>}
                   </button>
                 ))}
               </div>
@@ -222,7 +268,7 @@ export function Inventory() {
         </div>
       )}
 
-      {editing && <ItemEditor item={editing === 'new' ? null : editing} labels={labels} canAdd={home?.role === 'manager'} onClose={(changed) => { setEditing(null); if (changed) void reload(); }} />}
+      {editing && <ItemEditor item={editing === 'new' || 'draft' in editing ? null : editing} draft={editing !== 'new' && 'draft' in editing ? editing.draft : undefined} labels={labels} canAdd={home?.role === 'manager'} onClose={(changed) => { setEditing(null); if (changed) void reload(); }} />}
     </div>
   );
 }

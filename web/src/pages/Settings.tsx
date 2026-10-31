@@ -10,6 +10,8 @@ import { VersionCard } from '../components/UpdateBanner.tsx';
 import { SecurityCard } from './Security.tsx';
 import { Admin } from './settings/Admin.tsx';
 import { PlacesAndCategories } from './settings/Labels.tsx';
+import { DietsAndAllergies } from './settings/Diets.tsx';
+import { Reminders } from './settings/Reminders.tsx';
 
 const THEMES = [
   { id: 'forest', name: 'Forest', swatch: '#2f7d4f' },
@@ -149,6 +151,8 @@ function HomeSettings() {
         ))}
       </div>
 
+      <DietsAndAllergies home={home} reload={reload} />
+
       <h3>Google Calendar</h3>
       <p className="small muted" style={{ margin: 0 }}>In Google Calendar choose Other calendars → ＋ → From URL, and paste this link. Your meal plan shows up and stays in sync.</p>
       {calendar && (
@@ -227,6 +231,7 @@ export function Settings() {
     <div className="stack" style={{ maxWidth: 960 }}>
       <div className="topbar"><h1>Settings</h1></div>
       <Profile />
+      <Reminders />
       <SecurityCard />
       <HomeSettings />
       <PlacesAndCategories />

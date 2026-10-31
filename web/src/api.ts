@@ -80,11 +80,15 @@ export interface Item {
   id: string; name: string; category: string; location: string; icon: string | null; photo: string | null;
   quantity: number; unit: string | null; lowThreshold: number | null; barcode: string | null; expiresOn: string | null;
   isLow: boolean; markedLow: boolean; onShoppingList: boolean; updatedAt: string;
+  /** When it went into the freezer. */
+  frozenOn: string | null;
 }
 
 export interface ShoppingItem {
   id: string; name: string; quantity: number | null; unit: string | null; category: string; note: string | null;
   checked: boolean; createdAt: string; checkedAt: string | null; addedBy: string | null;
+  /** What it cost when bought, and what it cost the time before. */
+  price?: number | null; store?: string | null; lastPrice?: number | null;
 }
 
 export type Availability = 'have' | 'low' | 'missing' | 'unknown';
@@ -94,20 +98,30 @@ export interface RecipeSummary {
   ingredientCount: number; isPublic: boolean; ready: 'ready' | 'almost' | 'missing'; missing: string[];
   /** Pantry items expiring in the next 3 days that this recipe would use. */
   usesExpiring: string[];
+  favorite: boolean; rating: number | null; collections: string[];
+  /** How many ingredients clash with someone's diet or allergy. */
+  dietWarnings: number;
 }
 
 export interface RecipeFull extends Recipe {
   id: string; isPublic: boolean; shareSlug: string | null; status: 'ready' | 'almost' | 'missing'; missing: string[];
   ingredients: (Ingredient & { availability: Availability; matched?: string[]; linked?: boolean })[];
+  favorite: boolean; rating: number | null; notes: string; cookCount: number; lastCooked: string | null; collections: string[];
+  dietClashes: { ingredient: string; person: string; reason: string }[];
+  nutrition: Nutrition | null;
 }
+
+/** Per serving, estimated by AI. */
+export interface Nutrition { calories: number; proteinG: number; carbsG: number; fatG: number; fiberG: number; sugarG: number; sodiumMg: number; servings: number }
 
 export interface Meal {
   id: string; date: string; slot: string; recipeId: string | null; title: string; image: string | null; note: string | null; cookedAt: string | null;
+  cookId: string | null; cookName: string | null;
 }
 
 export interface HomeDetail {
   id: string; name: string; role: 'manager' | 'member'; joinCode: string; calendarUrl: string | null;
-  members: { id: string; name: string; avatar: string; role: string; joined_at: string }[];
+  members: { id: string; name: string; avatar: string; role: string; joined_at: string; diets: string[]; allergies: string[] }[];
   settings: { zipCode: string | null; stores: string[]; krogerLocationId: string | null; locations: string[]; categories: string[] };
 }
 
@@ -138,4 +152,11 @@ export function tileState(i: Pick<Item, 'quantity' | 'isLow' | 'onShoppingList'>
   if (i.onShoppingList) return { cls: ' out', badge: 'ON LIST' };
   if (i.isLow) return { cls: ' low', badge: 'LOW' };
   return { cls: '', badge: null };
+}
+
+/** Months something has been in the freezer, once it's been there 3 months or more (best quality ends around then). */
+export function freezerMonths(i: Pick<Item, 'frozenOn'>): number | null {
+  if (!i.frozenOn) return null;
+  const months = Math.floor((Date.now() - Date.parse(`${i.frozenOn}T12:00:00`)) / (30.44 * 86400000));
+  return months >= 3 ? months : null;
 }

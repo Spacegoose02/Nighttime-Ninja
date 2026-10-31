@@ -75,3 +75,31 @@ self.addEventListener('fetch', (event) => {
   }
   event.respondWith(staleWhileRevalidate(req));
 });
+
+// Reminders sent by the server (server/src/push.ts): show them, and open the right screen when tapped.
+self.addEventListener('push', (event) => {
+  let data = {};
+  try { data = event.data ? event.data.json() : {}; } catch { data = { body: event.data && event.data.text() }; }
+  event.waitUntil(self.registration.showNotification(data.title || 'Nighttime Ninja', {
+    body: data.body || '',
+    icon: '/icon-192.png',
+    badge: '/icon-192.png',
+    data: { url: data.url || '/' },
+    tag: data.url || 'nn',
+  }));
+});
+
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  const url = new URL((event.notification.data && event.notification.data.url) || '/', self.location.origin).href;
+  event.waitUntil((async () => {
+    for (const c of await self.clients.matchAll({ type: 'window', includeUncontrolled: true })) {
+      if (new URL(c.url).origin === self.location.origin && 'focus' in c) {
+        await c.focus();
+        if ('navigate' in c) await c.navigate(url);
+        return;
+      }
+    }
+    await self.clients.openWindow(url);
+  })());
+});
