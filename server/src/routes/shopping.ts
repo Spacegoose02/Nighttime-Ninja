@@ -2,12 +2,12 @@ import type { FastifyInstance } from 'fastify';
 import type { DatabaseSync } from 'node:sqlite';
 import { homeCtx } from '../auth.ts';
 import { tx, type Row } from '../db.ts';
-import { HttpError, newId, num, str } from '../util.ts';
+import { HttpError, newId, num, parseJson, str } from '../util.ts';
 import { guessItem } from '../../../shared/catalog.ts';
 import { matchKey, parseIngredient } from '../../../shared/recipe.ts';
 import { convert } from '../../../shared/units.ts';
 import { stockByName } from './inventory.ts';
-import { body, flag, number, text } from '../schemas.ts';
+import { body, flag, list, number, text } from '../schemas.ts';
 
 const LINE = { name: text, quantity: number, unit: text, category: text, note: text };
 
@@ -120,6 +120,24 @@ export function shoppingRoutes(app: FastifyInstance, db: DatabaseSync): void {
     // Checked items stay in the database as purchase history; they just leave the list view.
     db.prepare("UPDATE shopping_items SET checked_at = datetime('now', '-2 day') WHERE home_id = ? AND checked = 1").run(ctx.homeId);
     return { ok: true };
+  });
+
+  // Each store's aisle order: the category the list should start with, then the next, and so on.
+  app.get('/api/homes/:homeId/store-layouts', async (req) => {
+    const ctx = homeCtx(db, req);
+    const row = db.prepare('SELECT store_layouts FROM home_settings WHERE home_id = ?').get(ctx.homeId) as Row | undefined;
+    return parseJson<{ name: string; categories: string[] }[]>(row?.store_layouts, []);
+  });
+
+  app.put('/api/homes/:homeId/store-layouts', {
+    schema: body({ layouts: list({ type: 'object', properties: { name: text, categories: list(text, 100) } }, 30) }, ['layouts']),
+  }, async (req) => {
+    const ctx = homeCtx(db, req);
+    const layouts = ((req.body as Row).layouts as Row[])
+      .map((l) => ({ name: str(l.name, 60), categories: ((l.categories as unknown[]) ?? []).map((c) => str(c, 40)).filter((c): c is string => !!c) }))
+      .filter((l): l is { name: string; categories: string[] } => !!l.name);
+    db.prepare('UPDATE home_settings SET store_layouts = ? WHERE home_id = ?').run(JSON.stringify(layouts), ctx.homeId);
+    return layouts;
   });
 
   app.get('/api/homes/:homeId/shopping/suggestions', async (req) => {

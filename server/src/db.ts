@@ -258,6 +258,11 @@ const MIGRATIONS: string[] = [
     SELECT home_id, recipe_id, cooked_at FROM meal_plan WHERE recipe_id IS NOT NULL AND cooked_at IS NOT NULL;
   ALTER TABLE inventory_history ADD COLUMN undone_at TEXT;
   `,
+  // Who's cooking each planned meal, and each home's shopping orders for the stores it goes to.
+  `
+  ALTER TABLE meal_plan ADD COLUMN cook_id TEXT REFERENCES users(id) ON DELETE SET NULL;
+  ALTER TABLE home_settings ADD COLUMN store_layouts TEXT NOT NULL DEFAULT '[]';
+  `,
 ];
 
 export function openDb(dataDir: string): DatabaseSync {

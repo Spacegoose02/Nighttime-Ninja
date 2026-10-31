@@ -594,3 +594,35 @@ test('favorites, ratings, notes, cook count, undo and barcodes', async () => {
   await call(a, 'POST', `${base}/history/undo`, { ids: [bumped.historyId] });
   assert.equal(await eggs(), 6);
 });
+
+test('meal plan repeats, copying a week, who is cooking, and store orders', async () => {
+  const { login, call } = await setup();
+  const a = await login('Planner');
+  const b = await login('Helper');
+  const { body: home } = await call(a, 'POST', '/api/homes', { name: 'Plans' });
+  const base = `/api/homes/${home.id}`;
+  const detail = (await call(a, 'GET', base)).body;
+  await call(b, 'POST', '/api/homes/join', { code: detail.joinCode });
+  const helper = (await call(b, 'GET', '/api/me')).body.user.id;
+
+  await call(a, 'POST', `${base}/mealplan`, { date: '2030-01-01', slot: 'dinner', title: 'Tacos', repeatWeeks: 3, cookId: helper });
+  let plan = (await call(a, 'GET', `${base}/mealplan?start=2030-01-01&days=21`)).body;
+  assert.deepEqual(plan.map((m: { date: string }) => m.date), ['2030-01-01', '2030-01-08', '2030-01-15']);
+  assert.equal(plan[0].cookName, 'Helper');
+
+  const stranger = await login('Stranger');
+  const strangerId = (await call(stranger, 'GET', '/api/me')).body.user.id;
+  const moved = (await call(a, 'PATCH', `${base}/mealplan/${plan[0].id}`, { date: '2029-12-31', cookId: strangerId })).body;
+  assert.equal(moved.date, '2029-12-31');
+  assert.equal(moved.cookId, null, 'only people in the home can cook');
+
+  await call(a, 'POST', `${base}/mealplan`, { date: '2030-01-02', title: 'Soup' });
+  const copied = (await call(a, 'POST', `${base}/mealplan/copy`, { from: '2030-01-01', to: '2030-01-08', days: 7 })).body;
+  assert.equal(copied.copied, 1, 'only Soup: the first Tacos moved out of that week');
+  plan = (await call(a, 'GET', `${base}/mealplan?start=2030-01-08&days=7`)).body;
+  assert.deepEqual(plan.map((m: { title: string }) => m.title).sort(), ['Soup', 'Tacos']);
+
+  const saved = (await call(a, 'PUT', `${base}/store-layouts`, { layouts: [{ name: 'Kroger', categories: ['Bakery', 'Produce'] }, { name: '' }] })).body;
+  assert.deepEqual(saved, [{ name: 'Kroger', categories: ['Bakery', 'Produce'] }]);
+  assert.deepEqual((await call(b, 'GET', `${base}/store-layouts`)).body, saved);
+});

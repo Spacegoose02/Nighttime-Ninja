@@ -105,6 +105,7 @@ export interface RecipeFull extends Recipe {
 
 export interface Meal {
   id: string; date: string; slot: string; recipeId: string | null; title: string; image: string | null; note: string | null; cookedAt: string | null;
+  cookId: string | null; cookName: string | null;
 }
 
 export interface HomeDetail {
