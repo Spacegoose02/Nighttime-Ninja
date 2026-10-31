@@ -485,3 +485,9 @@ td, th { text-align: left; padding: 8px; border-bottom: 1px solid var(--border);
 .nutrition { display: grid; grid-template-columns: repeat(auto-fill, minmax(90px, 1fr)); gap: 10px; }
 .nutrition > div { display: flex; flex-direction: column; background: var(--surface-2); border-radius: 12px; padding: 8px 10px; }
 .nutrition strong { font-size: 1.2rem; }
+
+/* Spending */
+.spend-bars { display: flex; align-items: flex-end; gap: 10px; overflow-x: auto; padding-top: 8px; }
+.spend-bar { display: flex; flex-direction: column; align-items: center; gap: 4px; min-width: 56px; flex: 1; }
+.spend-bar > div { width: 100%; max-width: 48px; background: var(--primary); border-radius: 6px 6px 0 0; }
+.price-input { width: 84px; min-height: 36px; padding: 4px 8px; }

@@ -34,7 +34,7 @@ process.env.ALLOW_LOCAL_LOGIN = 'true';
 
 const { openMemoryDb } = await import('../db.ts');
 const { buildApp } = await import('../app.ts');
-const { youTubeDetails } = await import('./kitchenai.ts');
+const { matchListItem, youTubeDetails } = await import('./kitchenai.ts');
 
 test.after(() => fake.close());
 
@@ -112,6 +112,53 @@ test('reads a recipe from a photo, and estimates nutrition', async () => {
   const full = (await call('GET', `${base}/recipes/${saved.ids[0]}`)).body;
   await call('PUT', `${base}/recipes/${saved.ids[0]}`, { ...full, servings: 4 });
   assert.equal((await call('GET', `${base}/recipes/${saved.ids[0]}`)).body.nutrition, null);
+});
+
+test('a receipt ticks off the list with prices, and spending adds up', async () => {
+  const { call, base } = await setup();
+  await call('POST', `${base}/shopping`, { text: 'Whole milk, eggs, bananas' });
+  const list = (await call('GET', `${base}/shopping`)).body as { id: string; name: string }[];
+  answers.push({ found: true, store: 'Corner Grocer', lines: [
+    { name: 'whole milk', quantity: 1, unit: 'gallon', price: 3.49, food: true },
+    { name: 'Eggs', quantity: 12, unit: null, price: 4.2, food: true },
+    { name: 'paper towels', quantity: null, unit: null, price: 6, food: false },
+  ] });
+  const r = await call('POST', `${base}/shopping/receipt/read`, { image: 'data:image/jpeg;base64,/9j/4AAQ' });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.equal(r.body.store, 'Corner Grocer');
+  assert.deepEqual(r.body.lines.map((l: { match: { name: string } | null }) => l.match?.name ?? null), ['Whole milk', 'eggs', null]);
+
+  const lines = r.body.lines.map((l: { name: string; price: number; match: { id: string } | null; food: boolean }) => ({ name: l.name, price: l.price, shoppingId: l.match?.id, toPantry: l.food }));
+  const applied = await call('POST', `${base}/shopping/receipt/apply`, { store: 'Corner Grocer', lines });
+  assert.deepEqual(applied.body, { checked: 2, stocked: 0 });
+  const after = (await call('GET', `${base}/shopping`)).body as { name: string; checked: boolean; price: number | null }[];
+  assert.equal(after.find((i) => i.name === 'bananas')?.checked, false);
+  assert.equal(after.find((i) => i.name === 'Whole milk')?.price, 3.49);
+  const pantry = (await call('GET', `${base}/items`)).body as { name: string }[];
+  assert.ok(pantry.some((i) => /milk/i.test(i.name)), 'list items go in the pantry');
+  assert.ok(!pantry.some((i) => /towel/i.test(i.name)), 'non-food stays out of the pantry');
+
+  // A price typed in by hand counts too, and the next time it shows as last paid.
+  const bananas = list.find((i) => i.name === 'bananas')!;
+  await call('PATCH', `${base}/shopping/${bananas.id}`, { checked: true, price: 1.5, store: 'Market' });
+  const spend = (await call('GET', `${base}/shopping/spending?weeks=4`)).body;
+  assert.equal(spend.weeks.length, 1);
+  assert.equal(spend.weeks[0].total, 15.19);
+  assert.deepEqual(spend.stores, [{ store: 'Corner Grocer', total: 13.69 }, { store: 'Market', total: 1.5 }]);
+  await call('POST', `${base}/shopping/clear-checked`, {});
+  await call('POST', `${base}/shopping`, { text: 'bananas' });
+  const again = (await call('GET', `${base}/shopping`)).body as { name: string; lastPrice: number | null }[];
+  assert.equal(again.find((i) => i.name === 'bananas')?.lastPrice, 1.5);
+
+  answers.push({ found: false, store: null, lines: [] });
+  assert.equal((await call('POST', `${base}/shopping/receipt/read`, { image: 'data:image/jpeg;base64,/9j/4AAQ' })).status, 422);
+});
+
+test('matches receipt lines to list items', () => {
+  const open = [{ id: '1', name: 'Chicken breast' }, { id: '2', name: 'tomatoes' }];
+  assert.equal(matchListItem('chicken breasts', open)?.id, '1');
+  assert.equal(matchListItem('Roma tomato', open)?.id, '2');
+  assert.equal(matchListItem('dish soap', open), null);
 });
 
 test('reads the title and description from a YouTube page', () => {

@@ -9,13 +9,28 @@ import { convert } from '../../../shared/units.ts';
 import { stockByName } from './inventory.ts';
 import { body, flag, list, number, text } from '../schemas.ts';
 
-const LINE = { name: text, quantity: number, unit: text, category: text, note: text };
+const LINE = { name: text, quantity: number, unit: text, category: text, note: text, price: number, store: text };
 
 function shape(r: Row) {
   return {
     id: r.id, name: r.name, quantity: r.quantity, unit: r.unit, category: r.category, note: r.note,
     checked: !!r.checked, createdAt: r.created_at, checkedAt: r.checked_at, addedBy: r.added_by_name ?? null,
+    price: r.price ?? null, store: r.store ?? null, lastPrice: r.last_price ?? null,
   };
+}
+
+/** A price in dollars and cents, or null for blank, negative or silly amounts. */
+const money = (v: unknown) => { const n = num(v); return n != null && n >= 0 && n < 100000 ? Math.round(n * 100) / 100 : null; };
+
+/** Ticks an item off: remembers it was bought, and (unless told not to) puts it in the pantry. */
+export function checkOff(db: DatabaseSync, homeId: string, item: Row, addToInventory: boolean, userId: string | null): void {
+  db.prepare("UPDATE shopping_items SET checked = 1, checked_at = datetime('now') WHERE id = ?").run(item.id as string);
+  db.prepare(`INSERT INTO shopping_history (home_id, name_key, name, category, times_bought, last_bought_at)
+    VALUES (?, ?, ?, ?, 1, datetime('now'))
+    ON CONFLICT (home_id, name_key) DO UPDATE SET times_bought = times_bought + 1, last_bought_at = datetime('now'),
+      name = excluded.name, category = excluded.category`)
+    .run(homeId, matchKey(item.name as string), item.name as string, item.category as string);
+  if (addToInventory) stockByName(db, homeId, item.name as string, (item.quantity as number | null) ?? 1, item.unit as string | null, 'bought', userId);
 }
 
 /** Adds to the list, merging into an existing unchecked entry with the same name when units allow. */
@@ -54,7 +69,10 @@ export function shoppingRoutes(app: FastifyInstance, db: DatabaseSync): void {
   app.get('/api/homes/:homeId/shopping', async (req) => {
     const ctx = homeCtx(db, req);
     const rows = db.prepare(`
-      SELECT s.*, u.name AS added_by_name FROM shopping_items s LEFT JOIN users u ON u.id = s.added_by
+      SELECT s.*, u.name AS added_by_name,
+        (SELECT p.price FROM shopping_items p WHERE p.home_id = s.home_id AND p.name = s.name COLLATE NOCASE AND p.price IS NOT NULL
+          AND p.id != s.id ORDER BY p.checked_at DESC LIMIT 1) AS last_price
+      FROM shopping_items s LEFT JOIN users u ON u.id = s.added_by
       WHERE s.home_id = ? AND (s.checked = 0 OR s.checked_at > datetime('now', '-1 day'))
       ORDER BY s.checked, s.category, s.name COLLATE NOCASE`).all(ctx.homeId) as Row[];
     return rows.map(shape);
@@ -90,17 +108,11 @@ export function shoppingRoutes(app: FastifyInstance, db: DatabaseSync): void {
       if ('unit' in b) db.prepare('UPDATE shopping_items SET unit = ? WHERE id = ?').run(str(b.unit, 20), id);
       if ('category' in b) db.prepare('UPDATE shopping_items SET category = ? WHERE id = ?').run(str(b.category, 40) ?? 'Other', id);
       if ('note' in b) db.prepare('UPDATE shopping_items SET note = ? WHERE id = ?').run(str(b.note, 200), id);
+      if ('price' in b) db.prepare('UPDATE shopping_items SET price = ? WHERE id = ?').run(money(b.price), id);
+      if ('store' in b) db.prepare('UPDATE shopping_items SET store = ? WHERE id = ?').run(str(b.store, 60), id);
       if (typeof b.checked === 'boolean' && b.checked !== !!item.checked) {
         if (b.checked) {
-          db.prepare("UPDATE shopping_items SET checked = 1, checked_at = datetime('now') WHERE id = ?").run(id);
-          db.prepare(`INSERT INTO shopping_history (home_id, name_key, name, category, times_bought, last_bought_at)
-            VALUES (?, ?, ?, ?, 1, datetime('now'))
-            ON CONFLICT (home_id, name_key) DO UPDATE SET times_bought = times_bought + 1, last_bought_at = datetime('now'),
-              name = excluded.name, category = excluded.category`)
-            .run(ctx.homeId, matchKey(item.name as string), item.name as string, item.category as string);
-          if (b.addToInventory !== false) {
-            stockByName(db, ctx.homeId, item.name as string, (item.quantity as number | null) ?? 1, item.unit as string | null, 'bought', ctx.user?.id ?? null);
-          }
+          checkOff(db, ctx.homeId, item, b.addToInventory !== false, ctx.user?.id ?? null);
         } else {
           db.prepare('UPDATE shopping_items SET checked = 0, checked_at = NULL WHERE id = ?').run(id);
         }
@@ -120,6 +132,22 @@ export function shoppingRoutes(app: FastifyInstance, db: DatabaseSync): void {
     // Checked items stay in the database as purchase history; they just leave the list view.
     db.prepare("UPDATE shopping_items SET checked_at = datetime('now', '-2 day') WHERE home_id = ? AND checked = 1").run(ctx.homeId);
     return { ok: true };
+  });
+
+  // Grocery spending: totals by week, and what each thing usually costs. Only items with a price count.
+  app.get('/api/homes/:homeId/shopping/spending', async (req) => {
+    const ctx = homeCtx(db, req);
+    const weeks = Math.min(52, Math.max(1, Number((req.query as Row).weeks) || 8));
+    const since = `-${weeks * 7} day`;
+    const priced = 'home_id = ? AND checked = 1 AND price IS NOT NULL AND checked_at >= date(\'now\', ?)';
+    // Weeks start on Sunday.
+    const byWeek = db.prepare(`SELECT date(checked_at, '-6 day', 'weekday 0') AS week, ROUND(SUM(price), 2) AS total, COUNT(*) AS items
+      FROM shopping_items WHERE ${priced} GROUP BY week ORDER BY week`).all(ctx.homeId, since) as Row[];
+    const items = db.prepare(`SELECT name, COUNT(*) AS times, ROUND(SUM(price), 2) AS total, ROUND(AVG(price), 2) AS average, MIN(price) AS low, MAX(price) AS high
+      FROM shopping_items WHERE ${priced} GROUP BY lower(name) ORDER BY total DESC LIMIT 40`).all(ctx.homeId, since) as Row[];
+    const stores = db.prepare(`SELECT store, ROUND(SUM(price), 2) AS total FROM shopping_items
+      WHERE ${priced} AND store IS NOT NULL GROUP BY store ORDER BY total DESC`).all(ctx.homeId, since) as Row[];
+    return { weeks: byWeek, items, stores };
   });
 
   // Each store's aisle order: the category the list should start with, then the next, and so on.

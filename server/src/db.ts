@@ -275,6 +275,12 @@ const MIGRATIONS: string[] = [
   ALTER TABLE home_members ADD COLUMN allergies TEXT NOT NULL DEFAULT '[]';
   ALTER TABLE recipes ADD COLUMN nutrition TEXT;
   `,
+  // What things cost: the price paid for each shopping list item, and where.
+  `
+  ALTER TABLE shopping_items ADD COLUMN price REAL;
+  ALTER TABLE shopping_items ADD COLUMN store TEXT;
+  CREATE INDEX shopping_bought ON shopping_items(home_id, checked, checked_at);
+  `,
 ];
 
 export function openDb(dataDir: string): DatabaseSync {

@@ -4,13 +4,17 @@ import type Anthropic from '@anthropic-ai/sdk';
 import type { FastifyInstance } from 'fastify';
 import type { DatabaseSync } from 'node:sqlite';
 import { homeCtx } from '../auth.ts';
-import type { Row } from '../db.ts';
-import { HttpError, num, parseJson, str } from '../util.ts';
+import { tx, type Row } from '../db.ts';
+import { HttpError, newId, num, parseJson, str } from '../util.ts';
+import { guessItem } from '../../../shared/catalog.ts';
+import { ingredientMatches, matchKey } from '../../../shared/recipe.ts';
 import { ask, claude, keepAlive, limitAi, textOf } from '../claude.ts';
 import { publicFetch } from '../security.ts';
 import { list, body, number, text } from '../schemas.ts';
 import { checkIngredients, loadRecipe, stockIndex } from './recipes.ts';
 import { stockForPrompt } from './mixologist.ts';
+import { checkOff } from './shopping.ts';
+import { stockByName } from './inventory.ts';
 import { cleanRecipe, PERSONA, type PlainRecipe, RECIPE_SCHEMA, REFUSED } from './chef.ts';
 
 const SLOTS = ['breakfast', 'lunch', 'dinner', 'snack'];
@@ -84,6 +88,37 @@ export function youTubeDetails(html: string): { title: string; description: stri
   } catch {
     return null;
   }
+}
+
+const RECEIPT_SCHEMA = {
+  type: 'object',
+  properties: {
+    found: { type: 'boolean', description: 'False when the photo is not a store receipt.' },
+    store: { type: ['string', 'null'] },
+    lines: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          name: { type: 'string', description: 'Plain grocery name a person would write on a list, e.g. "whole milk" for "GV WHL MLK GAL".' },
+          quantity: { type: ['number', 'null'] },
+          unit: { type: ['string', 'null'], description: 'lb, oz, gallon, each and so on, when the receipt says.' },
+          price: { type: ['number', 'null'], description: 'What this line cost in total, after any line discount.' },
+          food: { type: 'boolean', description: 'False for non-food things like bags, tax, deposits or household goods.' },
+        },
+        required: ['name', 'quantity', 'unit', 'price', 'food'],
+        additionalProperties: false,
+      },
+    },
+  },
+  required: ['found', 'store', 'lines'],
+  additionalProperties: false,
+} as const;
+
+/** The unchecked list item a receipt line is for, if any. */
+export function matchListItem(line: string, open: { id: string; name: string }[]): { id: string; name: string } | null {
+  const key = matchKey(line);
+  return open.find((o) => matchKey(o.name) === key) ?? open.find((o) => ingredientMatches(o.name, line) || ingredientMatches(line, o.name)) ?? null;
 }
 
 const DATA_URL = /^data:(image\/(?:jpeg|png|webp|gif));base64,([A-Za-z0-9+/=]+)$/;
@@ -197,6 +232,72 @@ export function kitchenAiRoutes(app: FastifyInstance, db: DatabaseSync): void {
       if (!out.found || !recipes.length) throw new HttpError(422, "This video's description doesn't include the recipe. It may be on the cook's website instead.");
       return { recipes };
     });
+  });
+
+  // Receipt scan, step 1: read the receipt and say which shopping list item each line is.
+  app.post('/api/homes/:homeId/shopping/receipt/read', { schema: body({ image: text }, ['image']), bodyLimit: 12 * 1024 * 1024 }, async (req, reply) => {
+    const ctx = homeCtx(db, req);
+    const img = DATA_URL.exec(String((req.body as Row).image ?? ''));
+    if (!img) throw new HttpError(400, 'Add a photo of the receipt');
+    claude(db);
+    limitAi(ctx);
+    await keepAlive(reply, async () => {
+      const res = await ask(db, {
+        system: 'You read grocery store receipts. Store abbreviations are cryptic; turn each line into the plain grocery item it is.',
+        messages: [{
+          role: 'user',
+          content: [
+            { type: 'image', source: { type: 'base64', media_type: img[1] as 'image/jpeg', data: img[2] } },
+            { type: 'text', text: 'List every item bought on this receipt with its price. Leave out subtotals, tax, totals, payments and coupons as lines (but take line discounts off the item they belong to). If it is not a receipt, set found to false.' },
+          ],
+        }],
+        output_config: { effort: 'low', format: { type: 'json_schema', schema: RECEIPT_SCHEMA } },
+      });
+      const out = parsed<{ found?: boolean; store?: string | null; lines?: { name?: string; quantity?: number | null; unit?: string | null; price?: number | null; food?: boolean }[] }>(res, 'reading');
+      if (!out.found || !out.lines?.length) throw new HttpError(422, "Couldn't read that receipt. Try a flat, well-lit photo of the whole thing.");
+      const open = db.prepare('SELECT id, name FROM shopping_items WHERE home_id = ? AND checked = 0').all(ctx.homeId) as { id: string; name: string }[];
+      const lines = out.lines.slice(0, 150).map((l) => {
+        const name = str(l.name, 120) ?? 'Item';
+        const match = matchListItem(name, open);
+        // One receipt line ticks off one list item.
+        if (match) open.splice(open.indexOf(match), 1);
+        return { name, quantity: num(l.quantity), unit: str(l.unit, 20), price: num(l.price), food: l.food !== false, match };
+      });
+      return { store: str(out.store, 60), lines };
+    });
+  });
+
+  // Receipt scan, step 2: tick off the matched list items with their prices, and stock the pantry.
+  app.post('/api/homes/:homeId/shopping/receipt/apply', {
+    schema: body({ store: text, lines: list({ type: 'object', properties: { name: text, quantity: number, unit: text, price: number, shoppingId: text, toPantry: { type: 'boolean' } } }, 150) }, ['lines']),
+  }, async (req) => {
+    const ctx = homeCtx(db, req);
+    const b = (req.body ?? {}) as Row;
+    const store = str(b.store, 60);
+    const userId = ctx.user?.id ?? null;
+    let checked = 0;
+    let stocked = 0;
+    tx(db, () => {
+      for (const l of b.lines as Row[]) {
+        const price = num(l.price);
+        const cents = price != null && price >= 0 && price < 100000 ? Math.round(price * 100) / 100 : null;
+        const item = l.shoppingId ? db.prepare('SELECT * FROM shopping_items WHERE id = ? AND home_id = ? AND checked = 0').get(String(l.shoppingId), ctx.homeId) as Row | undefined : undefined;
+        if (item) {
+          db.prepare('UPDATE shopping_items SET price = ?, store = ? WHERE id = ?').run(cents, store, item.id as string);
+          checkOff(db, ctx.homeId, item, l.toPantry !== false, userId);
+          checked++;
+          continue;
+        }
+        const name = str(l.name, 120);
+        if (!name) continue;
+        // Not on the list: still count what it cost, already ticked off.
+        const g = guessItem(name);
+        db.prepare(`INSERT INTO shopping_items (id, home_id, name, quantity, unit, category, note, checked, checked_at, added_by, price, store)
+          VALUES (?, ?, ?, ?, ?, ?, 'from a receipt', 1, datetime('now'), ?, ?, ?)`).run(newId(), ctx.homeId, name, num(l.quantity), str(l.unit, 20), g.category, userId, cents, store);
+        if (l.toPantry) { stockByName(db, ctx.homeId, name, num(l.quantity) ?? 1, str(l.unit, 20), 'bought', userId); stocked++; }
+      }
+    });
+    return { checked, stocked };
   });
 
   // Nutrition per serving, estimated by Claude from the ingredients. Kept on the recipe and clearly labeled as an estimate.
