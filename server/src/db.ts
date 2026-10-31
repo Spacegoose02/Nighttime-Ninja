@@ -263,6 +263,12 @@ const MIGRATIONS: string[] = [
   ALTER TABLE meal_plan ADD COLUMN cook_id TEXT REFERENCES users(id) ON DELETE SET NULL;
   ALTER TABLE home_settings ADD COLUMN store_layouts TEXT NOT NULL DEFAULT '[]';
   `,
+  // When something went into the freezer, and recipe collections ("Weeknight", "Holidays").
+  `
+  ALTER TABLE items ADD COLUMN frozen_on TEXT;
+  UPDATE items SET frozen_on = date(updated_at) WHERE lower(location) LIKE '%freez%';
+  ALTER TABLE recipes ADD COLUMN collections TEXT NOT NULL DEFAULT '[]';
+  `,
 ];
 
 export function openDb(dataDir: string): DatabaseSync {

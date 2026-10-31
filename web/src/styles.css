@@ -465,3 +465,19 @@ td, th { text-align: left; padding: 8px; border-bottom: 1px solid var(--border);
 .star:focus-visible { outline: 3px solid color-mix(in srgb, var(--primary) 40%, transparent); border-radius: 6px; }
 .scanner-video { width: 100%; max-height: 50vh; border-radius: 16px; background: #000; object-fit: cover; }
 .layout-list { list-style: none; padding: 0; margin: 0; max-height: 50vh; overflow: auto; }
+.tile .frozen { font-size: 0.75rem; font-weight: 700; background: rgba(0,0,0,.25); padding: 2px 8px; border-radius: 99px; }
+
+/* Printing a recipe or the shopping list: just the content, in black on white. */
+@media print {
+  .rail, .bottom-bar, .timer-bar, .toast, .topbar button, .topbar .btn, .topbar .chips, .no-print,
+  .main button:not(.step):not(.check), .main form, .main input[type="checkbox"], .main .chips { display: none !important; }
+  :root, body, .main, .card { background: #fff !important; color: #000 !important; box-shadow: none !important; }
+  .main { padding: 0; max-width: none; }
+  .card { border: 1px solid #ccc; break-inside: avoid; }
+  .grid-2 { grid-template-columns: 1fr 1fr; }
+  .pill { border: 1px solid #999; background: none !important; color: #000 !important; }
+  textarea { border: none; min-height: 0; resize: none; }
+  .field:has(textarea:placeholder-shown) { display: none; }
+}
+.welcome { border: 2px solid var(--primary); }
+.welcome-steps { margin: 0; padding-left: 22px; display: flex; flex-direction: column; gap: 6px; }

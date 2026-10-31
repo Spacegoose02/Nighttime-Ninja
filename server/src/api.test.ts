@@ -626,3 +626,33 @@ test('meal plan repeats, copying a week, who is cooking, and store orders', asyn
   assert.deepEqual(saved, [{ name: 'Kroger', categories: ['Bakery', 'Produce'] }]);
   assert.deepEqual((await call(b, 'GET', `${base}/store-layouts`)).body, saved);
 });
+
+test('sample kitchen, freezer dates, collections, and cups out of a bag in pounds', async () => {
+  const { login, call } = await setup();
+  const a = await login('Starter');
+  const { body: home } = await call(a, 'POST', '/api/homes', { name: 'Fresh' });
+  const base = `/api/homes/${home.id}`;
+  assert.equal((await call(a, 'GET', `${base}/ha/summary`)).body.recipe_count, 0);
+  const sample = await call(a, 'POST', `${base}/sample-data`, {});
+  assert.equal(sample.status, 200, JSON.stringify(sample.body));
+  assert.equal((await call(a, 'POST', `${base}/sample-data`, {})).status, 409, 'only once, into an empty kitchen');
+
+  const items = (await call(a, 'GET', `${base}/items`)).body as { name: string; quantity: number; frozenOn: string | null }[];
+  assert.ok(items.find((i) => i.name === 'Chicken thighs')?.frozenOn, 'freezer items have a frozen-on date');
+  const flour = items.find((i) => i.name === 'All-purpose flour')!;
+  const recipes = (await call(a, 'GET', `${base}/recipes`)).body as { id: string; title: string }[];
+  const pancakes = recipes.find((r) => r.title === 'Buttermilk Pancakes')!;
+  await call(a, 'POST', `${base}/recipes/${pancakes.id}/cook`, {});
+  const after = (await call(a, 'GET', `${base}/items`)).body.find((i: { name: string }) => i.name === 'All-purpose flour');
+  assert.equal(Math.round((flour.quantity - after.quantity) * 100) / 100, 0.53, '2 cups of flour is about 0.53 lb');
+
+  const { body: milk } = await call(a, 'POST', `${base}/items`, { name: 'Milk', location: 'Fridge' });
+  assert.equal(milk.frozenOn, null);
+  const frozen = (await call(a, 'PATCH', `${base}/items/${milk.id}`, { location: 'Freezer' })).body;
+  assert.equal(frozen.frozenOn, new Date().toISOString().slice(0, 10));
+  assert.equal((await call(a, 'PATCH', `${base}/items/${milk.id}`, { location: 'Fridge' })).body.frozenOn, null);
+
+  const meta = (await call(a, 'PATCH', `${base}/recipes/${pancakes.id}/meta`, { collections: ['Weekend', 'Weekend', ' '] })).body;
+  assert.deepEqual(meta.collections, ['Weekend']);
+  assert.deepEqual((await call(a, 'GET', `${base}/recipes`)).body.find((r: { id: string }) => r.id === pancakes.id).collections, ['Weekend']);
+});

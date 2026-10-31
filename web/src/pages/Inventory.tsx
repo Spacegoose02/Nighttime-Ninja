@@ -2,7 +2,7 @@ import { useCallback, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Modal } from '../components/Dialog.tsx';
 import { BarcodeScanner } from '../components/BarcodeScanner.tsx';
-import { api, fileToDataUrl, tileState, type Item } from '../api.ts';
+import { api, fileToDataUrl, freezerMonths, tileState, type Item } from '../api.ts';
 import { useApp, useLoad } from '../state.tsx';
 import { amount } from '../format.ts';
 import { CATEGORIES, LOCATIONS, guessItem } from '../../../shared/catalog.ts';
@@ -65,7 +65,7 @@ export function ItemEditor({ item, draft, labels, canAdd, onClose }: {
     name: item?.name ?? draft?.name ?? '', quantity: String(item?.quantity ?? 1), unit: item?.unit ?? '', category: item?.category ?? draft?.category ?? '',
     location: item?.location ?? 'Pantry', lowThreshold: item?.lowThreshold == null ? '' : String(item.lowThreshold),
     expiresOn: item?.expiresOn ?? '', icon: item?.icon ?? '', photo: item?.photo ?? draft?.photo ?? '', markedLow: item?.markedLow ?? false,
-    barcode: item?.barcode ?? draft?.barcode ?? '',
+    barcode: item?.barcode ?? draft?.barcode ?? '', frozenOn: item?.frozenOn ?? '',
   }));
   const [scanning, setScanning] = useState(false);
   const scanned = useCallback((code: string) => { setScanning(false); setF((cur) => ({ ...cur, barcode: code })); }, []);
@@ -76,7 +76,7 @@ export function ItemEditor({ item, draft, labels, canAdd, onClose }: {
     const body = {
       ...f, quantity: Number(f.quantity) || 0, lowThreshold: f.lowThreshold === '' ? null : Number(f.lowThreshold),
       category: f.category || undefined, icon: f.icon || undefined, photo: f.photo || null, expiresOn: f.expiresOn || null, unit: f.unit || null,
-      barcode: f.barcode || null,
+      barcode: f.barcode || null, frozenOn: f.frozenOn || null,
     };
     let saved: Item;
     if (item) saved = await api<Item>(`${base}/items/${item.id}`, { method: 'PATCH', body });
@@ -130,6 +130,9 @@ export function ItemEditor({ item, draft, labels, canAdd, onClose }: {
       <div className="row">
         {showThreshold && <label className="field" style={{ flex: 1 }}>Mark low automatically at or below<input inputMode="decimal" value={f.lowThreshold} onChange={set('lowThreshold')} placeholder="e.g. 1" /></label>}
         <label className="field" style={{ flex: 1 }}>Expires<input type="date" value={f.expiresOn} onChange={set('expiresOn')} /></label>
+        {/freez/i.test(f.location) && (
+          <label className="field" style={{ flex: 1 }}>Frozen on<input type="date" value={f.frozenOn} onChange={set('frozenOn')} placeholder="Today" /></label>
+        )}
       </div>
       <div className="row">
         <label className="field" style={{ width: 110 }}>Icon<input value={f.icon} onChange={set('icon')} placeholder={guessItem(f.name).icon} /></label>
@@ -238,6 +241,7 @@ export function Inventory() {
                     <ItemArt item={i} />
                     <span className="name">{i.name}</span>
                     <span className="qty">{amount(i.quantity, i.unit, me?.user.units)} · {i.location}</span>
+                    {freezerMonths(i) != null && <span className="frozen">❄️ {freezerMonths(i)} months in the freezer</span>}
                   </button>
                 ))}
               </div>

@@ -13,8 +13,10 @@ import { saveImage } from './integrations.ts';
 
 const ITEM = {
   name: text, category: text, location: text, icon: text, photo: text, quantity: number, unit: text,
-  lowThreshold: number, barcode: text, expiresOn: text,
+  lowThreshold: number, barcode: text, expiresOn: text, frozenOn: text,
 };
+
+const isFreezer = (location: unknown) => /freez/i.test(String(location ?? ''));
 
 /** An item is low when someone tapped "running low", or its amount dropped to the warning level. */
 export const LOW_SQL = '(marked_low = 1 OR (low_threshold IS NOT NULL AND quantity <= low_threshold))';
@@ -62,7 +64,7 @@ function shape(r: Row, shopping?: Set<string>) {
   return {
     id: r.id, name: r.name, category: r.category, location: r.location, icon: r.icon, photo: r.photo,
     quantity: r.quantity, unit: r.unit, lowThreshold: r.low_threshold, barcode: r.barcode, expiresOn: r.expires_on,
-    markedLow: !!r.marked_low,
+    markedLow: !!r.marked_low, frozenOn: r.frozen_on ?? null,
     isLow: !!r.marked_low || (r.low_threshold != null && (r.quantity as number) <= (r.low_threshold as number)),
     onShoppingList: shopping ? shopping.has(matchKey(r.name as string)) : false,
     updatedAt: r.updated_at,
@@ -93,11 +95,14 @@ export function inventoryRoutes(app: FastifyInstance, db: DatabaseSync): void {
     const guess = guessItem(name);
     const id = newId();
     const quantity = num(b.quantity) ?? 1;
-    db.prepare(`INSERT INTO items (id, home_id, name, category, location, icon, photo, quantity, unit, low_threshold, barcode, expires_on)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
-      id, ctx.homeId, name, str(b.category, 40) ?? guess.category, str(b.location, 40) ?? 'Pantry',
+    const location = str(b.location, 40) ?? 'Pantry';
+    // Freezer food gets a "frozen on" date, today unless given, so it can be nudged before it gets freezer burn.
+    const frozenOn = isFreezer(location) ? str(b.frozenOn, 10) ?? new Date().toISOString().slice(0, 10) : null;
+    db.prepare(`INSERT INTO items (id, home_id, name, category, location, icon, photo, quantity, unit, low_threshold, barcode, expires_on, frozen_on)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
+      id, ctx.homeId, name, str(b.category, 40) ?? guess.category, location,
       str(b.icon, 16) ?? guess.icon, str(b.photo, 500), quantity, str(b.unit, 20), num(b.lowThreshold),
-      str(b.barcode, 40), str(b.expiresOn, 10),
+      str(b.barcode, 40), str(b.expiresOn, 10), frozenOn,
     );
     recordHistory(db, { homeId: ctx.homeId, itemId: id, itemName: name, delta: quantity, unit: str(b.unit, 20), after: quantity, reason: 'added', userId: ctx.user?.id ?? null });
     return shape(db.prepare('SELECT * FROM items WHERE id = ?').get(id) as Row);
@@ -116,6 +121,11 @@ export function inventoryRoutes(app: FastifyInstance, db: DatabaseSync): void {
     if ('name' in b) fields.name = requireStr(b.name, 'Name', 120);
     if ('category' in b) fields.category = str(b.category, 40) ?? 'Other';
     if ('location' in b) fields.location = str(b.location, 40) ?? 'Pantry';
+    // Moving into the freezer starts the clock; moving out clears it.
+    const freezer = isFreezer(fields.location ?? item.location);
+    if ('frozenOn' in b) fields.frozen_on = freezer ? str(b.frozenOn, 10) : null;
+    if (freezer && !item.frozen_on && !fields.frozen_on) fields.frozen_on = new Date().toISOString().slice(0, 10);
+    if (!freezer && item.frozen_on) fields.frozen_on = null;
     if ('icon' in b) fields.icon = str(b.icon, 16);
     if ('photo' in b) fields.photo = str(b.photo, 500);
     if ('unit' in b) fields.unit = str(b.unit, 20);

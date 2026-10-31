@@ -55,6 +55,8 @@ export function integrationRoutes(app: FastifyInstance, db: DatabaseSync): void 
       tonight: dinner?.title ?? null,
       tonight_cook: dinner?.cook ?? null,
       ready_to_cook_count: ready.length,
+      recipe_count: (db.prepare('SELECT COUNT(*) AS n FROM recipes WHERE home_id = ?').get(ctx.homeId) as Row).n,
+      item_count: (db.prepare('SELECT COUNT(*) AS n FROM items WHERE home_id = ?').get(ctx.homeId) as Row).n,
       ready_to_cook: ready.slice(0, 20),
     };
   });
