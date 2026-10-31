@@ -281,6 +281,22 @@ const MIGRATIONS: string[] = [
   ALTER TABLE shopping_items ADD COLUMN store TEXT;
   CREATE INDEX shopping_bought ON shopping_items(home_id, checked, checked_at);
   `,
+  // Phone and browser reminders: where to send them, which ones each person wants, and which already went out.
+  `
+  CREATE TABLE push_subscriptions (
+    endpoint TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    p256dh TEXT NOT NULL,
+    auth TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+  CREATE INDEX push_user ON push_subscriptions(user_id);
+  ALTER TABLE users ADD COLUMN reminders TEXT NOT NULL DEFAULT '{"expiring":true,"plan":true,"list":true}';
+  CREATE TABLE reminders_sent (
+    key TEXT PRIMARY KEY,
+    sent_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+  `,
 ];
 
 export function openDb(dataDir: string): DatabaseSync {

@@ -57,6 +57,7 @@ All settings are environment variables. See [.env.example](.env.example).
 | `ANTHROPIC_API_KEY` | Optional, from [console.anthropic.com](https://console.anthropic.com). Turns on the Mixologist's chat and drink ideas. `ANTHROPIC_MODEL` sets the default Claude model (`claude-opus-5-5`); admins can switch it in **Settings → Server admin**. |
 | `AI_MESSAGES_PER_HOUR` | How many AI requests one person can send per hour, so a busy household can't run up the Claude bill. Default `30`; `0` turns the cap off. |
 | `ALLOW_PRIVATE_FETCH` | Recipe import and feeds won't fetch links that point into your home network. Set to `true` if you import from your own LAN servers. |
+| `TZ` | Your time zone, e.g. `America/Chicago`. Reminders go out at 9 am (food about to expire) and 5 pm (tomorrow's meals) in this zone. Phone and browser reminders also need the site on https. |
 
 ## Putting it on the internet
 
