@@ -6,6 +6,7 @@ import { config } from '../config.ts';
 import { HttpError, newId, str } from '../util.ts';
 import { checkIngredients, loadRecipe, stockIndex } from './recipes.ts';
 import { addShoppingItem } from './shopping.ts';
+import { body, date, flag, number, text } from '../schemas.ts';
 
 const SLOTS = ['breakfast', 'lunch', 'dinner', 'snack'] as const;
 const SLOT_TIMES: Record<string, [number, number]> = { breakfast: [8, 30], lunch: [12, 45], snack: [15, 30], dinner: [18, 60] };
@@ -44,7 +45,7 @@ export function mealPlanRoutes(app: FastifyInstance, db: DatabaseSync): void {
     return rows.map(shape);
   });
 
-  app.post('/api/homes/:homeId/mealplan', async (req) => {
+  app.post('/api/homes/:homeId/mealplan', { schema: body({ date, slot: text, recipeId: text, title: text, note: text }) }, async (req) => {
     const ctx = homeCtx(db, req);
     const b = (req.body ?? {}) as Row;
     if (!isDate(b.date)) throw new HttpError(400, 'Pick a date');
@@ -59,7 +60,7 @@ export function mealPlanRoutes(app: FastifyInstance, db: DatabaseSync): void {
     return shape(db.prepare(`${SELECT} WHERE m.id = ?`).get(id) as Row);
   });
 
-  app.patch('/api/homes/:homeId/mealplan/:id', async (req) => {
+  app.patch('/api/homes/:homeId/mealplan/:id', { schema: body({ date, slot: text, note: text, cooked: flag }) }, async (req) => {
     const ctx = homeCtx(db, req);
     const { id } = req.params as { id: string };
     if (!db.prepare('SELECT 1 FROM meal_plan WHERE id = ? AND home_id = ?').get(id, ctx.homeId)) throw new HttpError(404, 'Not on the plan');
@@ -78,7 +79,7 @@ export function mealPlanRoutes(app: FastifyInstance, db: DatabaseSync): void {
   });
 
   // Puts every ingredient for the planned meals on the shopping list, minus what's already in stock.
-  app.post('/api/homes/:homeId/mealplan/to-shopping', async (req) => {
+  app.post('/api/homes/:homeId/mealplan/to-shopping', { schema: body({ start: date, days: number }) }, async (req) => {
     const ctx = homeCtx(db, req);
     const b = (req.body ?? {}) as Row;
     const start = isDate(b.start) ? b.start : new Date().toISOString().slice(0, 10);

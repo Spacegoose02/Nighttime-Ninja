@@ -4,6 +4,7 @@ import { homeCtx, requireAdmin, requireUser } from '../auth.ts';
 import { tx, type Row } from '../db.ts';
 import { HttpError, newId, randomToken, readableCode, requireStr, sha256, str } from '../util.ts';
 import { CATEGORIES, LOCATIONS } from '../../../shared/catalog.ts';
+import { body, flag, list, oneOf, text } from '../schemas.ts';
 
 export type LabelKind = 'locations' | 'categories';
 const DEFAULT_LABELS: Record<LabelKind, readonly string[]> = { locations: LOCATIONS, categories: CATEGORIES };
@@ -59,13 +60,13 @@ export function createHome(db: DatabaseSync, userId: string, name: string): stri
 }
 
 export function homeRoutes(app: FastifyInstance, db: DatabaseSync): void {
-  app.post('/api/homes', async (req) => {
+  app.post('/api/homes', { schema: body({ name: text }) }, async (req) => {
     const user = requireUser(req);
     const name = requireStr((req.body as Row)?.name, 'Home name', 80);
     return { id: createHome(db, user.id, name) };
   });
 
-  app.post('/api/homes/join', async (req) => {
+  app.post('/api/homes/join', { schema: body({ code: text }) }, async (req) => {
     const user = requireUser(req);
     const code = requireStr((req.body as Row)?.code, 'Join code', 20).toUpperCase().replace(/[^A-Z0-9]/g, '');
     const home = db.prepare('SELECT id FROM homes WHERE join_code = ?').get(code) as Row | undefined;
@@ -99,7 +100,7 @@ export function homeRoutes(app: FastifyInstance, db: DatabaseSync): void {
     };
   });
 
-  app.patch('/api/homes/:homeId', async (req) => {
+  app.patch('/api/homes/:homeId', { schema: body({ name: text, zipCode: text, stores: list(text, 20), krogerLocationId: text }) }, async (req) => {
     const ctx = homeCtx(db, req, 'manager');
     const b = (req.body ?? {}) as Row;
     const name = str(b.name, 80);
@@ -156,7 +157,7 @@ export function homeRoutes(app: FastifyInstance, db: DatabaseSync): void {
     return { calendarUrl: `/api/calendar/${token}.ics` };
   });
 
-  app.patch('/api/homes/:homeId/members/:userId', async (req) => {
+  app.patch('/api/homes/:homeId/members/:userId', { schema: body({ role: oneOf('manager', 'member') }, ['role']) }, async (req) => {
     const ctx = homeCtx(db, req, 'manager');
     const { userId } = req.params as { userId: string };
     const role = (req.body as Row)?.role;
@@ -214,7 +215,7 @@ export function homeRoutes(app: FastifyInstance, db: DatabaseSync): void {
     return { users, homes };
   });
 
-  app.patch('/api/admin/users/:userId', async (req) => {
+  app.patch('/api/admin/users/:userId', { schema: body({ isAdmin: flag }, ['isAdmin']) }, async (req) => {
     const admin = requireAdmin(req);
     const { userId } = req.params as { userId: string };
     const isAdmin = (req.body as Row)?.isAdmin;

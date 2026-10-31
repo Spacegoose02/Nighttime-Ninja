@@ -7,6 +7,9 @@ import { guessItem } from '../../../shared/catalog.ts';
 import { matchKey, parseIngredient } from '../../../shared/recipe.ts';
 import { convert } from '../../../shared/units.ts';
 import { stockByName } from './inventory.ts';
+import { body, flag, number, text } from '../schemas.ts';
+
+const LINE = { name: text, quantity: number, unit: text, category: text, note: text };
 
 function shape(r: Row) {
   return {
@@ -58,7 +61,7 @@ export function shoppingRoutes(app: FastifyInstance, db: DatabaseSync): void {
   });
 
   // Accepts either structured fields or a quick-add line like "2 lb chicken thighs".
-  app.post('/api/homes/:homeId/shopping', async (req) => {
+  app.post('/api/homes/:homeId/shopping', { schema: body({ ...LINE, text }) }, async (req) => {
     const ctx = homeCtx(db, req);
     const b = (req.body ?? {}) as Row;
     const lines = typeof b.text === 'string' ? b.text.split(/\r?\n|,(?![^(]*\))/).map((s) => s.trim()).filter(Boolean) : [];
@@ -75,7 +78,7 @@ export function shoppingRoutes(app: FastifyInstance, db: DatabaseSync): void {
     }, ctx.user?.id ?? null)];
   });
 
-  app.patch('/api/homes/:homeId/shopping/:id', async (req) => {
+  app.patch('/api/homes/:homeId/shopping/:id', { schema: body({ ...LINE, checked: flag, addToInventory: flag }) }, async (req) => {
     const ctx = homeCtx(db, req);
     const { id } = req.params as { id: string };
     const item = db.prepare('SELECT * FROM shopping_items WHERE id = ? AND home_id = ?').get(id, ctx.homeId) as Row | undefined;
