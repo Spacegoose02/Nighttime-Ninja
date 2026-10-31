@@ -1,4 +1,5 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { Modal } from '../components/Dialog.tsx';
 import { api, type HomeDetail, type ShoppingItem } from '../api.ts';
 import { useApp, useLoad } from '../state.tsx';
 import { pending, sendOrQueue } from '../offline.ts';
@@ -6,6 +7,46 @@ import { amount } from '../format.ts';
 import { CATEGORIES, guessItem } from '../../../shared/catalog.ts';
 
 interface Suggestion { name: string; category: string; timesBought: number }
+interface Layout { name: string; categories: string[] }
+
+/** Set the order a store's aisles come in, so the list can be walked top to bottom. */
+function LayoutEditor({ layout, all, onSave, onDelete, onClose }: {
+  layout: Layout | null; all: string[]; onSave: (l: Layout) => void; onDelete: (() => void) | null; onClose: () => void;
+}) {
+  const [name, setName] = useState(layout?.name ?? '');
+  const [cats, setCats] = useState(() => {
+    const first = layout?.categories ?? [];
+    return [...first, ...all.filter((c) => !first.some((f) => f.toLowerCase() === c.toLowerCase()))];
+  });
+  const move = (i: number, by: number) => setCats((c) => {
+    const next = [...c];
+    const [x] = next.splice(i, 1);
+    next.splice(Math.max(0, Math.min(next.length, i + by)), 0, x);
+    return next;
+  });
+  return (
+    <Modal label="Store order" onClose={onClose}>
+      <h2>{layout ? `Order for ${layout.name}` : 'New store order'}</h2>
+      <label className="field">Store<input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Kroger on Main St" autoFocus={!layout} /></label>
+      <p className="small muted" style={{ margin: 0 }}>Put the aisles in the order you walk them. The list will follow it.</p>
+      <ol className="list layout-list">
+        {cats.map((c, i) => (
+          <li key={c} className="list-item">
+            <span style={{ flex: 1 }}>{c}</span>
+            <button className="ghost icon" disabled={i === 0} onClick={() => move(i, -1)} aria-label={`Move ${c} up`}>↑</button>
+            <button className="ghost icon" disabled={i === cats.length - 1} onClick={() => move(i, 1)} aria-label={`Move ${c} down`}>↓</button>
+          </li>
+        ))}
+      </ol>
+      <div className="row">
+        {onDelete && <button className="danger" onClick={onDelete}>Delete</button>}
+        <span className="spacer" />
+        <button onClick={onClose}>Cancel</button>
+        <button className="primary" disabled={!name.trim()} onClick={() => onSave({ name: name.trim(), categories: cats })}>Save</button>
+      </div>
+    </Modal>
+  );
+}
 
 function withPending(list: ShoppingItem[], base: string): ShoppingItem[] {
   let out = list;
@@ -22,12 +63,26 @@ function withPending(list: ShoppingItem[], base: string): ShoppingItem[] {
 }
 
 export function Shopping() {
-  const { base, me, toast } = useApp();
+  const { base, me, toast, homeId } = useApp();
   const [loaded, reload, , setItems] = useLoad<ShoppingItem[]>(`${base}/shopping`);
   // Opened with no signal: show the list as it will be once the waiting changes are sent.
   const items = useMemo(() => loaded && withPending(loaded, base), [loaded, base]);
   const [home] = useLoad<HomeDetail>(base);
-  const order = home?.settings.categories ?? [...CATEGORIES];
+  const homeOrder = home?.settings.categories ?? [...CATEGORIES];
+  const [layouts, reloadLayouts] = useLoad<Layout[]>(`${base}/store-layouts`);
+  const storeKey = `nn-store-${homeId}`;
+  const [store, setStore] = useState<string>(() => { try { return localStorage.getItem(storeKey) ?? ''; } catch { return ''; } });
+  useEffect(() => { try { if (store) localStorage.setItem(storeKey, store); else localStorage.removeItem(storeKey); } catch { /* private mode */ } }, [store, storeKey]);
+  const [editingLayout, setEditingLayout] = useState<Layout | 'new' | null>(null);
+  const layout = layouts?.find((l) => l.name === store) ?? null;
+  const order = layout ? [...layout.categories, ...homeOrder] : homeOrder;
+
+  async function saveLayouts(next: Layout[], pick: string) {
+    await api(`${base}/store-layouts`, { method: 'PUT', body: { layouts: next } });
+    setEditingLayout(null);
+    setStore(pick);
+    await reloadLayouts();
+  }
   const [suggestions, reloadSugg] = useLoad<Suggestion[]>(`${base}/shopping/suggestions`);
   const [tab, setTab] = useState<'list' | 'history'>('list');
   const [history] = useLoad<ShoppingItem[]>(tab === 'history' ? `${base}/shopping/history` : null, [tab]);
@@ -85,7 +140,7 @@ export function Shopping() {
     const pos = (c: string) => { const i = order.findIndex((x) => x.toLowerCase() === c.toLowerCase()); return i < 0 ? 999 : i; };
     return [...m.entries()].sort(([a], [b]) => pos(a) - pos(b) || a.localeCompare(b));
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [items, home]);
+  }, [items, home, layout]);
   const checked = (items ?? []).filter((i) => i.checked);
 
   return (
@@ -113,6 +168,23 @@ export function Shopping() {
                 ))}
               </div>
             </div>
+          )}
+          <div className="row">
+            <span className="small muted">🏬 Aisle order</span>
+            <div className="chips">
+              <button className={`chip${!layout ? ' on' : ''}`} onClick={() => setStore('')}>Usual</button>
+              {layouts?.map((l) => <button key={l.name} className={`chip${layout?.name === l.name ? ' on' : ''}`} onClick={() => setStore(l.name)}>{l.name}</button>)}
+              {layout && <button className="chip" onClick={() => setEditingLayout(layout)} aria-label={`Change the order for ${layout.name}`}>✎</button>}
+              <button className="chip" onClick={() => setEditingLayout('new')}>＋ Store</button>
+            </div>
+          </div>
+          {editingLayout && (
+            <LayoutEditor layout={editingLayout === 'new' ? null : editingLayout} all={homeOrder} onClose={() => setEditingLayout(null)}
+              onSave={(l) => {
+                const old = editingLayout === 'new' ? null : editingLayout.name;
+                void saveLayouts([...(layouts ?? []).filter((x) => x.name !== old && x.name !== l.name), l], l.name);
+              }}
+              onDelete={editingLayout === 'new' ? null : () => void saveLayouts((layouts ?? []).filter((x) => x.name !== (editingLayout as Layout).name), '')} />
           )}
           <label className="row small muted" style={{ gap: 8 }}>
             <input type="checkbox" checked={stock} onChange={(e) => setStock(e.target.checked)} style={{ width: 22, minHeight: 22 }} />

@@ -1,9 +1,9 @@
 import type { FastifyInstance } from 'fastify';
 import type { DatabaseSync } from 'node:sqlite';
 import { homeCtx } from '../auth.ts';
-import type { Row } from '../db.ts';
+import { tx, type Row } from '../db.ts';
 import { config } from '../config.ts';
-import { HttpError, newId, str } from '../util.ts';
+import { HttpError, newId, num, str } from '../util.ts';
 import { checkIngredients, loadRecipe, stockIndex } from './recipes.ts';
 import { addShoppingItem } from './shopping.ts';
 import { body, date, flag, number, text } from '../schemas.ts';
@@ -24,11 +24,18 @@ function addDays(date: string, n: number): string {
 function shape(r: Row) {
   return {
     id: r.id, date: r.date, slot: r.slot, recipeId: r.recipe_id, title: r.recipe_title ?? r.title,
-    image: r.recipe_image ?? null, note: r.note, cookedAt: r.cooked_at,
+    image: r.recipe_image ?? null, note: r.note, cookedAt: r.cooked_at, cookId: r.cook_id ?? null, cookName: r.cook_name ?? null,
   };
 }
 
-const SELECT = `SELECT m.*, r.title AS recipe_title, r.image AS recipe_image FROM meal_plan m LEFT JOIN recipes r ON r.id = m.recipe_id`;
+const SELECT = `SELECT m.*, r.title AS recipe_title, r.image AS recipe_image, u.name AS cook_name
+  FROM meal_plan m LEFT JOIN recipes r ON r.id = m.recipe_id LEFT JOIN users u ON u.id = m.cook_id`;
+
+/** A cook has to be someone in the home; anything else (or null) means nobody's picked. */
+function cookIn(db: DatabaseSync, homeId: string, id: unknown): string | null {
+  const s = str(id, 60);
+  return s && db.prepare('SELECT 1 FROM home_members WHERE home_id = ? AND user_id = ?').get(homeId, s) ? s : null;
+}
 
 function icsEscape(s: string): string {
   return s.replace(/\\/g, '\\\\').replace(/;/g, '\\;').replace(/,/g, '\\,').replace(/\r?\n/g, '\\n');
@@ -45,7 +52,7 @@ export function mealPlanRoutes(app: FastifyInstance, db: DatabaseSync): void {
     return rows.map(shape);
   });
 
-  app.post('/api/homes/:homeId/mealplan', { schema: body({ date, slot: text, recipeId: text, title: text, note: text }) }, async (req) => {
+  app.post('/api/homes/:homeId/mealplan', { schema: body({ date, slot: text, recipeId: text, title: text, note: text, cookId: text, repeatWeeks: number }) }, async (req) => {
     const ctx = homeCtx(db, req);
     const b = (req.body ?? {}) as Row;
     if (!isDate(b.date)) throw new HttpError(400, 'Pick a date');
@@ -54,13 +61,45 @@ export function mealPlanRoutes(app: FastifyInstance, db: DatabaseSync): void {
     if (recipeId && !db.prepare('SELECT 1 FROM recipes WHERE id = ? AND home_id = ?').get(recipeId, ctx.homeId)) throw new HttpError(404, 'Recipe not found');
     const title = str(b.title, 200);
     if (!recipeId && !title) throw new HttpError(400, 'Pick a recipe or type a meal');
-    const id = newId();
-    db.prepare('INSERT INTO meal_plan (id, home_id, date, slot, recipe_id, title, note) VALUES (?, ?, ?, ?, ?, ?, ?)')
-      .run(id, ctx.homeId, b.date, slot, recipeId, title, str(b.note, 500));
-    return shape(db.prepare(`${SELECT} WHERE m.id = ?`).get(id) as Row);
+    const cook = cookIn(db, ctx.homeId, b.cookId);
+    // "Taco Tuesday": the same meal on the same day for the next few weeks.
+    const weeks = Math.min(26, Math.max(1, Math.round(num(b.repeatWeeks) ?? 1)));
+    const ids: string[] = [];
+    tx(db, () => {
+      for (let w = 0; w < weeks; w++) {
+        const id = newId();
+        ids.push(id);
+        db.prepare('INSERT INTO meal_plan (id, home_id, date, slot, recipe_id, title, note, cook_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
+          .run(id, ctx.homeId, addDays(b.date as string, w * 7), slot, recipeId, title, str(b.note, 500), cook);
+      }
+    });
+    return shape(db.prepare(`${SELECT} WHERE m.id = ?`).get(ids[0]) as Row);
   });
 
-  app.patch('/api/homes/:homeId/mealplan/:id', { schema: body({ date, slot: text, note: text, cooked: flag }) }, async (req) => {
+  // Copies one week's meals onto another, e.g. last week's plan onto this week. Meals already there stay.
+  app.post('/api/homes/:homeId/mealplan/copy', { schema: body({ from: date, to: date, days: number }, ['from', 'to']) }, async (req) => {
+    const ctx = homeCtx(db, req);
+    const b = (req.body ?? {}) as Row;
+    if (!isDate(b.from) || !isDate(b.to)) throw new HttpError(400, 'Pick the weeks to copy');
+    const days = Math.min(31, Math.max(1, Math.round(num(b.days) ?? 7)));
+    const shift = Math.round((Date.parse(`${b.to}T00:00:00Z`) - Date.parse(`${b.from}T00:00:00Z`)) / 86400000);
+    const rows = db.prepare('SELECT * FROM meal_plan WHERE home_id = ? AND date >= ? AND date < ?').all(ctx.homeId, b.from, addDays(b.from, days)) as Row[];
+    let copied = 0;
+    tx(db, () => {
+      for (const r of rows) {
+        const day = addDays(r.date as string, shift);
+        const same = db.prepare('SELECT 1 FROM meal_plan WHERE home_id = ? AND date = ? AND slot = ? AND COALESCE(recipe_id, title) IS ?')
+          .get(ctx.homeId, day, r.slot as string, (r.recipe_id ?? r.title) as string);
+        if (same) continue;
+        db.prepare('INSERT INTO meal_plan (id, home_id, date, slot, recipe_id, title, note, cook_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
+          .run(newId(), ctx.homeId, day, r.slot as string, r.recipe_id as string | null, r.title as string | null, r.note as string | null, r.cook_id as string | null);
+        copied++;
+      }
+    });
+    return { copied };
+  });
+
+  app.patch('/api/homes/:homeId/mealplan/:id', { schema: body({ date, slot: text, note: text, cooked: flag, cookId: text }) }, async (req) => {
     const ctx = homeCtx(db, req);
     const { id } = req.params as { id: string };
     if (!db.prepare('SELECT 1 FROM meal_plan WHERE id = ? AND home_id = ?').get(id, ctx.homeId)) throw new HttpError(404, 'Not on the plan');
@@ -68,6 +107,7 @@ export function mealPlanRoutes(app: FastifyInstance, db: DatabaseSync): void {
     if (isDate(b.date)) db.prepare('UPDATE meal_plan SET date = ? WHERE id = ?').run(b.date, id);
     if (SLOTS.includes(b.slot as (typeof SLOTS)[number])) db.prepare('UPDATE meal_plan SET slot = ? WHERE id = ?').run(b.slot as string, id);
     if ('note' in b) db.prepare('UPDATE meal_plan SET note = ? WHERE id = ?').run(str(b.note, 500), id);
+    if ('cookId' in b) db.prepare('UPDATE meal_plan SET cook_id = ? WHERE id = ?').run(cookIn(db, ctx.homeId, b.cookId), id);
     if ('cooked' in b) db.prepare(`UPDATE meal_plan SET cooked_at = ${b.cooked ? "datetime('now')" : 'NULL'} WHERE id = ?`).run(id);
     return shape(db.prepare(`${SELECT} WHERE m.id = ?`).get(id) as Row);
   });
@@ -124,7 +164,7 @@ export function mealPlanRoutes(app: FastifyInstance, db: DatabaseSync): void {
         `DTSTAMP:${stamp}`,
         `DTSTART:${d}T${pad(h)}0000`,
         `DTEND:${d}T${pad(Math.floor(end / 60))}${pad(end % 60)}00`,
-        `SUMMARY:${icsEscape(`${(r.slot as string)[0].toUpperCase()}${(r.slot as string).slice(1)}: ${title}`)}`,
+        `SUMMARY:${icsEscape(`${(r.slot as string)[0].toUpperCase()}${(r.slot as string).slice(1)}: ${title}${r.cook_name ? ` (${r.cook_name} cooking)` : ''}`)}`,
         ...(r.note ? [`DESCRIPTION:${icsEscape(r.note as string)}`] : []),
         ...(r.recipe_id ? [`URL:${config.publicUrl}/recipes/${r.recipe_id}`] : []),
         'END:VEVENT',

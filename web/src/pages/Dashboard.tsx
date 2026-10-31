@@ -8,8 +8,9 @@ interface Summary {
   low_stock_count: number;
   low_stock: string[];
   expiring_soon: { name: string; date: string }[];
-  todays_meals: { slot: string; title: string; cooked: boolean }[];
+  todays_meals: { slot: string; title: string; cooked: boolean; cook: string | null }[];
   tonight: string | null;
+  tonight_cook: string | null;
   ready_to_cook_count: number;
   ready_to_cook: string[];
 }
@@ -37,6 +38,7 @@ export function Dashboard() {
           <div className="card">
             <div className="muted small">Tonight</div>
             <div style={{ fontSize: '1.4rem', fontWeight: 700 }}>{s?.tonight ?? 'Nothing planned yet'}</div>
+            {s?.tonight_cook && <div className="muted">👩‍🍳 {s.tonight_cook} is cooking</div>}
             <div className="row" style={{ marginTop: 10 }}>
               <Link className="btn" to="/plan">📅 Plan meals</Link>
               <Link className="btn" to="/recipes?ready=1">✅ What can I cook?</Link>
@@ -83,6 +85,7 @@ export function Dashboard() {
               <div key={i} className="meal">
                 <span className="slot">{m.slot}</span>
                 <span className={m.cooked ? 'done' : ''}>{m.title}</span>
+                {m.cook && <span className="small muted">👩‍🍳 {m.cook}</span>}
               </div>
             ))}
           </div>
