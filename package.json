@@ -1,6 +1,6 @@
 {
   "name": "nighttime-ninja",
-  "version": "0.7.1",
+  "version": "0.7.2",
   "private": true,
   "type": "module",
   "description": "Self-hosted, tablet-first kitchen manager: recipes, inventory, shopping lists, meal plans. Cooked up by a raccoon.",
