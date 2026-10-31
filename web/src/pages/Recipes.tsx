@@ -92,6 +92,7 @@ export function Recipes() {
                   {r.isPublic && <span>🌍</span>}
                   {r.rating && <span title={`${r.rating} stars`}>{'★'.repeat(r.rating)}</span>}
                 </div>
+                {!!r.dietWarnings && <span className="small" style={{ color: 'var(--danger)' }}>⚠️ Check diets and allergies</span>}
                 {!!r.usesExpiring.length && <span className="small" style={{ color: 'var(--warn)' }}>⏳ Uses up {r.usesExpiring.join(', ')}</span>}
                 <span className={`pill ${cls}`} title={r.missing.join(', ')}>{label}{r.ready !== 'ready' && r.missing.length ? ` (${r.missing.length})` : ''}</span>
               </div>

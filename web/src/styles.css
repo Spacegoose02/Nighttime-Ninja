@@ -481,3 +481,7 @@ td, th { text-align: left; padding: 8px; border-bottom: 1px solid var(--border);
 }
 .welcome { border: 2px solid var(--primary); }
 .welcome-steps { margin: 0; padding-left: 22px; display: flex; flex-direction: column; gap: 6px; }
+.diet-warning { border: 2px solid var(--danger); }
+.nutrition { display: grid; grid-template-columns: repeat(auto-fill, minmax(90px, 1fr)); gap: 10px; }
+.nutrition > div { display: flex; flex-direction: column; background: var(--surface-2); border-radius: 12px; padding: 8px 10px; }
+.nutrition strong { font-size: 1.2rem; }

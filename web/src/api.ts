@@ -97,13 +97,20 @@ export interface RecipeSummary {
   /** Pantry items expiring in the next 3 days that this recipe would use. */
   usesExpiring: string[];
   favorite: boolean; rating: number | null; collections: string[];
+  /** How many ingredients clash with someone's diet or allergy. */
+  dietWarnings: number;
 }
 
 export interface RecipeFull extends Recipe {
   id: string; isPublic: boolean; shareSlug: string | null; status: 'ready' | 'almost' | 'missing'; missing: string[];
   ingredients: (Ingredient & { availability: Availability; matched?: string[]; linked?: boolean })[];
   favorite: boolean; rating: number | null; notes: string; cookCount: number; lastCooked: string | null; collections: string[];
+  dietClashes: { ingredient: string; person: string; reason: string }[];
+  nutrition: Nutrition | null;
 }
+
+/** Per serving, estimated by AI. */
+export interface Nutrition { calories: number; proteinG: number; carbsG: number; fatG: number; fiberG: number; sugarG: number; sodiumMg: number; servings: number }
 
 export interface Meal {
   id: string; date: string; slot: string; recipeId: string | null; title: string; image: string | null; note: string | null; cookedAt: string | null;
@@ -112,7 +119,7 @@ export interface Meal {
 
 export interface HomeDetail {
   id: string; name: string; role: 'manager' | 'member'; joinCode: string; calendarUrl: string | null;
-  members: { id: string; name: string; avatar: string; role: string; joined_at: string }[];
+  members: { id: string; name: string; avatar: string; role: string; joined_at: string; diets: string[]; allergies: string[] }[];
   settings: { zipCode: string | null; stores: string[]; krogerLocationId: string | null; locations: string[]; categories: string[] };
 }
 

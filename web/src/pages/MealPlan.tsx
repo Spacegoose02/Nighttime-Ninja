@@ -94,6 +94,94 @@ function EditMeal({ meal, onClose }: { meal: Meal; onClose: (changed: boolean) =
   );
 }
 
+interface Proposal {
+  date: string; slot: string; recipeId: string | null; title: string; why: string; missing: string[];
+  recipe: { title: string; ingredients: unknown[]; instructions: string[] } | null;
+}
+
+/** "Plan my week": Gordy fills the open days from the recipe book and the pantry; you pick which to keep. */
+function PlanWithGordy({ start, onClose }: { start: string; onClose: (changed: boolean) => void }) {
+  const { base, toast } = useApp();
+  const [slots, setSlots] = useState(['dinner']);
+  const [notes, setNotes] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [plan, setPlan] = useState<Proposal[] | null>(null);
+  const [keep, setKeep] = useState<Set<number>>(new Set());
+
+  async function ask() {
+    setBusy(true);
+    try {
+      const r = await api<{ meals: Proposal[] }>(`${base}/chef/plan-week`, { body: { start, days: 7, slots, notes } });
+      setPlan(r.meals);
+      setKeep(new Set(r.meals.map((_, i) => i)));
+    } catch (e) { toast((e as Error).message); } finally { setBusy(false); }
+  }
+
+  async function add(shop: boolean) {
+    setBusy(true);
+    try {
+      for (const [i, m] of (plan ?? []).entries()) {
+        if (!keep.has(i)) continue;
+        // New dishes go into the recipe book first, so the plan links to them.
+        const recipeId = m.recipeId ?? (m.recipe ? (await api<{ id: string }>(`${base}/chef/save`, { body: { recipe: m.recipe, tags: ['plan'] } })).id : null);
+        await api(`${base}/mealplan`, { body: { date: m.date, slot: m.slot, ...(recipeId ? { recipeId } : { title: m.title }) } });
+      }
+      if (shop) {
+        const r = await api<{ added: number }>(`${base}/mealplan/to-shopping`, { body: { start, days: 7 } });
+        toast(`Planned ${keep.size} meals and added ${r.added} things to the shopping list`);
+      } else toast(`Planned ${keep.size} meals`);
+      onClose(true);
+    } catch (e) { toast((e as Error).message); setBusy(false); }
+  }
+
+  return (
+    <Modal label="Plan my week with Gordy" onClose={() => onClose(false)}>
+      <h2>✨ Plan my week with Gordy</h2>
+      {!plan ? (
+        <>
+          <p className="muted" style={{ margin: 0 }}>Gordy fills the open days from your recipe book and what's in the pantry, using up what's about to expire first.</p>
+          <div className="chips">
+            {SLOTS.map((s) => (
+              <button key={s} className={`chip${slots.includes(s) ? ' on' : ''}`} aria-pressed={slots.includes(s)}
+                onClick={() => setSlots(slots.includes(s) ? slots.filter((x) => x !== s) : [...slots, s])}>{s}</button>
+            ))}
+          </div>
+          <input placeholder="Anything to know? e.g. busy Wednesday, fish once, no pasta" value={notes} onChange={(e) => setNotes(e.target.value)} />
+          <div className="row">
+            <span className="spacer" />
+            <button onClick={() => onClose(false)}>Cancel</button>
+            <button className="primary" disabled={busy || !slots.length} onClick={ask}>{busy ? 'Gordy is thinking…' : 'Plan it'}</button>
+          </div>
+        </>
+      ) : (
+        <>
+          <div className="list" style={{ maxHeight: '55vh', overflow: 'auto' }}>
+            {plan.map((m, i) => (
+              <label key={`${m.date}-${m.slot}`} className="list-item" style={{ alignItems: 'flex-start', flexShrink: 0 }}>
+                <input type="checkbox" checked={keep.has(i)} style={{ width: 22, minHeight: 22 }}
+                  onChange={() => setKeep((k) => { const x = new Set(k); if (x.has(i)) x.delete(i); else x.add(i); return x; })} />
+                <span style={{ flex: 1 }}>
+                  <span className="small muted">{dayName(m.date)} · {m.slot}</span><br />
+                  <strong>{m.title}</strong>{!m.recipeId && <span className="pill" style={{ marginLeft: 6 }}>new</span>}<br />
+                  <span className="small">{m.why}</span>
+                  {!!m.missing.length && <span className="small muted" style={{ display: 'block' }}>Need: {m.missing.join(', ')}</span>}
+                </span>
+              </label>
+            ))}
+            {!plan.length && <p className="muted">Gordy couldn't fill those days. Try different meals or add a few recipes first.</p>}
+          </div>
+          <div className="row">
+            <button className="ghost" onClick={() => setPlan(null)}>↻ Try again</button>
+            <span className="spacer" />
+            <button disabled={busy || !keep.size} onClick={() => add(false)}>Add {keep.size} to plan</button>
+            <button className="primary" disabled={busy || !keep.size} onClick={() => add(true)}>Add and shop</button>
+          </div>
+        </>
+      )}
+    </Modal>
+  );
+}
+
 export function MealPlan() {
   const { base, toast } = useApp();
   const [start, setStart] = useState(todayIso());
@@ -101,6 +189,8 @@ export function MealPlan() {
   const [adding, setAdding] = useState<string | null>(null);
   const [editing, setEditing] = useState<Meal | null>(null);
   const [dropDay, setDropDay] = useState<string | null>(null);
+  const [planning, setPlanning] = useState(false);
+  const [ai] = useLoad<{ available: boolean }>('/api/mixologist/status');
   const days = Array.from({ length: 7 }, (_, i) => addDays(start, i));
   const today = todayIso();
 
@@ -133,6 +223,7 @@ export function MealPlan() {
         <button onClick={() => setStart(todayIso())}>Today</button>
         <button className="icon" onClick={() => setStart(addDays(start, 7))} aria-label="Next week">›</button>
         <button onClick={copyLastWeek}>⧉ Copy last week</button>
+        {ai?.available && <button onClick={() => setPlanning(true)}>✨ Plan my week</button>}
         <button className="primary" onClick={shopForWeek}>🛒 Shop for this week</button>
       </div>
       <div className="week">
@@ -164,6 +255,7 @@ export function MealPlan() {
         })}
       </div>
       <p className="small muted">Want this in Google Calendar? Settings → Home → Calendar link.</p>
+      {planning && <PlanWithGordy start={start} onClose={(c) => { setPlanning(false); if (c) void reload(); }} />}
       {editing && <EditMeal meal={editing} onClose={(c) => { setEditing(null); if (c) void reload(); }} />}
       {adding && <AddMeal date={adding} onClose={(c) => { setAdding(null); if (c) void reload(); }} />}
     </div>

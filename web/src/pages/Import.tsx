@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { api } from '../api.ts';
-import { useApp } from '../state.tsx';
+import { api, fileToDataUrl } from '../api.ts';
+import { useApp, useLoad } from '../state.tsx';
 import type { Recipe } from '../../../shared/recipe.ts';
 
 interface KoResult { recipes: number; recipesSkipped: number; items: number; shopping: number; photos: number }
@@ -74,6 +74,7 @@ export function ImportPage() {
   const [preview, setPreview] = useState<Recipe[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [ai] = useLoad<{ available: boolean }>('/api/mixologist/status');
 
   async function parse(body: { url?: string; text?: string }) {
     setBusy(true); setError(null); setPreview(null);
@@ -111,6 +112,21 @@ export function ImportPage() {
           <p className="small muted" style={{ margin: 0 }}>JSON, HTML, Markdown or plain text.</p>
         </div>
       </div>
+      {ai?.available && (
+        <div className="card stack">
+          <h2>📸 From a photo</h2>
+          <p className="small muted" style={{ margin: 0 }}>A cookbook page, a magazine clipping or Grandma's handwritten card. Up to 4 photos of one recipe.</p>
+          <input type="file" accept="image/*" multiple capture="environment" aria-label="Recipe photos" onChange={async (e) => {
+            const files = [...(e.target.files ?? [])].slice(0, 4);
+            if (!files.length) return;
+            setBusy(true); setError(null); setPreview(null);
+            try {
+              const images = await Promise.all(files.map((f) => fileToDataUrl(f, 1800)));
+              setPreview((await api<{ recipes: Recipe[] }>(`${base}/recipes/from-photo`, { body: { images } })).recipes);
+            } catch (err) { setError((err as Error).message); } finally { setBusy(false); }
+          }} />
+        </div>
+      )}
       <div className="card stack">
         <h2>📋 Paste it</h2>
         <textarea value={text} onChange={(e) => setText(e.target.value)} placeholder={'Grandma\'s Pancakes\nServes 4\n\nIngredients\n1 1/2 cups flour\n2 eggs\n\nInstructions\n1. Mix.\n2. Cook.'} />

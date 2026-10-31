@@ -1,4 +1,6 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import type { Recipe } from '../../../shared/recipe.ts';
 import { api } from '../api.ts';
 import { useApp, useLoad } from '../state.tsx';
 
@@ -14,6 +16,29 @@ export function Feed() {
   const [playing, setPlaying] = useState<string | null>(null);
   const [filter, setFilter] = useState<string | null>(null);
   const [manage, setManage] = useState(false);
+  const [saving, setSaving] = useState<string | null>(null);
+  const [ai] = useLoad<{ available: boolean }>('/api/mixologist/status');
+  const nav = useNavigate();
+
+  // Videos: Gordy reads the recipe from the description. Blog posts: the regular importer reads the page.
+  async function saveRecipe(e: Entry) {
+    setSaving(e.link);
+    try {
+      let id: string;
+      if (e.videoId) {
+        const { recipes } = await api<{ recipes: Recipe[] }>(`${base}/recipes/from-video`, { body: { url: `https://www.youtube.com/watch?v=${e.videoId}` } });
+        id = (await api<{ id: string }>(`${base}/recipes`, { body: { ...recipes[0], image: e.thumbnail } })).id;
+      } else {
+        id = (await api<{ ids: string[] }>(`${base}/recipes/import`, { body: { url: e.link, save: true } })).ids[0];
+      }
+      toast('Saved to your recipes');
+      nav(`/recipes/${id}`);
+    } catch (err) {
+      toast((err as Error).message);
+    } finally {
+      setSaving(null);
+    }
+  }
 
   async function follow() {
     setBusy(true);
@@ -70,6 +95,11 @@ export function Feed() {
             <div style={{ padding: 12 }}>
               <a href={e.link} target="_blank" rel="noreferrer" style={{ fontWeight: 600, color: 'inherit', textDecoration: 'none' }}>{e.title}</a>
               <div className="small muted">{e.feedTitle}{e.published && ` · ${new Date(e.published).toLocaleDateString()}`}</div>
+              {(!e.videoId || ai?.available) && (
+                <button className="ghost small" style={{ marginTop: 6 }} disabled={saving === e.link} onClick={() => saveRecipe(e)}>
+                  {saving === e.link ? 'Reading the recipe…' : '📖 Save the recipe'}
+                </button>
+              )}
             </div>
           </div>
         ))}

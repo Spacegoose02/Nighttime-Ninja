@@ -7,7 +7,8 @@ import { importAny, ingredientMatches, matchKey, type Ingredient, type Recipe } 
 import { convertFor } from '../../../shared/units.ts';
 import { publicFetch } from '../security.ts';
 import { adjustItem, recordHistory } from './inventory.ts';
-import { homeLabels } from './homes.ts';
+import { homeEaters, homeLabels } from './homes.ts';
+import { dietClashes } from '../../../shared/diets.ts';
 import { body, flag, list, number, text } from '../schemas.ts';
 import { addShoppingItem } from './shopping.ts';
 
@@ -20,7 +21,7 @@ export function saveRecipe(db: DatabaseSync, homeId: string, r: Recipe, userId: 
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT (id) DO UPDATE SET title = excluded.title, description = excluded.description, servings = excluded.servings,
         prep_minutes = excluded.prep_minutes, cook_minutes = excluded.cook_minutes, source_url = excluded.source_url,
-        image = excluded.image, instructions = excluded.instructions, tags = excluded.tags, updated_at = datetime('now')`).run(
+        image = excluded.image, instructions = excluded.instructions, tags = excluded.tags, nutrition = NULL, updated_at = datetime('now')`).run(
       id, homeId, (r.title || 'Untitled recipe').slice(0, 200), (r.description ?? '').slice(0, 5000),
       r.servings ?? null, r.prepMinutes ?? null, r.cookMinutes ?? null, r.sourceUrl ?? null, r.image ?? null,
       JSON.stringify((r.instructions ?? []).map(String).slice(0, 200)),
@@ -162,11 +163,13 @@ export function recipeRoutes(app: FastifyInstance, db: DatabaseSync): void {
     const rows = db.prepare(`SELECT * FROM recipes WHERE ${where} ORDER BY title COLLATE NOCASE`).all(...args) as Row[];
     const index = stockIndex(db, ctx.homeId);
     const expiring = expiringIds(db, ctx.homeId);
+    const eaters = homeEaters(db, ctx.homeId);
     const list = rows.map((r) => {
       const full = loadRecipe(db, r);
       const { status, missing } = readiness(checkIngredients(index, full.ingredients));
       return {
         usesExpiring: usesExpiring(index, full.ingredients, expiring),
+        dietWarnings: dietClashes(full.ingredients.filter((i) => !i.optional), eaters).length,
         id: full.id, title: full.title, image: full.image, servings: full.servings, tags: full.tags,
         totalMinutes: (full.prepMinutes ?? 0) + (full.cookMinutes ?? 0) || null,
         ingredientCount: full.ingredients.length, isPublic: full.isPublic, ready: status, missing,
@@ -189,6 +192,8 @@ export function recipeRoutes(app: FastifyInstance, db: DatabaseSync): void {
       ...full, ingredients: checked, ...readiness(checked),
       favorite: !!row.favorite, rating: row.rating as number | null, notes: row.notes as string, collections: parseJson<string[]>(row.collections, []),
       cookCount: Number(cooks.n), lastCooked: cooks.last as string | null,
+      dietClashes: dietClashes(full.ingredients, homeEaters(db, ctx.homeId)),
+      nutrition: parseJson<Record<string, number> | null>(row.nutrition, null),
     };
   });
 
