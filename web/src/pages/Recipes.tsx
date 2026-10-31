@@ -1,6 +1,7 @@
-import { useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import type { RecipeSummary } from '../api.ts';
+import { useUrlState } from '../urlState.ts';
 import { useApp, useLoad } from '../state.tsx';
 import { minutes } from '../format.ts';
 
@@ -10,13 +11,15 @@ export function Recipes() {
   const { base } = useApp();
   const [params, setParams] = useSearchParams();
   const [recipes] = useLoad<RecipeSummary[]>(`${base}/recipes`);
-  const [q, setQ] = useState('');
+  const [q, setQ] = useUrlState('q');
   const readyOnly = params.get('ready') === '1';
   const useUp = params.get('useup') === '1';
   const favs = params.get('fav') === '1';
   const collection = params.get('col');
   const maxMinutes = Number(params.get('time')) || null;
-  const [tag, setTag] = useState<string | null>(null);
+  const [tagParam, setTagParam] = useUrlState('tag');
+  const tag = tagParam || null;
+  const setTag = (t: string | null) => setTagParam(t ?? '');
 
   const collections = useMemo(() => [...new Set((recipes ?? []).flatMap((r) => r.collections))].sort(), [recipes]);
   const setParam = (key: string, value: string | null) => {

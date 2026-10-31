@@ -4,6 +4,7 @@ import { Modal } from '../components/Dialog.tsx';
 import { BarcodeScanner } from '../components/BarcodeScanner.tsx';
 import { api, fileToDataUrl, freezerMonths, tileState, type Item } from '../api.ts';
 import { useApp, useLoad } from '../state.tsx';
+import { useUrlState } from '../urlState.ts';
 import { amount } from '../format.ts';
 import { CATEGORIES, LOCATIONS, guessItem } from '../../../shared/catalog.ts';
 import type { HomeDetail } from '../api.ts';
@@ -166,10 +167,11 @@ export function Inventory() {
   const [items, reload] = useLoad<Item[]>(`${base}/items`);
   const [home] = useLoad<HomeDetail>(base);
   const labels: Labels = { locations: home?.settings.locations ?? [...LOCATIONS], categories: home?.settings.categories ?? [...CATEGORIES] };
-  const [tab, setTab] = useState<'items' | 'history'>('items');
+  const [tabParam, setTab] = useUrlState('tab', 'items');
+  const tab: 'items' | 'history' = tabParam === 'history' ? 'history' : 'items';
   const [history, reloadHistory] = useLoad<HistoryRow[]>(tab === 'history' ? `${base}/history?limit=200` : null);
-  const [q, setQ] = useState('');
-  const [loc, setLoc] = useState('All');
+  const [q, setQ] = useUrlState('q');
+  const [loc, setLoc] = useUrlState('loc', 'All');
   const [editing, setEditing] = useState<Item | null | 'new' | { draft: ItemDraft }>(null);
   const [scanning, setScanning] = useState(false);
 
@@ -220,7 +222,7 @@ export function Inventory() {
         <>
           <div className="row">
             <input placeholder="Search the pantry" value={q} onChange={(e) => setQ(e.target.value)} style={{ maxWidth: 380 }} />
-            <button className={`chip${lowOnly ? ' on' : ''}`} onClick={() => setParams(lowOnly ? {} : { low: '1' })}>⚠️ Running low</button>
+            <button className={`chip${lowOnly ? ' on' : ''}`} onClick={() => { const next = new URLSearchParams(params); if (lowOnly) next.delete('low'); else next.set('low', '1'); setParams(next); }}>⚠️ Running low</button>
             <span className="row small muted" style={{ gap: 10 }}>
               <span><span className="key-dot" style={{ background: "var(--tile)" }} /> In stock</span>
               <span><span className="key-dot" style={{ background: "#c98a00" }} /> Low</span>

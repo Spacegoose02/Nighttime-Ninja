@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { api, type RecipeFull } from '../api.ts';
 import { useApp, useLoad } from '../state.tsx';
+import { useUrlState } from '../urlState.ts';
 import { amount, minutes } from '../format.ts';
 import { RaccoonAvatar } from '../components/Raccoon.tsx';
 
@@ -54,7 +55,7 @@ export function PublicRecipe() {
 
 /** Recipes shared publicly by anyone on this server. */
 export function Community() {
-  const [q, setQ] = useState('');
+  const [q, setQ] = useUrlState('q');
   const [list] = useLoad<{ title: string; image: string | null; slug: string; tags: string[]; from: string }[]>(`/api/public/recipes?q=${encodeURIComponent(q)}`, [q]);
   return (
     <div className="stack">

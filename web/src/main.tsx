@@ -4,11 +4,13 @@ import { BrowserRouter } from 'react-router-dom';
 import { AppProvider } from './state.tsx';
 import { App } from './App.tsx';
 import { DialogProvider } from './components/Dialog.tsx';
+import { ScrollMemory } from './components/ScrollMemory.tsx';
 import './styles.css';
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <BrowserRouter>
+      <ScrollMemory />
       <DialogProvider>
         <AppProvider>
           <App />
