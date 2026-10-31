@@ -23,7 +23,11 @@ export async function api<T = unknown>(path: string, opts: { method?: string; bo
   });
   const text = await res.text();
   const data = text ? safeJson(text) : null;
-  if (!res.ok) throw new ApiError(res.status, (data as { error?: string })?.error ?? `Request failed (${res.status})`);
+  if (!res.ok) {
+    // Maybe the sign-in ran out or was signed out from another device: let the app check (see state.tsx).
+    if (res.status === 401 && path !== '/api/me') window.dispatchEvent(new Event('nn-unauthorized'));
+    throw new ApiError(res.status, (data as { error?: string })?.error ?? `Request failed (${res.status})`);
+  }
   // Slow routes answer 200 straight away to keep proxies from timing out, then put any failure in the body.
   if (res.headers.get('x-nn-deferred') && typeof (data as { error?: unknown })?.error === 'string') {
     const d = data as { error: string; status?: number };

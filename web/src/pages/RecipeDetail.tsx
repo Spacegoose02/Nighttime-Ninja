@@ -138,15 +138,21 @@ export function RecipeDetail() {
   async function cook() {
     if (!(await dialogs.confirm(`Take the ingredients for ${recipe!.title} out of the pantry?`, { okLabel: 'I cooked it' }))) return;
     const r = await api<{ used: unknown[]; skipped: string[]; historyIds: number[] }>(`${base}/recipes/${id}/cook`, { body: { servings } });
-    toast(`Used ${r.used.length} pantry items${r.skipped.length ? `; not in pantry: ${r.skipped.join(', ')}` : ''}`,
-      r.historyIds.length ? () => api(`${base}/history/undo`, { body: { ids: r.historyIds } }) : undefined);
     void reload();
     const left = await dialogs.prompt('Any leftovers? Say how many servings and they go in the fridge for 4 days.', '', { okLabel: 'Save leftovers' });
     const n = Number(left);
+    let saved = '';
     if (left && n > 0) {
-      await api(`${base}/recipes/${id}/leftovers`, { body: { servings: n } });
-      toast(`Saved ${n} serving${n === 1 ? '' : 's'} of leftovers`);
+      try {
+        await api(`${base}/recipes/${id}/leftovers`, { body: { servings: n } });
+        saved = `. Saved ${n} serving${n === 1 ? '' : 's'} of leftovers`;
+      } catch (e) {
+        saved = `. Leftovers weren't saved: ${(e as Error).message}`;
+      }
     }
+    // Shown after the leftovers question, so its Undo isn't hidden behind that pop-up while it counts down.
+    toast(`Used ${r.used.length} pantry items${r.skipped.length ? `; not in pantry: ${r.skipped.join(', ')}` : ''}${saved}`,
+      r.historyIds.length ? () => api(`${base}/history/undo`, { body: { ids: r.historyIds } }) : undefined);
   }
 
   async function toList(all: boolean) {

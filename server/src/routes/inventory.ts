@@ -2,7 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import type { DatabaseSync } from 'node:sqlite';
 import { homeCtx } from '../auth.ts';
 import { tx, type Row } from '../db.ts';
-import { HttpError, newId, num, requireStr, str } from '../util.ts';
+import { HttpError, localDate, newId, num, requireStr, str } from '../util.ts';
 import { guessItem } from '../../../shared/catalog.ts';
 import { matchKey } from '../../../shared/recipe.ts';
 import { addShoppingItem } from './shopping.ts';
@@ -40,18 +40,41 @@ export function adjustItem(db: DatabaseSync, homeId: string, itemId: string, del
   return { ...item, quantity: after };
 }
 
-/** Adds stock to an item matched by name, creating it if needed. Used when shopping items are checked off. */
-export function stockByName(db: DatabaseSync, homeId: string, name: string, quantity: number, unit: string | null, reason: string, userId: string | null): void {
-  const existing = db.prepare('SELECT id FROM items WHERE home_id = ? AND name = ? COLLATE NOCASE').get(homeId, name) as Row | undefined;
+/** The pantry item with this name: the exact name first, then the same food written differently ("Avocado" for "avocados"). */
+export function itemByName(db: DatabaseSync, homeId: string, name: string): string | null {
+  const exact = db.prepare('SELECT id FROM items WHERE home_id = ? AND name = ? COLLATE NOCASE').get(homeId, name) as Row | undefined;
+  if (exact) return exact.id as string;
+  const key = matchKey(name);
+  if (!key) return null;
+  const rows = db.prepare('SELECT id, name FROM items WHERE home_id = ? ORDER BY updated_at DESC').all(homeId) as Row[];
+  return (rows.find((r) => matchKey(r.name as string) === key)?.id as string | undefined) ?? null;
+}
+
+/**
+ * Adds stock to an item matched by name, creating it if needed. Used when shopping items are checked off.
+ * Returns the history row, so the change can be taken back.
+ */
+export function stockByName(db: DatabaseSync, homeId: string, name: string, quantity: number, unit: string | null, reason: string, userId: string | null): number {
+  const existing = itemByName(db, homeId, name);
   if (existing) {
-    adjustItem(db, homeId, existing.id as string, quantity, reason, userId);
-    return;
+    adjustItem(db, homeId, existing, quantity, reason, userId);
+  } else {
+    const guess = guessItem(name);
+    const id = newId();
+    db.prepare('INSERT INTO items (id, home_id, name, category, icon, quantity, unit) VALUES (?, ?, ?, ?, ?, ?, ?)')
+      .run(id, homeId, name, guess.category, guess.icon, quantity, unit);
+    recordHistory(db, { homeId, itemId: id, itemName: name, delta: quantity, unit, after: quantity, reason, userId });
   }
-  const guess = guessItem(name);
-  const id = newId();
-  db.prepare('INSERT INTO items (id, home_id, name, category, icon, quantity, unit) VALUES (?, ?, ?, ?, ?, ?, ?)')
-    .run(id, homeId, name, guess.category, guess.icon, quantity, unit);
-  recordHistory(db, { homeId, itemId: id, itemName: name, delta: quantity, unit, after: quantity, reason, userId });
+  return Number((db.prepare('SELECT last_insert_rowid() AS id').get() as Row).id);
+}
+
+/** Takes back one pantry change (an undo), if the item is still there and it wasn't undone already. */
+export function undoHistory(db: DatabaseSync, homeId: string, historyId: number, userId: string | null): boolean {
+  const h = db.prepare('SELECT * FROM inventory_history WHERE id = ? AND home_id = ? AND undone_at IS NULL').get(historyId, homeId) as Row | undefined;
+  if (!h?.item_id || !db.prepare('SELECT 1 FROM items WHERE id = ? AND home_id = ?').get(h.item_id as string, homeId)) return false;
+  adjustItem(db, homeId, h.item_id as string, -(h.delta as number), `undo: ${h.reason}`, userId);
+  db.prepare("UPDATE inventory_history SET undone_at = datetime('now') WHERE id = ?").run(historyId);
+  return true;
 }
 
 /** Names on the home's open shopping list, so pantry tiles can show "needs shopped". */
@@ -97,7 +120,7 @@ export function inventoryRoutes(app: FastifyInstance, db: DatabaseSync): void {
     const quantity = num(b.quantity) ?? 1;
     const location = str(b.location, 40) ?? 'Pantry';
     // Freezer food gets a "frozen on" date, today unless given, so it can be nudged before it gets freezer burn.
-    const frozenOn = isFreezer(location) ? str(b.frozenOn, 10) ?? new Date().toISOString().slice(0, 10) : null;
+    const frozenOn = isFreezer(location) ? str(b.frozenOn, 10) ?? localDate() : null;
     db.prepare(`INSERT INTO items (id, home_id, name, category, location, icon, photo, quantity, unit, low_threshold, barcode, expires_on, frozen_on)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
       id, ctx.homeId, name, str(b.category, 40) ?? guess.category, location,
@@ -124,7 +147,7 @@ export function inventoryRoutes(app: FastifyInstance, db: DatabaseSync): void {
     // Moving into the freezer starts the clock; moving out clears it.
     const freezer = isFreezer(fields.location ?? item.location);
     if ('frozenOn' in b) fields.frozen_on = freezer ? str(b.frozenOn, 10) : null;
-    if (freezer && !item.frozen_on && !fields.frozen_on) fields.frozen_on = new Date().toISOString().slice(0, 10);
+    if (freezer && !item.frozen_on && !fields.frozen_on) fields.frozen_on = localDate();
     if (!freezer && item.frozen_on) fields.frozen_on = null;
     if ('icon' in b) fields.icon = str(b.icon, 16);
     if ('photo' in b) fields.photo = str(b.photo, 500);
@@ -186,13 +209,7 @@ export function inventoryRoutes(app: FastifyInstance, db: DatabaseSync): void {
     const ids = ((req.body as Row).ids as number[]).filter((n) => Number.isInteger(n));
     let undone = 0;
     tx(db, () => {
-      for (const id of ids) {
-        const h = db.prepare('SELECT * FROM inventory_history WHERE id = ? AND home_id = ? AND undone_at IS NULL').get(id, ctx.homeId) as Row | undefined;
-        if (!h?.item_id || !db.prepare('SELECT 1 FROM items WHERE id = ? AND home_id = ?').get(h.item_id as string, ctx.homeId)) continue;
-        adjustItem(db, ctx.homeId, h.item_id as string, -(h.delta as number), `undo: ${h.reason}`, ctx.user?.id ?? null);
-        db.prepare("UPDATE inventory_history SET undone_at = datetime('now') WHERE id = ?").run(id);
-        undone++;
-      }
+      for (const id of ids) if (undoHistory(db, ctx.homeId, id, ctx.user?.id ?? null)) undone++;
     });
     return { undone };
   });

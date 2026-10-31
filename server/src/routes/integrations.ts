@@ -5,7 +5,7 @@ import type { DatabaseSync } from 'node:sqlite';
 import { homeCtx } from '../auth.ts';
 import type { Row } from '../db.ts';
 import { config } from '../config.ts';
-import { HttpError, newId } from '../util.ts';
+import { HttpError, localDate, newId } from '../util.ts';
 import { checkIngredients, loadRecipe, stockIndex } from './recipes.ts';
 import { LOW_SQL } from './inventory.ts';
 
@@ -33,10 +33,10 @@ export function integrationRoutes(app: FastifyInstance, db: DatabaseSync): void 
   // A compact snapshot for Home Assistant REST sensors and dashboards.
   app.get('/api/homes/:homeId/ha/summary', async (req) => {
     const ctx = homeCtx(db, req);
-    const today = new Date().toISOString().slice(0, 10);
+    const today = localDate();
     const shopping = db.prepare('SELECT name, quantity, unit FROM shopping_items WHERE home_id = ? AND checked = 0 ORDER BY name').all(ctx.homeId) as Row[];
     const low = db.prepare(`SELECT name, quantity, unit FROM items WHERE home_id = ? AND ${LOW_SQL} ORDER BY name`).all(ctx.homeId) as Row[];
-    const expiring = db.prepare("SELECT name, expires_on FROM items WHERE home_id = ? AND expires_on IS NOT NULL AND expires_on <= date('now', '+3 day') ORDER BY expires_on").all(ctx.homeId) as Row[];
+    const expiring = db.prepare("SELECT name, expires_on FROM items WHERE home_id = ? AND expires_on IS NOT NULL AND expires_on <= ? ORDER BY expires_on").all(ctx.homeId, localDate(3)) as Row[];
     const meals = db.prepare(`SELECT m.slot, COALESCE(r.title, m.title) AS title, m.cooked_at, u.name AS cook FROM meal_plan m LEFT JOIN recipes r ON r.id = m.recipe_id
       LEFT JOIN users u ON u.id = m.cook_id
       WHERE m.home_id = ? AND m.date = ? ORDER BY CASE m.slot WHEN 'breakfast' THEN 0 WHEN 'lunch' THEN 1 WHEN 'snack' THEN 2 ELSE 3 END`).all(ctx.homeId, today) as Row[];

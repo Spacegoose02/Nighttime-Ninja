@@ -94,7 +94,8 @@ export function dueReminders(db: DatabaseSync, now = new Date()): { userId: stri
     if (prefs.plan && hour >= EVENING) {
       const meals = db.prepare(`SELECT COALESCE(r.title, mp.title) AS title, mp.slot, u.name AS cook FROM meal_plan mp
         LEFT JOIN recipes r ON r.id = mp.recipe_id LEFT JOIN users u ON u.id = mp.cook_id
-        WHERE mp.home_id = ? AND mp.date = ? AND mp.cooked_at IS NULL ORDER BY mp.slot`).all(homeId, tomorrow) as Row[];
+        WHERE mp.home_id = ? AND mp.date = ? AND mp.cooked_at IS NULL
+        ORDER BY CASE mp.slot WHEN 'breakfast' THEN 0 WHEN 'lunch' THEN 1 WHEN 'snack' THEN 2 ELSE 3 END`).all(homeId, tomorrow) as Row[];
       if (meals.length) {
         const frozen = db.prepare("SELECT COUNT(*) AS n FROM items WHERE home_id = ? AND quantity > 0 AND frozen_on IS NOT NULL").get(homeId) as Row;
         out.push({ userId, key: `plan:${userId}:${homeId}:${today}`, reminder: {

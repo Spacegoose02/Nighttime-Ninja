@@ -2,7 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import type { DatabaseSync } from 'node:sqlite';
 import { homeCtx } from '../auth.ts';
 import { tx, type Row } from '../db.ts';
-import { HttpError, newId, num, parseJson, randomToken, str } from '../util.ts';
+import { HttpError, localDate, newId, num, parseJson, randomToken, str } from '../util.ts';
 import { importAny, ingredientMatches, matchKey, type Ingredient, type Recipe } from '../../../shared/recipe.ts';
 import { convertFor } from '../../../shared/units.ts';
 import { publicFetch } from '../security.ts';
@@ -97,7 +97,7 @@ function findStock(index: StockIndex, name: string): { stock: Stock[]; linked: b
 
 /** Pantry items that are in stock and expire within the next 3 days. */
 export function expiringIds(db: DatabaseSync, homeId: string): Set<string> {
-  const rows = db.prepare("SELECT id FROM items WHERE home_id = ? AND quantity > 0 AND expires_on IS NOT NULL AND expires_on <= date('now', '+3 day')").all(homeId) as Row[];
+  const rows = db.prepare("SELECT id FROM items WHERE home_id = ? AND quantity > 0 AND expires_on IS NOT NULL AND expires_on <= ?").all(homeId, localDate(3)) as Row[];
   return new Set(rows.map((r) => r.id as string));
 }
 
@@ -306,7 +306,7 @@ export function recipeRoutes(app: FastifyInstance, db: DatabaseSync): void {
     const name = `Leftover ${String(row.title)}`.slice(0, 120);
     const id = newId();
     db.prepare(`INSERT INTO items (id, home_id, name, category, location, icon, quantity, unit, expires_on)
-      VALUES (?, ?, ?, 'Other', ?, '🍱', ?, 'serving', date('now', '+4 day'))`).run(id, ctx.homeId, name, location, servings);
+      VALUES (?, ?, ?, 'Other', ?, '🍱', ?, 'serving', ?)`).run(id, ctx.homeId, name, location, servings, localDate(4));
     recordHistory(db, { homeId: ctx.homeId, itemId: id, itemName: name, delta: servings, unit: 'serving', after: servings, reason: 'leftovers', userId: ctx.user?.id ?? null });
     return { id, name, location };
   });

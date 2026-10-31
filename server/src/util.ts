@@ -51,4 +51,10 @@ export function parseJson<T>(v: unknown, fallback: T): T {
   }
 }
 
+/** A calendar day (YYYY-MM-DD) in the server's time zone (TZ), n days from today. SQLite's date('now') is UTC. */
+export function localDate(n = 0, now = new Date()): string {
+  const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() + n);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
 export const nowIso = (): string => new Date().toISOString().replace('T', ' ').slice(0, 19);
