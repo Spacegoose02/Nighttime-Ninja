@@ -25,6 +25,7 @@ import { chefRoutes } from './routes/chef.ts';
 import { chatHistoryRoutes } from './routes/aichat.ts';
 import { liveRoutes } from './live.ts';
 import { sampleRoutes } from './routes/sample.ts';
+import { kitchenAiRoutes } from './routes/kitchenai.ts';
 
 export async function buildApp(db: DatabaseSync, opts: { logger?: boolean; serveWeb?: boolean } = {}): Promise<FastifyInstance> {
   const app = Fastify({ logger: opts.logger ?? false, bodyLimit: 5 * 1024 * 1024, trustProxy: config.trustProxy, schemaErrorFormatter });
@@ -58,6 +59,7 @@ export async function buildApp(db: DatabaseSync, opts: { logger?: boolean; serve
   mixologistRoutes(app, db);
   chefRoutes(app, db);
   sampleRoutes(app, db);
+  kitchenAiRoutes(app, db);
   chatHistoryRoutes(app, db);
 
   await app.register(fastifyStatic, {

@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { Modal, useDialogs } from '../components/Dialog.tsx';
-import { api, type Item, type RecipeFull } from '../api.ts';
+import { api, type Item, type Nutrition, type RecipeFull } from '../api.ts';
 import { useApp, useLoad } from '../state.tsx';
 import { amount, minutes, todayIso } from '../format.ts';
 import { celsiusToFahrenheitText } from '../../../shared/units.ts';
@@ -56,6 +56,36 @@ function StepTimers({ step, title }: { step: string; title: string }) {
         </button>
       ))}
     </span>
+  );
+}
+
+/** AI nutrition estimate per serving, clearly marked as approximate. */
+function NutritionCard({ recipeId, nutrition, onChange }: { recipeId: string; nutrition: Nutrition | null; onChange: () => void }) {
+  const { base, toast } = useApp();
+  const [status] = useLoad<{ available: boolean }>('/api/mixologist/status');
+  const [busy, setBusy] = useState(false);
+  if (!nutrition && !status?.available) return null;
+  const estimate = async () => {
+    setBusy(true);
+    try { await api(`${base}/recipes/${recipeId}/nutrition`, { body: {} }); onChange(); } catch (e) { toast((e as Error).message); } finally { setBusy(false); }
+  };
+  const rows: [string, number | undefined, string][] = nutrition ? [
+    ['Calories', nutrition.calories, ''], ['Protein', nutrition.proteinG, ' g'], ['Carbs', nutrition.carbsG, ' g'], ['Fat', nutrition.fatG, ' g'],
+    ['Fiber', nutrition.fiberG, ' g'], ['Sugar', nutrition.sugarG, ' g'], ['Sodium', nutrition.sodiumMg, ' mg'],
+  ] : [];
+  return (
+    <div className="card stack">
+      <div className="row">
+        <h2 style={{ flex: 1, margin: 0 }}>Nutrition</h2>
+        {status?.available && <button className="ghost" disabled={busy} onClick={estimate}>{busy ? 'Working it out…' : nutrition ? '↻ Estimate again' : '✨ Estimate'}</button>}
+      </div>
+      {nutrition ? (
+        <>
+          <div className="nutrition">{rows.map(([k, v, u]) => <div key={k}><strong>{v}{u}</strong><span className="small muted">{k}</span></div>)}</div>
+          <p className="small muted" style={{ margin: 0 }}>Per serving ({nutrition.servings} servings). An AI estimate from the ingredients, so treat it as approximate.</p>
+        </>
+      ) : <p className="small muted" style={{ margin: 0 }}>Get a rough calories, protein, carbs and fat count per serving.</p>}
+    </div>
   );
 }
 
@@ -165,6 +195,14 @@ export function RecipeDetail() {
           </span>
         </div>
       )}
+      {!!recipe.dietClashes.length && (
+        <div className="card diet-warning" role="note">
+          <strong>⚠️ Heads up</strong>
+          <ul style={{ margin: '6px 0 0', paddingLeft: 20 }}>
+            {recipe.dietClashes.map((c) => <li key={`${c.ingredient}-${c.person}-${c.reason}`}>{c.ingredient}: {c.person}, {c.reason}</li>)}
+          </ul>
+        </div>
+      )}
       {recipe.description && !cookMode && <p style={{ whiteSpace: 'pre-wrap' }}>{recipe.description}</p>}
       {cookMode && recipe.instructions.length > 0 && (
         <div className="card cook-focus stack" aria-live="polite">
@@ -247,6 +285,7 @@ export function RecipeDetail() {
           {!recipe.instructions.length && <p className="muted">No steps written down.</p>}
         </div>
       </div>
+      {!cookMode && <NutritionCard recipeId={recipe.id} nutrition={recipe.nutrition} onChange={() => void reload()} />}
       <label className="field card">📝 Our notes
         <textarea key={recipe.notes} defaultValue={recipe.notes} rows={3} placeholder="Double the garlic. Kids liked it with rice."
           onBlur={(e) => { if (e.target.value !== recipe.notes) void meta({ notes: e.target.value }); }} />

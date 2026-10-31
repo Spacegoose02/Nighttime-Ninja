@@ -269,6 +269,12 @@ const MIGRATIONS: string[] = [
   UPDATE items SET frozen_on = date(updated_at) WHERE lower(location) LIKE '%freez%';
   ALTER TABLE recipes ADD COLUMN collections TEXT NOT NULL DEFAULT '[]';
   `,
+  // Each person's diets and allergies in a home, and AI nutrition estimates per recipe.
+  `
+  ALTER TABLE home_members ADD COLUMN diets TEXT NOT NULL DEFAULT '[]';
+  ALTER TABLE home_members ADD COLUMN allergies TEXT NOT NULL DEFAULT '[]';
+  ALTER TABLE recipes ADD COLUMN nutrition TEXT;
+  `,
 ];
 
 export function openDb(dataDir: string): DatabaseSync {
