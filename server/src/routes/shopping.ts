@@ -6,7 +6,7 @@ import { HttpError, newId, num, parseJson, str } from '../util.ts';
 import { guessItem } from '../../../shared/catalog.ts';
 import { matchKey, parseIngredient } from '../../../shared/recipe.ts';
 import { convert } from '../../../shared/units.ts';
-import { stockByName } from './inventory.ts';
+import { stockByName, undoHistory } from './inventory.ts';
 import { body, flag, list, number, text } from '../schemas.ts';
 import { listAdded } from '../push.ts';
 
@@ -25,13 +25,24 @@ const money = (v: unknown) => { const n = num(v); return n != null && n >= 0 && 
 
 /** Ticks an item off: remembers it was bought, and (unless told not to) puts it in the pantry. */
 export function checkOff(db: DatabaseSync, homeId: string, item: Row, addToInventory: boolean, userId: string | null): void {
-  db.prepare("UPDATE shopping_items SET checked = 1, checked_at = datetime('now') WHERE id = ?").run(item.id as string);
+  db.prepare("UPDATE shopping_items SET checked = 1, checked_at = datetime('now'), cleared = 0, stock_history_id = NULL WHERE id = ?").run(item.id as string);
   db.prepare(`INSERT INTO shopping_history (home_id, name_key, name, category, times_bought, last_bought_at)
     VALUES (?, ?, ?, ?, 1, datetime('now'))
     ON CONFLICT (home_id, name_key) DO UPDATE SET times_bought = times_bought + 1, last_bought_at = datetime('now'),
       name = excluded.name, category = excluded.category`)
     .run(homeId, matchKey(item.name as string), item.name as string, item.category as string);
-  if (addToInventory) stockByName(db, homeId, item.name as string, (item.quantity as number | null) ?? 1, item.unit as string | null, 'bought', userId);
+  if (addToInventory) {
+    const historyId = stockByName(db, homeId, item.name as string, (item.quantity as number | null) ?? 1, item.unit as string | null, 'bought', userId);
+    db.prepare('UPDATE shopping_items SET stock_history_id = ? WHERE id = ?').run(historyId, item.id as string);
+  }
+}
+
+/** Unticks an item (a mis-tap in the store): back on the list, and whatever the tick put in the pantry comes out again. */
+export function uncheck(db: DatabaseSync, homeId: string, item: Row, userId: string | null): void {
+  db.prepare('UPDATE shopping_items SET checked = 0, checked_at = NULL, cleared = 0, stock_history_id = NULL WHERE id = ?').run(item.id as string);
+  db.prepare('UPDATE shopping_history SET times_bought = MAX(0, times_bought - 1) WHERE home_id = ? AND name_key = ?')
+    .run(homeId, matchKey(item.name as string));
+  if (item.stock_history_id != null) undoHistory(db, homeId, Number(item.stock_history_id), userId);
 }
 
 /** Adds to the list, merging into an existing unchecked entry with the same name when units allow. */
@@ -74,7 +85,7 @@ export function shoppingRoutes(app: FastifyInstance, db: DatabaseSync): void {
         (SELECT p.price FROM shopping_items p WHERE p.home_id = s.home_id AND p.name = s.name COLLATE NOCASE AND p.price IS NOT NULL
           AND p.id != s.id ORDER BY p.checked_at DESC LIMIT 1) AS last_price
       FROM shopping_items s LEFT JOIN users u ON u.id = s.added_by
-      WHERE s.home_id = ? AND (s.checked = 0 OR s.checked_at > datetime('now', '-1 day'))
+      WHERE s.home_id = ? AND (s.checked = 0 OR (s.cleared = 0 AND s.checked_at > datetime('now', '-1 day')))
       ORDER BY s.checked, s.category, s.name COLLATE NOCASE`).all(ctx.homeId) as Row[];
     return rows.map(shape);
   });
@@ -116,7 +127,7 @@ export function shoppingRoutes(app: FastifyInstance, db: DatabaseSync): void {
         if (b.checked) {
           checkOff(db, ctx.homeId, item, b.addToInventory !== false, ctx.user?.id ?? null);
         } else {
-          db.prepare('UPDATE shopping_items SET checked = 0, checked_at = NULL WHERE id = ?').run(id);
+          uncheck(db, ctx.homeId, item, ctx.user?.id ?? null);
         }
       }
     });
@@ -131,8 +142,8 @@ export function shoppingRoutes(app: FastifyInstance, db: DatabaseSync): void {
 
   app.post('/api/homes/:homeId/shopping/clear-checked', async (req) => {
     const ctx = homeCtx(db, req);
-    // Checked items stay in the database as purchase history; they just leave the list view.
-    db.prepare("UPDATE shopping_items SET checked_at = datetime('now', '-2 day') WHERE home_id = ? AND checked = 1").run(ctx.homeId);
+    // Checked items stay in the database as purchase history (with the day they were really bought); they just leave the list view.
+    db.prepare('UPDATE shopping_items SET cleared = 1 WHERE home_id = ? AND checked = 1').run(ctx.homeId);
     return { ok: true };
   });
 

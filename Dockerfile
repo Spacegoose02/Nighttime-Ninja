@@ -20,7 +20,8 @@ ENV NODE_ENV=production \
     DATA_DIR=/data \
     WEB_DIST=/app/web/dist
 WORKDIR /app
-RUN apk add --no-cache su-exec
+# tzdata so TZ (e.g. America/Chicago) works for everything, not just JavaScript dates.
+RUN apk add --no-cache su-exec tzdata
 COPY package.json package-lock.json ./
 COPY server/package.json server/
 COPY web/package.json web/

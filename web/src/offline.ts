@@ -23,19 +23,38 @@ export const pending = (): readonly Pending[] => read();
 const isOffline = (e: unknown): boolean => !(e instanceof ApiError);
 
 /**
+ * Worth trying again later rather than giving up on: no network, signed out (it goes through once you sign back in),
+ * or the server busy or restarting (a reverse proxy answers 502/503/504 while the container updates).
+ */
+const isTemporary = (e: unknown): boolean =>
+  isOffline(e) || (e instanceof ApiError && (e.status === 401 || e.status === 408 || e.status === 429 || e.status >= 500));
+
+let dropped = 0;
+
+/** How many waiting changes the server turned down since the last call (the item was deleted meanwhile, say). */
+export function takeDropped(): number {
+  const n = dropped;
+  dropped = 0;
+  return n;
+}
+
+/**
  * Sends a change now, or keeps it for later when there's no connection. Returns false when it was queued.
  * Anything the server itself refuses is thrown as usual.
  */
 export async function sendOrQueue(path: string, method: string, body: unknown): Promise<boolean> {
+  // Something is waiting from earlier: try to send it first. The signal may well be back even though the browser
+  // never said it went away (a Wi-Fi blip, the server restarting).
+  if (read().length) await flushOutbox();
   if (!read().length) {
     try {
       await api(path, { method, body });
       return true;
     } catch (e) {
-      if (!isOffline(e)) throw e;
+      if (!isTemporary(e)) throw e;
     }
   }
-  // Something is already waiting: queue behind it so changes reach the server in the order they were made.
+  // Still waiting: queue behind it so changes reach the server in the order they were made.
   write([...read(), { path, method, body }]);
   return false;
 }
@@ -53,8 +72,9 @@ export function flushOutbox(): Promise<number> {
         await api(next.path, { method: next.method, body: next.body });
         sent++;
       } catch (e) {
-        if (isOffline(e)) break;
+        if (isTemporary(e)) break;
         // The server turned it down (the item was deleted meanwhile, say). Drop it rather than block the rest.
+        dropped++;
       }
       // Re-read: more may have been queued while this one was in flight.
       write(read().slice(1));

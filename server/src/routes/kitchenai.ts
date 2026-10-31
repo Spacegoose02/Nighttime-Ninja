@@ -5,7 +5,7 @@ import type { FastifyInstance } from 'fastify';
 import type { DatabaseSync } from 'node:sqlite';
 import { homeCtx } from '../auth.ts';
 import { tx, type Row } from '../db.ts';
-import { HttpError, newId, num, parseJson, str } from '../util.ts';
+import { HttpError, localDate, newId, num, parseJson, str } from '../util.ts';
 import { guessItem } from '../../../shared/catalog.ts';
 import { ingredientMatches, matchKey } from '../../../shared/recipe.ts';
 import { ask, claude, keepAlive, limitAi, textOf } from '../claude.ts';
@@ -128,7 +128,7 @@ export function kitchenAiRoutes(app: FastifyInstance, db: DatabaseSync): void {
   app.post('/api/homes/:homeId/chef/plan-week', { schema: body({ start: text, days: number, slots: list(text, 4), notes: text }) }, async (req, reply) => {
     const ctx = homeCtx(db, req);
     const b = (req.body ?? {}) as Row;
-    const start = /^\d{4}-\d{2}-\d{2}$/.test(String(b.start)) ? String(b.start) : new Date().toISOString().slice(0, 10);
+    const start = /^\d{4}-\d{2}-\d{2}$/.test(String(b.start)) ? String(b.start) : localDate();
     const days = Math.min(14, Math.max(1, Math.round(num(b.days) ?? 7)));
     const slots = (Array.isArray(b.slots) ? b.slots.map(String) : ['dinner']).filter((s) => SLOTS.includes(s));
     if (!slots.length) slots.push('dinner');

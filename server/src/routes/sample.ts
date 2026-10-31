@@ -3,7 +3,7 @@ import type { FastifyInstance } from 'fastify';
 import type { DatabaseSync } from 'node:sqlite';
 import { homeCtx } from '../auth.ts';
 import { type Row, tx } from '../db.ts';
-import { HttpError, newId } from '../util.ts';
+import { HttpError, localDate, newId } from '../util.ts';
 import { guessItem } from '../../../shared/catalog.ts';
 import { parseIngredient, type Recipe } from '../../../shared/recipe.ts';
 import { recordHistory } from './inventory.ts';
@@ -36,8 +36,7 @@ export const SAMPLE_RECIPES: Recipe[] = [
       'Add the rest of the water as cold water and chill. Serve over ice with lemon.']),
 ];
 
-const DAY = 86400000;
-const inDays = (n: number) => new Date(Date.now() + n * DAY).toISOString().slice(0, 10);
+const inDays = (n: number) => localDate(n);
 
 export const SAMPLE_ITEMS: { name: string; quantity: number; unit?: string; location: string; expiresIn?: number; low?: number }[] = [
   { name: 'All-purpose flour', quantity: 5, unit: 'lb', location: 'Pantry' },

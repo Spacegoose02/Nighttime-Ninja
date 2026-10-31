@@ -656,3 +656,53 @@ test('sample kitchen, freezer dates, collections, and cups out of a bag in pound
   assert.deepEqual(meta.collections, ['Weekend']);
   assert.deepEqual((await call(a, 'GET', `${base}/recipes`)).body.find((r: { id: string }) => r.id === pancakes.id).collections, ['Weekend']);
 });
+
+test('shopping and cooking keep the pantry right', async () => {
+  const { login, call } = await setup();
+  const a = await login('Shopper');
+  const { body: home } = await call(a, 'POST', '/api/homes', { name: 'Pantry' });
+  const base = `/api/homes/${home.id}`;
+  const qty = async (name: string) => (await call(a, 'GET', `${base}/items`)).body.find((i: { name: string }) => i.name === name)?.quantity;
+
+  // Cooking with chicken broth and heavy cream leaves the chicken and the cream cheese alone.
+  await call(a, 'POST', `${base}/items`, { name: 'Chicken', quantity: 2, unit: 'lb' });
+  await call(a, 'POST', `${base}/items`, { name: 'Cream cheese', quantity: 8, unit: 'oz' });
+  const soup = await call(a, 'POST', `${base}/recipes/import`, { save: true, text: 'Soup\nServes 4\nIngredients\n4 cups chicken broth\n1 cup heavy cream\nInstructions\nCook.' });
+  const cooked = await call(a, 'POST', `${base}/recipes/${soup.body.ids[0]}/cook`, {});
+  assert.deepEqual(cooked.body.used, []);
+  assert.equal(await qty('Chicken'), 2);
+  assert.equal(await qty('Cream cheese'), 8);
+
+  // Ticking off by mistake and unticking leaves the pantry as it was; ticking again adds it once.
+  const [milk] = (await call(a, 'POST', `${base}/shopping`, { text: 'Milk' })).body;
+  await call(a, 'PATCH', `${base}/shopping/${milk.id}`, { checked: true });
+  await call(a, 'PATCH', `${base}/shopping/${milk.id}`, { checked: false });
+  assert.equal(await qty('Milk'), 0);
+  await call(a, 'PATCH', `${base}/shopping/${milk.id}`, { checked: true });
+  assert.equal(await qty('Milk'), 1);
+
+  // Bought items go onto the pantry tile that's already there, even when written differently.
+  await call(a, 'POST', `${base}/items`, { name: 'Avocado', quantity: 1 });
+  const [avo] = (await call(a, 'POST', `${base}/shopping`, { text: '3 avocados' })).body;
+  await call(a, 'PATCH', `${base}/shopping/${avo.id}`, { checked: true });
+  assert.equal(await qty('Avocado'), 4);
+  assert.equal(await qty('avocados'), undefined);
+
+  // Clearing the cart hides bought items but keeps the day they were bought.
+  await call(a, 'POST', `${base}/shopping/clear-checked`, {});
+  assert.equal((await call(a, 'GET', `${base}/shopping`)).body.filter((s: { checked: boolean }) => s.checked).length, 0);
+  const history = (await call(a, 'GET', `${base}/shopping/history`)).body;
+  assert.equal(history[0].checkedAt.slice(0, 10), new Date().toISOString().slice(0, 10));
+
+  // Adding the week's meals to the list twice doesn't double anything.
+  const tacos = await call(a, 'POST', `${base}/recipes/import`, { save: true, text: 'Tacos\nServes 4\nIngredients\n1 lb ground beef\n2 tomatoes\nInstructions\nCook.' });
+  const chili = await call(a, 'POST', `${base}/recipes/import`, { save: true, text: 'Chili\nServes 4\nIngredients\n1 lb ground beef\nInstructions\nCook.' });
+  const today = new Date().toISOString().slice(0, 10);
+  await call(a, 'POST', `${base}/mealplan`, { date: today, slot: 'dinner', recipeId: tacos.body.ids[0] });
+  await call(a, 'POST', `${base}/mealplan`, { date: today, slot: 'lunch', recipeId: chili.body.ids[0] });
+  await call(a, 'POST', `${base}/mealplan/to-shopping`, { start: today, days: 7 });
+  const again = await call(a, 'POST', `${base}/mealplan/to-shopping`, { start: today, days: 7 });
+  assert.equal(again.body.added, 0);
+  const open = (await call(a, 'GET', `${base}/shopping`)).body.filter((s: { checked: boolean }) => !s.checked);
+  assert.deepEqual(open.map((s: { name: string; quantity: number }) => [s.name, s.quantity]).sort(), [['ground beef', 2], ['tomatoes', 2]]);
+});

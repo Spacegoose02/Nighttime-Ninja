@@ -3,10 +3,12 @@ import type { DatabaseSync } from 'node:sqlite';
 import { homeCtx } from '../auth.ts';
 import { tx, type Row } from '../db.ts';
 import { config } from '../config.ts';
-import { HttpError, newId, num, str } from '../util.ts';
+import { HttpError, localDate, newId, num, str } from '../util.ts';
 import { checkIngredients, loadRecipe, stockIndex } from './recipes.ts';
 import { addShoppingItem } from './shopping.ts';
 import { body, date, flag, number, text } from '../schemas.ts';
+import { matchKey } from '../../../shared/recipe.ts';
+import { convert } from '../../../shared/units.ts';
 
 const SLOTS = ['breakfast', 'lunch', 'dinner', 'snack'] as const;
 const SLOT_TIMES: Record<string, [number, number]> = { breakfast: [8, 30], lunch: [12, 45], snack: [15, 30], dinner: [18, 60] };
@@ -45,7 +47,7 @@ export function mealPlanRoutes(app: FastifyInstance, db: DatabaseSync): void {
   app.get('/api/homes/:homeId/mealplan', async (req) => {
     const ctx = homeCtx(db, req);
     const q = req.query as Row;
-    const start = isDate(q.start) ? q.start : new Date().toISOString().slice(0, 10);
+    const start = isDate(q.start) ? q.start : localDate();
     const days = Math.min(62, Math.max(1, Number(q.days) || 7));
     const rows = db.prepare(`${SELECT} WHERE m.home_id = ? AND m.date >= ? AND m.date < ? ORDER BY m.date, m.slot`)
       .all(ctx.homeId, start, addDays(start, days)) as Row[];
@@ -122,22 +124,51 @@ export function mealPlanRoutes(app: FastifyInstance, db: DatabaseSync): void {
   app.post('/api/homes/:homeId/mealplan/to-shopping', { schema: body({ start: date, days: number }) }, async (req) => {
     const ctx = homeCtx(db, req);
     const b = (req.body ?? {}) as Row;
-    const start = isDate(b.start) ? b.start : new Date().toISOString().slice(0, 10);
+    const start = isDate(b.start) ? b.start : localDate();
     const days = Math.min(31, Math.max(1, Number(b.days) || 7));
     const meals = db.prepare('SELECT recipe_id FROM meal_plan WHERE home_id = ? AND date >= ? AND date < ? AND recipe_id IS NOT NULL AND cooked_at IS NULL')
       .all(ctx.homeId, start, addDays(start, days)) as Row[];
     const index = stockIndex(db, ctx.homeId);
-    let count = 0;
+    // Add up what the week needs first (two recipes wanting onions is one line), then only top up what the list
+    // doesn't already have, so pressing the button twice doesn't double everything.
+    const needs = new Map<string, { name: string; quantity: number | null; unit: string | null; titles: string[] }>();
     for (const m of meals) {
       const row = db.prepare('SELECT * FROM recipes WHERE id = ?').get(m.recipe_id as string) as Row | undefined;
       if (!row) continue;
       const full = loadRecipe(db, row);
       for (const i of checkIngredients(index, full.ingredients)) {
         if (i.optional || (i.availability !== 'missing' && i.availability !== 'low')) continue;
-        addShoppingItem(db, ctx.homeId, { name: i.name, quantity: i.quantity, unit: i.unit, note: `for ${full.title}` }, ctx.user?.id ?? null);
-        count++;
+        const key = matchKey(i.name);
+        const same = [...needs.entries()].find(([k, n]) => k.split('|')[0] === key && (n.quantity == null || i.quantity == null || convert(1, i.unit, n.unit) != null));
+        if (!same) {
+          needs.set(`${key}|${needs.size}`, { name: i.name, quantity: i.quantity ?? null, unit: i.unit ?? null, titles: [full.title] });
+          continue;
+        }
+        const n = same[1];
+        if (!n.titles.includes(full.title)) n.titles.push(full.title);
+        if (n.quantity == null || i.quantity == null) n.quantity = n.quantity ?? i.quantity ?? null;
+        else n.quantity = Math.round((n.quantity + (convert(i.quantity, i.unit, n.unit) ?? 0)) * 100) / 100;
+        if (n.unit == null && i.unit) n.unit = i.unit;
       }
     }
+    const open = db.prepare('SELECT * FROM shopping_items WHERE home_id = ? AND checked = 0').all(ctx.homeId) as Row[];
+    let count = 0;
+    tx(db, () => {
+      for (const n of needs.values()) {
+        const onList = open.find((o) => (o.name as string).toLowerCase() === n.name.toLowerCase()) ?? open.find((o) => matchKey(o.name as string) === matchKey(n.name));
+        let quantity = n.quantity;
+        if (onList) {
+          // Already on the list with no amount, or we can't compare amounts: it's covered.
+          if (onList.quantity == null || quantity == null) continue;
+          const have = convert(onList.quantity as number, onList.unit as string | null, n.unit);
+          if (have == null) continue;
+          quantity = Math.round((quantity - have) * 100) / 100;
+          if (quantity <= 0) continue;
+        }
+        addShoppingItem(db, ctx.homeId, { name: (onList?.name as string | undefined) ?? n.name, quantity, unit: n.unit, note: `for ${n.titles.join(', ')}` }, ctx.user?.id ?? null);
+        count++;
+      }
+    });
     return { added: count, meals: meals.length };
   });
 
@@ -146,7 +177,7 @@ export function mealPlanRoutes(app: FastifyInstance, db: DatabaseSync): void {
     const token = (req.params as { file: string }).file.replace(/\.ics$/, '');
     const home = db.prepare('SELECT id, name FROM homes WHERE calendar_token = ?').get(token) as Row | undefined;
     if (!home) throw new HttpError(404, 'Calendar not found');
-    const rows = db.prepare(`${SELECT} WHERE m.home_id = ? AND m.date >= date('now', '-30 day') ORDER BY m.date`).all(home.id as string) as Row[];
+    const rows = db.prepare(`${SELECT} WHERE m.home_id = ? AND m.date >= ? ORDER BY m.date`).all(home.id as string, localDate(-30)) as Row[];
     const stamp = new Date().toISOString().replace(/[-:]/g, '').slice(0, 15) + 'Z';
     const lines = [
       'BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Nighttime Ninja//Meal Plan//EN', 'CALSCALE:GREGORIAN', 'METHOD:PUBLISH',

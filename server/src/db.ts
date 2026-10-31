@@ -297,6 +297,12 @@ const MIGRATIONS: string[] = [
     sent_at TEXT NOT NULL DEFAULT (datetime('now'))
   );
   `,
+  // Shopping: which pantry change a check-off made (so unchecking can put it back), and "cleared from the cart"
+  // as its own flag instead of moving the purchase date.
+  `
+  ALTER TABLE shopping_items ADD COLUMN stock_history_id INTEGER;
+  ALTER TABLE shopping_items ADD COLUMN cleared INTEGER NOT NULL DEFAULT 0;
+  `,
 ];
 
 export function openDb(dataDir: string): DatabaseSync {

@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react';
 import { api, ApiError, CLIENT_ID, type Me } from './api.ts';
-import { flushOutbox } from './offline.ts';
+import { flushOutbox, pendingCount, takeDropped } from './offline.ts';
 
 interface AppState {
   me: Me | null;
@@ -59,19 +59,53 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, []);
 
   // Send changes made with no signal as soon as the connection is back (and at start, in case the app was closed).
+  // Browsers don't always notice a dropped connection coming back, so while anything is waiting, keep trying
+  // every 30 seconds and whenever the app comes back to the front.
   useEffect(() => {
     if (!me) return;
     const sync = async () => {
+      if (!pendingCount()) return;
       const sent = await flushOutbox();
-      if (sent) {
-        revalidate('/api/');
-        toast(`Back online: synced ${sent} change${sent === 1 ? '' : 's'}`);
-      }
+      const lost = takeDropped();
+      if (sent) revalidate('/api/');
+      if (lost) toast(`Synced ${sent} change${sent === 1 ? '' : 's'}; ${lost} couldn't be saved (someone may have changed that item meanwhile)`);
+      else if (sent) toast(`Back online: synced ${sent} change${sent === 1 ? '' : 's'}`);
     };
+    const onVisible = () => { if (document.visibilityState === 'visible') void sync(); };
     void sync();
+    const timer = window.setInterval(() => void sync(), 30000);
     window.addEventListener('online', sync);
-    return () => window.removeEventListener('online', sync);
+    document.addEventListener('visibilitychange', onVisible);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener('online', sync);
+      document.removeEventListener('visibilitychange', onVisible);
+    };
   }, [me, toast]);
+
+  // A request was turned away as not signed in: check, and if the sign-in really is gone, show the sign-in screen
+  // instead of screens that quietly stop working.
+  useEffect(() => {
+    let checking = false;
+    const check = () => {
+      if (checking) return;
+      checking = true;
+      void refresh().catch(() => {}).finally(() => { checking = false; });
+    };
+    window.addEventListener('nn-unauthorized', check);
+    return () => window.removeEventListener('nn-unauthorized', check);
+  }, [refresh]);
+
+  // Buttons whose request fails (no signal, or the server says no) shouldn't fail silently.
+  useEffect(() => {
+    const show = (e: PromiseRejectionEvent) => {
+      if (!(e.reason instanceof Error)) return;
+      e.preventDefault();
+      toast(e.reason instanceof ApiError ? e.reason.message : "Couldn't reach the server. Check your connection and try again.");
+    };
+    window.addEventListener('unhandledrejection', show);
+    return () => window.removeEventListener('unhandledrejection', show);
+  }, [toast]);
 
   // Live updates: when someone else in the home changes something, refresh whatever is on screen.
   useEffect(() => {

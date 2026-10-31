@@ -37,7 +37,9 @@ export function parseIngredient(line: string): Ingredient {
     optional = true;
     s = s.replace(/\(optional\)|,\s*optional$|^optional:?\s*/gi, '').trim();
   }
-  const { quantity, rest } = parseQuantity(s);
+  // "a dozen eggs", "an onion", "one pinch of salt": the word is the amount.
+  s = s.replace(/^(?:a|an|one)\s+(?=[a-z])/i, '1 ');
+  let { quantity, rest } = parseQuantity(s);
   let remainder = rest;
   const notes: string[] = [];
   // Leading parenthetical size such as "(14 oz)".
@@ -54,6 +56,11 @@ export function parseIngredient(line: string): Ingredient {
       unit = u;
       remainder = remainder.slice(unitMatch[0].length);
     }
+  }
+  // "2 dozen eggs" is 24 eggs.
+  if (unit === 'dozen' && quantity !== null) {
+    quantity *= 12;
+    unit = null;
   }
   let name = remainder;
   const comma = name.indexOf(',');
@@ -131,10 +138,31 @@ export function ingredientAlternatives(name: string): string[] {
   return parts.map((p, i) => (head && i < parts.length - 1 && !new RegExp(`\\b${head}\\b`, 'i').test(p) ? `${p} ${head}` : p));
 }
 
+/**
+ * Words that turn a food into a different product: "chicken broth" is not chicken, "garlic powder" is not garlic.
+ * Both names have to agree on these. Broth and stock are the same thing.
+ */
+const FORMS: Record<string, string> = {
+  broth: 'broth', stock: 'broth', powder: 'powder', juice: 'juice', paste: 'paste', sauce: 'sauce', oil: 'oil',
+  seasoning: 'seasoning', mix: 'mix', extract: 'extract', flake: 'flake', vinegar: 'vinegar', syrup: 'syrup',
+  jam: 'jam', jelly: 'jelly', soup: 'soup', dressing: 'dressing', salt: 'salt', zest: 'zest', puree: 'puree',
+};
+
+/** Two-word foods that are a different thing from either word on its own. */
+const COMPOUNDS = [
+  'cream cheese', 'sour cream', 'ice cream', 'green onion', 'spring onion', 'sweet potato', 'coconut milk', 'almond milk',
+  'oat milk', 'soy milk', 'peanut butter', 'almond butter', 'apple butter', 'brown sugar', 'powdered sugar', 'baking soda',
+  'baking powder', 'bell pepper',
+];
+
+const formsOf = (words: string[]) => [...new Set(words.filter((w) => w in FORMS).map((w) => FORMS[w]))].sort().join(',');
+const compoundsIn = (words: string[]) => { const s = ` ${words.join(' ')} `; return COMPOUNDS.filter((c) => s.includes(` ${c} `)).join(','); };
+
 function sameFood(want: string, have: string): boolean {
   const a = foodWords(want);
   const b = foodWords(have);
   if (!a.length || !b.length) return false;
+  if (formsOf(a) !== formsOf(b) || compoundsIn(a) !== compoundsIn(b)) return false;
   const coreA = a.filter((w) => !GENERIC.has(w));
   const coreB = b.filter((w) => !GENERIC.has(w));
   if (!coreA.length || !coreB.length) return a.join(' ') === b.join(' ');

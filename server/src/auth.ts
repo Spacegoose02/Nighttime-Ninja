@@ -129,7 +129,7 @@ export function installAuth(app: FastifyInstance, db: DatabaseSync): void {
   app.decorateRequest('user', null);
   app.decorateRequest('tokenHomeId', null);
   app.decorateRequest('sessionHash', null);
-  app.addHook('onRequest', async (req) => {
+  app.addHook('onRequest', async (req, reply) => {
     req.user = null;
     req.tokenHomeId = null;
     req.sessionHash = null;
@@ -139,6 +139,7 @@ export function installAuth(app: FastifyInstance, db: DatabaseSync): void {
       const un = req.unsignCookie(raw);
       if (un.valid) sessionId = un.value;
     }
+    const fromCookie = !!sessionId;
     const authz = req.headers.authorization;
     if (!sessionId && authz?.startsWith('Bearer ')) {
       const token = authz.slice(7).trim();
@@ -161,7 +162,11 @@ export function installAuth(app: FastifyInstance, db: DatabaseSync): void {
     req.user = row;
     req.sessionHash = hash;
     if (!row.session_seen || Date.parse(`${row.session_seen.replace(' ', 'T')}Z`) < Date.now() - 5 * 60e3) {
-      db.prepare("UPDATE sessions SET last_seen_at = datetime('now'), ip = ? WHERE id = ?").run(req.ip, hash);
+      // A device in use stays signed in: each visit pushes the 60 days out again (a kitchen tablet shouldn't
+      // get signed out just because it's been two months since someone typed a password).
+      const expires = new Date(Date.now() + SESSION_DAYS * 864e5).toISOString();
+      db.prepare("UPDATE sessions SET last_seen_at = datetime('now'), ip = ?, expires_at = ? WHERE id = ?").run(req.ip, expires, hash);
+      if (fromCookie) reply.setCookie(SESSION_COOKIE, sessionId, { ...cookieOpts(reply), maxAge: SESSION_DAYS * 86400 });
     }
   });
 }

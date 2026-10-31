@@ -99,6 +99,11 @@ test('matches recipe ingredients to pantry items loosely', async () => {
     ['kosher salt', 'Salt'],
     ['large eggs', 'Eggs'],
     ['fresh basil leaves', 'Basil'],
+    ['chicken stock', 'Chicken Broth'],
+    ['low sodium chicken broth', 'Chicken Broth'],
+    ['green onions', 'Green Onion'],
+    ['garlic powder', 'Garlic Powder'],
+    ['extra virgin olive oil', 'Olive Oil'],
   ];
   const no: [string, string][] = [
     ['butter', 'Peanut Butter'],
@@ -106,6 +111,15 @@ test('matches recipe ingredients to pantry items loosely', async () => {
     ['chicken thighs', 'Chicken Breast'],
     ['black pepper', 'Red Pepper Flakes'],
     ['cheese', 'Cheddar Cheese'],
+    ['chicken broth', 'Chicken'],
+    ['chicken', 'Chicken Broth'],
+    ['heavy cream', 'Cream Cheese'],
+    ['garlic powder', 'Garlic'],
+    ['garlic', 'Garlic Powder'],
+    ['green onions', 'Onion'],
+    ['apple juice', 'Apples'],
+    ['tomato paste', 'Tomatoes'],
+    ['brown sugar', 'Sugar'],
   ];
   for (const [want, have] of yes) assert.ok(ingredientMatches(want, have), `${want} should match ${have}`);
   for (const [want, have] of no) assert.ok(!ingredientMatches(want, have), `${want} should not match ${have}`);
@@ -146,4 +160,14 @@ test('converts cups to pounds for pantry staples', async () => {
   assert.equal(convertFor(1, 'cup', 'g', 'rice vinegar')?.toFixed(0), '240', 'vinegar, not rice');
   assert.equal(convertFor(3, 'tsp', 'tbsp', 'anything')?.toFixed(2), '1.00');
   assert.equal(convertFor(1, 'cup', 'lb', 'mystery powder'), null);
+});
+
+test('quick add understands words for amounts', async () => {
+  const { parseIngredient } = await import('./recipe.ts');
+  assert.deepEqual([parseIngredient('a dozen eggs').name, parseIngredient('a dozen eggs').quantity, parseIngredient('a dozen eggs').unit], ['eggs', 12, null]);
+  assert.equal(parseIngredient('2 dozen eggs').quantity, 24);
+  assert.deepEqual([parseIngredient('a pinch of salt').quantity, parseIngredient('a pinch of salt').unit, parseIngredient('a pinch of salt').name], [1, 'pinch', 'salt']);
+  assert.equal(parseIngredient('an onion').quantity, 1);
+  assert.equal(parseIngredient('A1 steak sauce').name, 'A1 steak sauce');
+  assert.equal(parseIngredient('apples').name, 'apples');
 });
