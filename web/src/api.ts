@@ -87,6 +87,8 @@ export interface Item {
 export interface ShoppingItem {
   id: string; name: string; quantity: number | null; unit: string | null; category: string; note: string | null;
   checked: boolean; createdAt: string; checkedAt: string | null; addedBy: string | null;
+  /** What it cost when bought, and what it cost the time before. */
+  price?: number | null; store?: string | null; lastPrice?: number | null;
 }
 
 export type Availability = 'have' | 'low' | 'missing' | 'unknown';

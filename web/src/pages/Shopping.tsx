@@ -5,6 +5,7 @@ import { useApp, useLoad } from '../state.tsx';
 import { pending, sendOrQueue } from '../offline.ts';
 import { amount } from '../format.ts';
 import { CATEGORIES, guessItem } from '../../../shared/catalog.ts';
+import { dollars, ReceiptScan, Spending } from '../components/Spending.tsx';
 
 interface Suggestion { name: string; category: string; timesBought: number }
 interface Layout { name: string; categories: string[] }
@@ -84,10 +85,11 @@ export function Shopping() {
     await reloadLayouts();
   }
   const [suggestions, reloadSugg] = useLoad<Suggestion[]>(`${base}/shopping/suggestions`);
-  const [tab, setTab] = useState<'list' | 'history'>('list');
+  const [tab, setTab] = useState<'list' | 'history' | 'spending'>('list');
   const [history] = useLoad<ShoppingItem[]>(tab === 'history' ? `${base}/shopping/history` : null, [tab]);
   const [text, setText] = useState('');
   const [stock, setStock] = useState(true);
+  const [ai] = useLoad<{ available: boolean }>('/api/mixologist/status');
 
   const refresh = () => Promise.all([reload(), reloadSugg()]);
   const offline = () => toast("No signal. Saved on this device; it'll sync when you're back online.");
@@ -115,12 +117,17 @@ export function Shopping() {
   async function toggle(i: ShoppingItem) {
     setItems((cur) => (cur ?? []).map((x) => (x.id === i.id ? { ...x, checked: !i.checked } : x)));
     try {
-      if (await sendOrQueue(`${base}/shopping/${i.id}`, 'PATCH', { checked: !i.checked, addToInventory: stock })) await refresh();
+      if (await sendOrQueue(`${base}/shopping/${i.id}`, 'PATCH', { checked: !i.checked, addToInventory: stock, ...(!i.checked && layout ? { store: layout.name } : {}) })) await refresh();
       else offline();
     } catch (e) {
       toast((e as Error).message);
       await reload();
     }
+  }
+
+  async function setPrice(i: ShoppingItem, price: number | null) {
+    setItems((cur) => (cur ?? []).map((x) => (x.id === i.id ? { ...x, price } : x)));
+    try { await api(`${base}/shopping/${i.id}`, { method: 'PATCH', body: { price } }); } catch (err) { toast((err as Error).message); }
   }
 
   async function remove(i: ShoppingItem) {
@@ -151,6 +158,7 @@ export function Shopping() {
         <div className="chips">
           <button className={`chip${tab === 'list' ? ' on' : ''}`} onClick={() => setTab('list')}>List</button>
           <button className={`chip${tab === 'history' ? ' on' : ''}`} onClick={() => setTab('history')}>History</button>
+          <button className={`chip${tab === 'spending' ? ' on' : ''}`} onClick={() => setTab('spending')}>Spending</button>
         </div>
       </div>
 
@@ -202,7 +210,7 @@ export function Shopping() {
                     <span style={{ fontSize: '1.5rem' }} aria-hidden>{guessItem(i.name).icon}</span>
                     <div style={{ flex: 1 }}>
                       <div style={{ fontWeight: 600 }}>{i.quantity != null && <span>{amount(i.quantity, i.unit, me?.user.units)} </span>}{i.name}</div>
-                      {(i.note || i.addedBy) && <div className="small muted">{[i.note, i.addedBy && `added by ${i.addedBy}`].filter(Boolean).join(' · ')}</div>}
+                      {(i.note || i.addedBy || i.lastPrice != null) && <div className="small muted">{[i.note, i.addedBy && `added by ${i.addedBy}`, i.lastPrice != null && `last paid ${dollars(i.lastPrice)}`].filter(Boolean).join(' · ')}</div>}
                     </div>
                     <button className="ghost icon" aria-label={`Remove ${i.name}`} disabled={i.id.startsWith('pending-')} onClick={() => remove(i)}>✕</button>
                   </div>
@@ -220,14 +228,18 @@ export function Shopping() {
                 {checked.map((i) => (
                   <div key={i.id} className="list-item">
                     <button className="check on" onClick={() => toggle(i)} aria-label={`Uncheck ${i.name}`}>✓</button>
-                    <span className="done">{i.quantity != null && `${amount(i.quantity, i.unit, me?.user.units)} `}{i.name}</span>
+                    <span className="done" style={{ flex: 1 }}>{i.quantity != null && `${amount(i.quantity, i.unit, me?.user.units)} `}{i.name}</span>
+                    <input className="price-input" type="number" step="0.01" min="0" inputMode="decimal" placeholder={i.lastPrice != null ? dollars(i.lastPrice) : '$'}
+                      defaultValue={i.price ?? ''} aria-label={`What ${i.name} cost`}
+                      onBlur={(e) => { const v = e.target.value === '' ? null : Number(e.target.value); if (v !== (i.price ?? null)) void setPrice(i, v); }} />
                   </div>
                 ))}
               </div>
             </div>
           )}
+          {ai?.available && <ReceiptScan onDone={() => void reload()} />}
         </>
-      ) : (
+      ) : tab === 'spending' ? <Spending /> : (
         <div className="card">
           <table>
             <thead><tr><th>Bought</th><th>Item</th><th>Amount</th></tr></thead>
