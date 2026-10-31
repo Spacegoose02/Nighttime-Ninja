@@ -103,7 +103,7 @@ export function ReceiptScan({ onDone }: { onDone: () => void }) {
     } catch (err) { setError((err as Error).message); } finally { setBusy(false); }
   }
 
-  const set = (n: number, patch: Partial<Line & { keep: boolean; toPantry: boolean }>) => setLines((cur) => cur?.map((l, i) => (i === n ? { ...l, ...patch } : l)));
+  const set = (n: number, patch: Partial<Line & { keep: boolean; toPantry: boolean }>) => setLines((cur) => cur?.map((l, i) => (i === n ? { ...l, ...patch } : l)) ?? null);
   const sum = (lines ?? []).filter((l) => l.keep).reduce((s, l) => s + (l.price ?? 0), 0);
 
   return (
