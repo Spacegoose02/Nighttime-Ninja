@@ -14,3 +14,5 @@ services:
         required: false
     environment:
       PUBLIC_URL: ${PUBLIC_URL:-http://localhost:8080}
+      # Your time zone, so reminders go out at 9 am and 5 pm your time.
+      TZ: ${TZ:-UTC}
