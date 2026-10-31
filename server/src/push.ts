@@ -32,7 +32,8 @@ export function vapidKeys(db: DatabaseSync): { publicKey: string; privateKey: st
 
 export function reminderPrefs(db: DatabaseSync, userId: string): ReminderPrefs {
   const row = db.prepare('SELECT reminders FROM users WHERE id = ?').get(userId) as Row | undefined;
-  return { expiring: true, plan: true, list: true, ...parseJson<Partial<ReminderPrefs>>(row?.reminders, {}) };
+  const saved = parseJson<Partial<ReminderPrefs>>(row?.reminders, {});
+  return { expiring: saved.expiring !== false, plan: saved.plan !== false, list: saved.list !== false };
 }
 
 /** Sends to every device the person turned reminders on for. Devices that have gone away are forgotten. */
@@ -174,8 +175,10 @@ export function pushRoutes(app: FastifyInstance, db: DatabaseSync): void {
   app.put('/api/push/prefs', { schema: body({ expiring: flag, plan: flag, list: flag }) }, async (req) => {
     const user = requireUser(req);
     const b = req.body as Row;
-    const prefs = { ...reminderPrefs(db, user.id) };
-    for (const k of KINDS) if (typeof b[k] === 'boolean') prefs[k] = b[k] as boolean;
+    const old = reminderPrefs(db, user.id);
+    // Only ever the three switches, as plain booleans.
+    const prefs: ReminderPrefs = { expiring: old.expiring, plan: old.plan, list: old.list };
+    for (const k of KINDS) if (typeof b[k] === 'boolean') prefs[k] = b[k] === true;
     db.prepare('UPDATE users SET reminders = ? WHERE id = ?').run(JSON.stringify(prefs), user.id);
     return prefs;
   });
