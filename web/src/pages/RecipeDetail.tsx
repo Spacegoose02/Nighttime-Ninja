@@ -101,9 +101,14 @@ export function RecipeDetail() {
     toast(r.added.length ? `Added ${r.added.length} items to the shopping list` : 'You already have everything');
   }
 
-  async function meta(change: { favorite?: boolean; rating?: number | null; notes?: string }) {
+  async function meta(change: { favorite?: boolean; rating?: number | null; notes?: string; collections?: string[] }) {
     await api(`${base}/recipes/${id}/meta`, { method: 'PATCH', body: change });
     void reload();
+  }
+
+  async function addToCollection() {
+    const name = (await dialogs.prompt('Add to which collection? (e.g. Weeknight, Holidays)', '', { okLabel: 'Add' }))?.trim();
+    if (name && !recipe!.collections.includes(name)) await meta({ collections: [...recipe!.collections, name] });
   }
 
   async function share() {
@@ -149,6 +154,12 @@ export function RecipeDetail() {
                 onClick={() => meta({ rating: recipe.rating === n ? null : n })}>{recipe.rating && n <= recipe.rating ? '★' : '☆'}</button>
             ))}
           </fieldset>
+          <span className="chips">
+            {recipe.collections.map((c) => (
+              <button key={c} className="chip" onClick={() => meta({ collections: recipe.collections.filter((x) => x !== c) })} aria-label={`Take out of ${c}`}>📁 {c} ✕</button>
+            ))}
+            <button className="chip" onClick={addToCollection}>📁 ＋ Collection</button>
+          </span>
           <span className="small muted">
             {recipe.cookCount ? `Cooked ${recipe.cookCount} time${recipe.cookCount === 1 ? '' : 's'}, last on ${new Date(`${recipe.lastCooked!.replace(' ', 'T')}Z`).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}` : 'Not cooked yet'}
           </span>
@@ -175,6 +186,7 @@ export function RecipeDetail() {
         <button onClick={() => toList(true)}>🛒 Add all</button>
         <button onClick={() => setPlanDate(todayIso())}>📅 Plan it</button>
         <button onClick={share}>{recipe.isPublic ? '🌍 Stop sharing' : '🔗 Share publicly'}</button>
+        <button onClick={() => window.print()}>🖨 Print</button>
       </div>
       {planDate !== null && (
         <div className="card row">

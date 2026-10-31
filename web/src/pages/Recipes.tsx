@@ -14,7 +14,16 @@ export function Recipes() {
   const readyOnly = params.get('ready') === '1';
   const useUp = params.get('useup') === '1';
   const favs = params.get('fav') === '1';
+  const collection = params.get('col');
+  const maxMinutes = Number(params.get('time')) || null;
   const [tag, setTag] = useState<string | null>(null);
+
+  const collections = useMemo(() => [...new Set((recipes ?? []).flatMap((r) => r.collections))].sort(), [recipes]);
+  const setParam = (key: string, value: string | null) => {
+    const next = new URLSearchParams(params);
+    if (value) next.set(key, value); else next.delete(key);
+    setParams(next);
+  };
 
   const tags = useMemo(() => {
     const counts = new Map<string, number>();
@@ -24,7 +33,8 @@ export function Recipes() {
 
   const shown = (recipes ?? []).filter((r) =>
     (!q || r.title.toLowerCase().includes(q.toLowerCase()) || r.tags.some((t) => t.includes(q.toLowerCase()))) &&
-    (!readyOnly || r.ready === 'ready') && (!useUp || r.usesExpiring.length > 0) && (!favs || r.favorite) && (!tag || r.tags.includes(tag)));
+    (!readyOnly || r.ready === 'ready') && (!useUp || r.usesExpiring.length > 0) && (!favs || r.favorite) && (!collection || r.collections.includes(collection)) &&
+    (!maxMinutes || (r.totalMinutes != null && r.totalMinutes <= maxMinutes)) && (!tag || r.tags.includes(tag)));
   // Using up the most food that's about to go off comes first.
   if (useUp) shown.sort((a, b) => b.usesExpiring.length - a.usesExpiring.length);
   const toggle = (key: 'ready' | 'useup' | 'fav', on: boolean) => {
@@ -46,7 +56,17 @@ export function Recipes() {
         <button className={`chip${readyOnly ? ' on' : ''}`} onClick={() => toggle('ready', readyOnly)}>✅ Ready to cook</button>
         <button className={`chip${useUp ? ' on' : ''}`} onClick={() => toggle('useup', useUp)}>⏳ Use it up</button>
         <button className={`chip${favs ? ' on' : ''}`} onClick={() => toggle('fav', favs)}>★ Favorites</button>
+        {[30, 60].map((m) => (
+          <button key={m} className={`chip${maxMinutes === m ? ' on' : ''}`} onClick={() => setParam('time', maxMinutes === m ? null : String(m))}>⏱ {m} min or less</button>
+        ))}
       </div>
+      {!!collections.length && (
+        <div className="chips">
+          {collections.map((c) => (
+            <button key={c} className={`chip${collection === c ? ' on' : ''}`} onClick={() => setParam('col', collection === c ? null : c)}>📁 {c}</button>
+          ))}
+        </div>
+      )}
       {!!tags.length && (
         <div className="chips">
           {tags.map((t) => <button key={t} className={`chip${tag === t ? ' on' : ''}`} onClick={() => setTag(tag === t ? null : t)}>{t}</button>)}

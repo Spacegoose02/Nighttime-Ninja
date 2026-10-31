@@ -98,6 +98,39 @@ export function convert(qty: number, from: string | null | undefined, to: string
   return (qty * da.factor) / db.factor;
 }
 
+// Grams per cup of common pantry staples, so "2 cups flour" can come out of a "5 lb bag". Most specific first.
+const GRAMS_PER_CUP: [RegExp, number][] = [
+  [/peanut butter/, 258], [/butter|margarine|shortening|lard/, 227],
+  [/milk|cream|yogurt|water|broth|stock|juice|vinegar|wine|soy sauce/, 240], [/oil/, 218], [/honey|molasses|syrup/, 340],
+  [/brown sugar/, 220], [/(powdered|confectioners'?|icing) sugar/, 120], [/sugar/, 200],
+  [/cake flour/, 115], [/bread flour/, 127], [/almond flour/, 96], [/flour/, 120],
+  [/cornstarch|corn starch/, 128], [/cornmeal/, 138], [/cocoa/, 85], [/baking soda|baking powder/, 220],
+  [/kosher salt/, 240], [/salt/, 288],
+  [/rolled oats|oats/, 90], [/rice/, 185], [/quinoa/, 170], [/lentil|dried beans|split peas/, 190],
+  [/macaroni|pasta|noodle/, 105], [/chocolate chip/, 170], [/shredded cheese|cheddar|mozzarella|parmesan/, 113],
+  [/raisin/, 150], [/walnut|pecan|almond|peanut/, 120], [/breadcrumb|panko/, 108],
+];
+
+/** Grams in one milliliter of an ingredient, when it's a staple with a known weight per cup. */
+export function density(ingredient: string): number | null {
+  const n = ingredient.toLowerCase();
+  for (const [re, grams] of GRAMS_PER_CUP) if (re.test(n)) return grams / 236.588;
+  return null;
+}
+
+/** Like convert, but also goes between cups and pounds (volume and weight) for staples like flour, sugar and rice. */
+export function convertFor(qty: number, from: string | null | undefined, to: string | null | undefined, ingredient: string): number | null {
+  const direct = convert(qty, from, to);
+  if (direct != null) return direct;
+  const a = unitDimension(from);
+  const b = unitDimension(to);
+  const d = density(ingredient);
+  if (d == null) return null;
+  if (a === 'volume' && b === 'mass') return convert(convert(qty, from, 'ml')! * d, 'g', to);
+  if (a === 'mass' && b === 'volume') return convert(convert(qty, from, 'g')! / d, 'ml', to);
+  return null;
+}
+
 const NICE_FRACTIONS: [number, string][] = [
   [0, ''], [1 / 8, '1/8'], [1 / 4, '1/4'], [1 / 3, '1/3'], [3 / 8, '3/8'], [1 / 2, '1/2'],
   [5 / 8, '5/8'], [2 / 3, '2/3'], [3 / 4, '3/4'], [7 / 8, '7/8'], [1, ''],

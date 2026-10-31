@@ -4,11 +4,11 @@ import { homeCtx } from '../auth.ts';
 import { tx, type Row } from '../db.ts';
 import { HttpError, newId, num, parseJson, randomToken, str } from '../util.ts';
 import { importAny, ingredientMatches, matchKey, type Ingredient, type Recipe } from '../../../shared/recipe.ts';
-import { convert } from '../../../shared/units.ts';
+import { convertFor } from '../../../shared/units.ts';
 import { publicFetch } from '../security.ts';
 import { adjustItem, recordHistory } from './inventory.ts';
 import { homeLabels } from './homes.ts';
-import { body, flag, number, text } from '../schemas.ts';
+import { body, flag, list, number, text } from '../schemas.ts';
 import { addShoppingItem } from './shopping.ts';
 
 /** Things nobody tracks in inventory. */
@@ -123,7 +123,7 @@ export function checkIngredients(index: StockIndex, ingredients: Ingredient[], f
     let have = 0;
     let comparable = false;
     for (const s of stock) {
-      const c = convert(s.quantity, s.unit, ing.unit);
+      const c = convertFor(s.quantity, s.unit, ing.unit, ing.name);
       if (c != null) { have += c; comparable = true; }
     }
     // Units we can't compare (e.g. "2 cloves" vs "1 head") count as present.
@@ -170,7 +170,7 @@ export function recipeRoutes(app: FastifyInstance, db: DatabaseSync): void {
         id: full.id, title: full.title, image: full.image, servings: full.servings, tags: full.tags,
         totalMinutes: (full.prepMinutes ?? 0) + (full.cookMinutes ?? 0) || null,
         ingredientCount: full.ingredients.length, isPublic: full.isPublic, ready: status, missing,
-        favorite: !!r.favorite, rating: r.rating as number | null,
+        favorite: !!r.favorite, rating: r.rating as number | null, collections: parseJson<string[]>(r.collections, []),
       };
     });
     return q.ready === 'true' ? list.filter((r) => r.ready === 'ready') : list;
@@ -187,7 +187,7 @@ export function recipeRoutes(app: FastifyInstance, db: DatabaseSync): void {
     const cooks = db.prepare('SELECT COUNT(*) AS n, MAX(cooked_at) AS last FROM recipe_cooks WHERE recipe_id = ?').get(full.id) as Row;
     return {
       ...full, ingredients: checked, ...readiness(checked),
-      favorite: !!row.favorite, rating: row.rating as number | null, notes: row.notes as string,
+      favorite: !!row.favorite, rating: row.rating as number | null, notes: row.notes as string, collections: parseJson<string[]>(row.collections, []),
       cookCount: Number(cooks.n), lastCooked: cooks.last as string | null,
     };
   });
@@ -251,13 +251,13 @@ export function recipeRoutes(app: FastifyInstance, db: DatabaseSync): void {
             if (!s.unit || s.unit === 'each') { adjustItem(db, ctx.homeId, s.id, -1, `cooked ${full.title}`, ctx.user?.id ?? null); used.push({ name: s.name, amount: 1, unit: s.unit }); }
             break;
           }
-          const inStockUnits = convert(remaining, ing.unit, s.unit);
+          const inStockUnits = convertFor(remaining, ing.unit, s.unit, ing.name);
           if (inStockUnits == null) continue;
           const take = Math.min(s.quantity, inStockUnits);
           adjustItem(db, ctx.homeId, s.id, -take, `cooked ${full.title}`, ctx.user?.id ?? null);
           s.quantity -= take;
           used.push({ name: s.name, amount: Math.round(take * 100) / 100, unit: s.unit });
-          remaining -= convert(take, s.unit, ing.unit) ?? remaining;
+          remaining -= convertFor(take, s.unit, ing.unit, ing.name) ?? remaining;
           if (remaining <= 1e-9) break;
         }
       }
@@ -270,7 +270,7 @@ export function recipeRoutes(app: FastifyInstance, db: DatabaseSync): void {
   });
 
   // The household's own take on a recipe: favorite, 1 to 5 stars, notes ("double the garlic").
-  app.patch('/api/homes/:homeId/recipes/:id/meta', { schema: body({ favorite: flag, rating: number, notes: text }) }, async (req) => {
+  app.patch('/api/homes/:homeId/recipes/:id/meta', { schema: body({ favorite: flag, rating: number, notes: text, collections: list(text, 20) }) }, async (req) => {
     const ctx = homeCtx(db, req);
     const id = (req.params as { id: string }).id;
     if (!db.prepare('SELECT 1 FROM recipes WHERE id = ? AND home_id = ?').get(id, ctx.homeId)) throw new HttpError(404, 'Recipe not found');
@@ -281,8 +281,12 @@ export function recipeRoutes(app: FastifyInstance, db: DatabaseSync): void {
       db.prepare('UPDATE recipes SET rating = ? WHERE id = ?').run(r && r >= 1 && r <= 5 ? Math.round(r) : null, id);
     }
     if ('notes' in b) db.prepare('UPDATE recipes SET notes = ? WHERE id = ?').run(str(b.notes, 4000) ?? '', id);
-    const row = db.prepare('SELECT favorite, rating, notes FROM recipes WHERE id = ?').get(id) as Row;
-    return { favorite: !!row.favorite, rating: row.rating, notes: row.notes };
+    if (Array.isArray(b.collections)) {
+      const names = [...new Set((b.collections as unknown[]).map((c) => str(c, 40)).filter((c): c is string => !!c))];
+      db.prepare('UPDATE recipes SET collections = ? WHERE id = ?').run(JSON.stringify(names), id);
+    }
+    const row = db.prepare('SELECT favorite, rating, notes, collections FROM recipes WHERE id = ?').get(id) as Row;
+    return { favorite: !!row.favorite, rating: row.rating, notes: row.notes, collections: parseJson<string[]>(row.collections, []) };
   });
 
   // Puts what's left after a meal in the fridge as its own item, good for 4 days, so it shows up in "use it up".

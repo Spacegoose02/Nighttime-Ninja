@@ -80,6 +80,8 @@ export interface Item {
   id: string; name: string; category: string; location: string; icon: string | null; photo: string | null;
   quantity: number; unit: string | null; lowThreshold: number | null; barcode: string | null; expiresOn: string | null;
   isLow: boolean; markedLow: boolean; onShoppingList: boolean; updatedAt: string;
+  /** When it went into the freezer. */
+  frozenOn: string | null;
 }
 
 export interface ShoppingItem {
@@ -94,13 +96,13 @@ export interface RecipeSummary {
   ingredientCount: number; isPublic: boolean; ready: 'ready' | 'almost' | 'missing'; missing: string[];
   /** Pantry items expiring in the next 3 days that this recipe would use. */
   usesExpiring: string[];
-  favorite: boolean; rating: number | null;
+  favorite: boolean; rating: number | null; collections: string[];
 }
 
 export interface RecipeFull extends Recipe {
   id: string; isPublic: boolean; shareSlug: string | null; status: 'ready' | 'almost' | 'missing'; missing: string[];
   ingredients: (Ingredient & { availability: Availability; matched?: string[]; linked?: boolean })[];
-  favorite: boolean; rating: number | null; notes: string; cookCount: number; lastCooked: string | null;
+  favorite: boolean; rating: number | null; notes: string; cookCount: number; lastCooked: string | null; collections: string[];
 }
 
 export interface Meal {
@@ -141,4 +143,11 @@ export function tileState(i: Pick<Item, 'quantity' | 'isLow' | 'onShoppingList'>
   if (i.onShoppingList) return { cls: ' out', badge: 'ON LIST' };
   if (i.isLow) return { cls: ' low', badge: 'LOW' };
   return { cls: '', badge: null };
+}
+
+/** Months something has been in the freezer, once it's been there 3 months or more (best quality ends around then). */
+export function freezerMonths(i: Pick<Item, 'frozenOn'>): number | null {
+  if (!i.frozenOn) return null;
+  const months = Math.floor((Date.now() - Date.parse(`${i.frozenOn}T12:00:00`)) / (30.44 * 86400000));
+  return months >= 3 ? months : null;
 }

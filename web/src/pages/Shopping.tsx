@@ -147,6 +147,7 @@ export function Shopping() {
     <div className="stack" style={{ maxWidth: 1000 }}>
       <div className="topbar">
         <h1>Shopping</h1>
+        <button className="ghost" onClick={() => window.print()}>🖨 Print</button>
         <div className="chips">
           <button className={`chip${tab === 'list' ? ' on' : ''}`} onClick={() => setTab('list')}>List</button>
           <button className={`chip${tab === 'history' ? ' on' : ''}`} onClick={() => setTab('history')}>History</button>

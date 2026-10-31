@@ -137,3 +137,13 @@ test('liquor lands in the bar, not produce', async () => {
   assert.equal(guessItem('ginger').category, 'Produce');
   assert.equal(guessItem('limes').category, 'Produce');
 });
+
+test('converts cups to pounds for pantry staples', async () => {
+  const { convertFor } = await import('./units.ts');
+  assert.equal(convertFor(2, 'cup', 'lb', 'all-purpose flour')?.toFixed(2), '0.53');
+  assert.equal(convertFor(1, 'lb', 'cup', 'sugar')?.toFixed(2), '2.27');
+  assert.equal(convertFor(1, 'cup', 'lb', 'unsalted butter')?.toFixed(2), '0.50', 'butter, not salt');
+  assert.equal(convertFor(1, 'cup', 'g', 'rice vinegar')?.toFixed(0), '240', 'vinegar, not rice');
+  assert.equal(convertFor(3, 'tsp', 'tbsp', 'anything')?.toFixed(2), '1.00');
+  assert.equal(convertFor(1, 'cup', 'lb', 'mystery powder'), null);
+});
