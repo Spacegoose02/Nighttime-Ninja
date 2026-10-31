@@ -1,0 +1,20 @@
+# Weekly update PRs for npm packages, GitHub Actions (kept pinned to commit SHAs) and the Docker base image.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule: { interval: weekly }
+    groups:
+      # One PR for all minor and patch bumps; majors get their own so they can be checked one at a time.
+      minor-and-patch:
+        update-types: [minor, patch]
+    open-pull-requests-limit: 5
+  - package-ecosystem: github-actions
+    directory: /
+    schedule: { interval: weekly }
+    groups:
+      actions:
+        patterns: ['*']
+  - package-ecosystem: docker
+    directory: /
+    schedule: { interval: weekly }

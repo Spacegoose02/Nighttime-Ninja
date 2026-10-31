@@ -6,7 +6,7 @@ import type { DatabaseSync } from 'node:sqlite';
 import { homeCtx, type HomeCtx } from '../auth.ts';
 import type { Row } from '../db.ts';
 import { HttpError, newId, str } from '../util.ts';
-import { ask, claude, keepAlive, limitAi, textOf } from './mixologist.ts';
+import { ask, claude, keepAlive, limitAi, textOf } from '../claude.ts';
 
 export type ChatKind = 'mixologist' | 'chef';
 export interface ChatAction { type: 'shopping' | 'saved'; label: string; recipeId?: string }

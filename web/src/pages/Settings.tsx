@@ -7,8 +7,9 @@ import { useApp, useLoad } from '../state.tsx';
 import { AVATARS, AVATAR_LABELS, RaccoonAvatar } from '../components/Raccoon.tsx';
 import { PICTURE_AVATARS } from '../avatars.ts';
 import { VersionCard } from '../components/UpdateBanner.tsx';
-import { AdminSignIn, AdminUserActions, SecurityCard } from './Security.tsx';
-import { AdminMixologist } from './Mixologist.tsx';
+import { SecurityCard } from './Security.tsx';
+import { Admin } from './settings/Admin.tsx';
+import { PlacesAndCategories } from './settings/Labels.tsx';
 
 const THEMES = [
   { id: 'forest', name: 'Forest', swatch: '#2f7d4f' },
@@ -78,70 +79,6 @@ function Profile() {
       <div className="row">
         <span className="spacer" />
         <button className="danger" onClick={async () => { await api('/api/auth/logout', { body: {} }); await forgetDevice(); location.href = '/'; }}>Sign out</button>
-      </div>
-    </div>
-  );
-}
-
-/** Add, rename, reorder or remove a home's pantry locations or categories. */
-function LabelEditor({ kind, title, hint, list, onSaved }: { kind: 'locations' | 'categories'; title: string; hint: string; list: string[]; onSaved: () => void }) {
-  const { base, toast } = useApp();
-  const [adding, setAdding] = useState('');
-  const [editing, setEditing] = useState<{ from: string; to: string } | null>(null);
-  const save = async (body: object, msg: string) => {
-    try { await api(`${base}/labels`, { method: 'PUT', body }); toast(msg); onSaved(); } catch (e) { toast((e as Error).message); }
-  };
-  const move = (i: number, d: number) => {
-    const next = [...list];
-    [next[i], next[i + d]] = [next[i + d], next[i]];
-    void save({ [kind]: next }, 'Order saved');
-  };
-  return (
-    <div className="stack" style={{ gap: 8 }}>
-      <h3 style={{ margin: 0 }}>{title}</h3>
-      <p className="small muted" style={{ margin: 0 }}>{hint}</p>
-      <div className="list">
-        {list.map((l, i) => (
-          <div key={l} className="list-item" style={{ minHeight: 48, padding: '4px 0' }}>
-            {editing?.from === l ? (
-              <form className="row" style={{ flex: 1 }} onSubmit={(e) => { e.preventDefault(); void save({ rename: { kind, from: l, to: editing.to } }, `Renamed to ${editing.to}`); setEditing(null); }}>
-                <input aria-label={`New name for ${l}`} value={editing.to} onChange={(e) => setEditing({ from: l, to: e.target.value })} autoFocus style={{ flex: 1 }} />
-                <button className="primary" disabled={!editing.to.trim()}>Save</button>
-                <button type="button" className="ghost" onClick={() => setEditing(null)}>Cancel</button>
-              </form>
-            ) : (
-              <>
-                <span style={{ flex: 1 }}>{l}</span>
-                <button className="ghost icon" aria-label={`Move ${l} up`} disabled={i === 0} onClick={() => move(i, -1)}>↑</button>
-                <button className="ghost icon" aria-label={`Move ${l} down`} disabled={i === list.length - 1} onClick={() => move(i, 1)}>↓</button>
-                <button className="ghost" onClick={() => setEditing({ from: l, to: l })}>Rename</button>
-                <button className="ghost danger" disabled={list.length < 2} onClick={() => save({ [kind]: list.filter((x) => x !== l) }, `Removed ${l}`)}>Remove</button>
-              </>
-            )}
-          </div>
-        ))}
-      </div>
-      <form className="row" onSubmit={(e) => { e.preventDefault(); void save({ [kind]: [...list, adding.trim()] }, `Added ${adding.trim()}`); setAdding(''); }}>
-        <input value={adding} onChange={(e) => setAdding(e.target.value)} placeholder={kind === 'locations' ? 'New place, e.g. Garage Freezer' : 'New category, e.g. Baby Food'} style={{ flex: 1 }} />
-        <button disabled={!adding.trim()}>Add</button>
-      </form>
-    </div>
-  );
-}
-
-/** Its own card so it's easy to find: the places ("Where") and categories used across the pantry and shopping list. */
-function PlacesAndCategories() {
-  const { base } = useApp();
-  const [home, reload] = useLoad<HomeDetail>(base);
-  // Only home managers (and server admins, who count as managers) can change these lists.
-  if (!home || home.role !== 'manager') return null;
-  return (
-    <div className="card stack">
-      <h2>Pantry places & categories</h2>
-      <p className="small muted" style={{ margin: 0 }}>These fill the Where and Category dropdowns when you add or edit an item. As a home manager you can also pick “➕ Add new…” right in the dropdown. Other people in the home choose from these lists.</p>
-      <div className="grid-2" style={{ alignItems: 'start' }}>
-        <LabelEditor kind="locations" title="Places (Where)" hint="Renaming moves every item in that place." list={home.settings.locations} onSaved={() => void reload()} />
-        <LabelEditor kind="categories" title="Categories" hint="Shown in this order. Renaming updates every item." list={home.settings.categories} onSaved={() => void reload()} />
       </div>
     </div>
   );
@@ -280,50 +217,6 @@ function HomeSettings() {
           </div>
         </>
       )}
-    </div>
-  );
-}
-
-interface Overview {
-  users: { id: string; name: string; username: string | null; email: string | null; is_admin: number; disabled: number; totp_enabled: number; has_password: number; has_google: number; passkeys: number; homes: number }[];
-  homes: { id: string; name: string; members: number; recipes: number }[];
-}
-
-function Admin() {
-  const { me, toast } = useApp();
-  const dialogs = useDialogs();
-  const [data, reload] = useLoad<Overview>('/api/admin/overview');
-  if (!data) return null;
-  return (
-    <div className="card stack">
-      <h2>Server admin</h2>
-      <AdminSignIn />
-      <AdminMixologist />
-      <h3>People</h3>
-      <table>
-        <thead><tr><th>Person</th><th>Sign-in</th><th>Homes</th><th>Admin</th><th /></tr></thead>
-        <tbody>
-          {data.users.map((u) => (
-            <tr key={u.id}>
-              <td>{u.name}{!!u.disabled && <span className="pill bad"> off</span>}<div className="small muted">{u.username ?? u.email}</div></td>
-              <td className="small">{[u.has_password && 'password', u.has_google && 'Google', u.passkeys && 'passkey', u.totp_enabled && '2FA'].filter(Boolean).join(', ') || 'quick only'}</td>
-              <td>{u.homes}</td>
-              <td>
-                <input type="checkbox" checked={!!u.is_admin} disabled={u.id === me!.user.id} style={{ width: 24, minHeight: 24 }}
-                  onChange={async (e) => { await api(`/api/admin/users/${u.id}`, { method: 'PATCH', body: { isAdmin: e.target.checked } }); await reload(); }} />
-              </td>
-              <td>{u.id !== me!.user.id && (
-                <span className="row" style={{ gap: 4 }}>
-                  <AdminUserActions user={u} onChange={() => void reload()} />
-                  <button className="ghost danger" onClick={async () => { if (await dialogs.confirm(`Delete ${u.name}'s account?`, { okLabel: 'Delete', danger: true })) { await api(`/api/admin/users/${u.id}`, { method: 'DELETE' }); await reload(); toast('Deleted'); } }}>Delete</button>
-                </span>
-              )}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-      <h3>Homes on this server</h3>
-      <ul>{data.homes.map((h) => <li key={h.id}>{h.name} <span className="muted small">{h.members} people · {h.recipes} recipes</span></li>)}</ul>
     </div>
   );
 }

@@ -17,6 +17,7 @@ import { shoppingRoutes } from './routes/shopping.ts';
 import { mealPlanRoutes } from './routes/mealplan.ts';
 import { feedRoutes } from './routes/feeds.ts';
 import { dealRoutes } from './routes/deals.ts';
+import { requireObjectBodies, schemaErrorFormatter } from './schemas.ts';
 import { integrationRoutes } from './routes/integrations.ts';
 import { kitchenOwlRoutes } from './routes/kitchenowl.ts';
 import { mixologistRoutes } from './routes/mixologist.ts';
@@ -25,7 +26,8 @@ import { chatHistoryRoutes } from './routes/aichat.ts';
 import { liveRoutes } from './live.ts';
 
 export async function buildApp(db: DatabaseSync, opts: { logger?: boolean; serveWeb?: boolean } = {}): Promise<FastifyInstance> {
-  const app = Fastify({ logger: opts.logger ?? false, bodyLimit: 5 * 1024 * 1024, trustProxy: config.trustProxy });
+  const app = Fastify({ logger: opts.logger ?? false, bodyLimit: 5 * 1024 * 1024, trustProxy: config.trustProxy, schemaErrorFormatter });
+  requireObjectBodies(app);
   await app.register(cookie, { secret: config.sessionSecret });
   installHardening(app);
   installAuth(app, db);

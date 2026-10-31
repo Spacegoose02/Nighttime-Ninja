@@ -4,7 +4,7 @@ import { useDialogs } from '../components/Dialog.tsx';
 import { api, type RecipeSummary } from '../api.ts';
 import { useApp, useLoad } from '../state.tsx';
 import { amount, todayIso } from '../format.ts';
-import { Chat, ChatAvatar, Markdown, type ChatPersona } from './Mixologist.tsx';
+import { Chat, ChatAvatar, Markdown, type ChatPersona } from '../components/Chat.tsx';
 
 export const GORDY: ChatPersona = {
   endpoint: 'chef/chat',

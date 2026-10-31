@@ -514,3 +514,22 @@ test('changes in a home reach every open screen in that home, and only that home
   const res = await app.inject({ method: 'GET', url: `/api/homes/${home.id}/events`, headers: stranger });
   assert.equal(res.statusCode, 404);
 });
+
+test('request bodies are checked before they reach a handler', async () => {
+  const { login, call } = await setup();
+  const alice = await login('Alice');
+  const { body: home } = await call(alice, 'POST', '/api/homes', { name: 'Den' });
+  const items = `/api/homes/${home.id}/items`;
+  // Wrong shapes are turned away with a message that names the field.
+  const bad = await call(alice, 'POST', items, { name: 'Rice', quantity: [3] });
+  assert.equal(bad.status, 400);
+  assert.equal(bad.body.error, 'quantity should be a number');
+  assert.equal((await call(alice, 'POST', items, ['Rice'])).status, 400, 'a list is not a body');
+  assert.equal((await call(alice, 'POST', `/api/homes/${home.id}/recipes`, ['x'])).status, 400, 'every route wants an object');
+  assert.match((await call(alice, 'PATCH', `/api/homes/${home.id}/members/x`, { role: 'owner' })).body.error, /role should be one of/);
+  // Numbers typed into forms arrive as text, and still work.
+  const ok = await call(alice, 'POST', items, { name: 'Rice', quantity: '3', lowThreshold: '' });
+  assert.equal(ok.status, 200, JSON.stringify(ok.body));
+  assert.equal(ok.body.quantity, 3);
+  assert.equal(ok.body.lowThreshold, null);
+});

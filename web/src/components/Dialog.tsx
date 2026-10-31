@@ -12,6 +12,7 @@ export function Modal({ onClose, label, children, className = '' }: { onClose: (
     return () => d?.close();
   }, []);
   return (
+    // biome-ignore lint/a11y/useKeyWithClickEvents: the keyboard way out is Escape, handled by onCancel.
     <dialog
       ref={ref} className={`modal ${className}`} aria-label={label}
       onCancel={(e) => { e.preventDefault(); onClose(); }}

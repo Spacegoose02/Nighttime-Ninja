@@ -38,9 +38,9 @@ const NAV = [
 /** The phone tab bar keeps these; everything else lives under More. */
 const PHONE_TABS = new Set(['/', '/inventory', '/recipes', '/shopping']);
 
-function NavItem({ n }: { n: (typeof NAV)[number] }) {
+function NavItem({ n, onClick }: { n: (typeof NAV)[number]; onClick?: () => void }) {
   return (
-    <NavLink to={n.to} end={n.end} className={({ isActive }) => `nav-link${isActive ? ' active' : ''}`}>
+    <NavLink to={n.to} end={n.end} onClick={onClick} className={({ isActive }) => `nav-link${isActive ? ' active' : ''}`}>
       <span className="ico" aria-hidden>{n.ico}</span>
       {n.label}
     </NavLink>
@@ -74,7 +74,7 @@ function BottomBar() {
       </button>
       {more && (
         <Modal label="More" className="sheet" onClose={() => setMore(false)}>
-          <div className="sheet-grid" onClick={() => setMore(false)}>{extra.map((n) => <NavItem key={n.to} n={n} />)}</div>
+          <div className="sheet-grid">{extra.map((n) => <NavItem key={n.to} n={n} onClick={() => setMore(false)} />)}</div>
         </Modal>
       )}
     </nav>

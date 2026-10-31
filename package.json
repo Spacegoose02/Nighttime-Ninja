@@ -16,14 +16,18 @@
     "dev:web": "npm run dev --workspace web",
     "build": "npm run build --workspace web",
     "start": "npm start --workspace server",
-    "test": "node --test \"shared/**/*.test.ts\" \"server/src/**/*.test.ts\"",
-    "typecheck": "tsc -p server && tsc -p web --noEmit"
+    "test": "node --test \"shared/**/*.test.ts\" \"server/src/**/*.test.ts\" && npm test --workspace web",
+    "typecheck": "tsc -p server && tsc -p web --noEmit",
+    "lint": "biome lint",
+    "test:e2e": "playwright test"
   },
   "engines": {
     "node": ">=24"
   },
   "devDependencies": {
-    "typescript": "^5.9.3",
-    "@types/node": "^24.10.1"
+    "@biomejs/biome": "^2.6.4",
+    "@playwright/test": "^1.63.0",
+    "@types/node": "^24.10.1",
+    "typescript": "^5.9.3"
   }
 }

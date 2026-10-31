@@ -7,6 +7,12 @@ import { guessItem } from '../../../shared/catalog.ts';
 import { matchKey } from '../../../shared/recipe.ts';
 import { addShoppingItem } from './shopping.ts';
 import { useLabel } from './homes.ts';
+import { body, flag, number, text } from '../schemas.ts';
+
+const ITEM = {
+  name: text, category: text, location: text, icon: text, photo: text, quantity: number, unit: text,
+  lowThreshold: number, barcode: text, expiresOn: text,
+};
 
 /** An item is low when someone tapped "running low", or its amount dropped to the warning level. */
 export const LOW_SQL = '(marked_low = 1 OR (low_threshold IS NOT NULL AND quantity <= low_threshold))';
@@ -75,7 +81,7 @@ export function inventoryRoutes(app: FastifyInstance, db: DatabaseSync): void {
     return (db.prepare(`SELECT * FROM items WHERE ${where.join(' AND ')} ORDER BY name COLLATE NOCASE`).all(...args) as Row[]).map((r) => shape(r, shopping));
   });
 
-  app.post('/api/homes/:homeId/items', async (req) => {
+  app.post('/api/homes/:homeId/items', { schema: body(ITEM) }, async (req) => {
     const ctx = homeCtx(db, req);
     const b = (req.body ?? {}) as Row;
     const name = requireStr(b.name, 'Name', 120);
@@ -95,7 +101,7 @@ export function inventoryRoutes(app: FastifyInstance, db: DatabaseSync): void {
     return shape(db.prepare('SELECT * FROM items WHERE id = ?').get(id) as Row);
   });
 
-  app.patch('/api/homes/:homeId/items/:itemId', async (req) => {
+  app.patch('/api/homes/:homeId/items/:itemId', { schema: body({ ...ITEM, markedLow: flag }) }, async (req) => {
     const ctx = homeCtx(db, req);
     const { itemId } = req.params as { itemId: string };
     const item = db.prepare('SELECT * FROM items WHERE id = ? AND home_id = ?').get(itemId, ctx.homeId) as Row | undefined;
@@ -125,7 +131,7 @@ export function inventoryRoutes(app: FastifyInstance, db: DatabaseSync): void {
     return shape(db.prepare('SELECT * FROM items WHERE id = ?').get(itemId) as Row);
   });
 
-  app.post('/api/homes/:homeId/items/:itemId/adjust', async (req) => {
+  app.post('/api/homes/:homeId/items/:itemId/adjust', { schema: body({ delta: number, reason: text }, ['delta']) }, async (req) => {
     const ctx = homeCtx(db, req);
     const b = (req.body ?? {}) as Row;
     const delta = num(b.delta);

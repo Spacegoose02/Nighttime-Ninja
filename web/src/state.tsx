@@ -147,8 +147,8 @@ export function useLoad<T>(path: string | null, deps: unknown[] = []): [T | null
   useEffect(() => {
     void fetchFresh(true);
     if (!path) return;
-    let set = mounted.get(path);
-    if (!set) mounted.set(path, (set = new Set()));
+    const set = mounted.get(path) ?? new Set<() => Promise<void>>();
+    mounted.set(path, set);
     set.add(load);
     return () => { set.delete(load); if (!set.size) mounted.delete(path); };
   }, [fetchFresh, load, path]);
