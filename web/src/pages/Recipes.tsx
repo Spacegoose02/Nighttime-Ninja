@@ -13,6 +13,7 @@ export function Recipes() {
   const [q, setQ] = useState('');
   const readyOnly = params.get('ready') === '1';
   const useUp = params.get('useup') === '1';
+  const favs = params.get('fav') === '1';
   const [tag, setTag] = useState<string | null>(null);
 
   const tags = useMemo(() => {
@@ -23,10 +24,10 @@ export function Recipes() {
 
   const shown = (recipes ?? []).filter((r) =>
     (!q || r.title.toLowerCase().includes(q.toLowerCase()) || r.tags.some((t) => t.includes(q.toLowerCase()))) &&
-    (!readyOnly || r.ready === 'ready') && (!useUp || r.usesExpiring.length > 0) && (!tag || r.tags.includes(tag)));
+    (!readyOnly || r.ready === 'ready') && (!useUp || r.usesExpiring.length > 0) && (!favs || r.favorite) && (!tag || r.tags.includes(tag)));
   // Using up the most food that's about to go off comes first.
   if (useUp) shown.sort((a, b) => b.usesExpiring.length - a.usesExpiring.length);
-  const toggle = (key: 'ready' | 'useup', on: boolean) => {
+  const toggle = (key: 'ready' | 'useup' | 'fav', on: boolean) => {
     const next = new URLSearchParams(params);
     if (on) next.delete(key); else next.set(key, '1');
     setParams(next);
@@ -44,6 +45,7 @@ export function Recipes() {
         <input placeholder="Search recipes or tags" value={q} onChange={(e) => setQ(e.target.value)} style={{ maxWidth: 380 }} />
         <button className={`chip${readyOnly ? ' on' : ''}`} onClick={() => toggle('ready', readyOnly)}>✅ Ready to cook</button>
         <button className={`chip${useUp ? ' on' : ''}`} onClick={() => toggle('useup', useUp)}>⏳ Use it up</button>
+        <button className={`chip${favs ? ' on' : ''}`} onClick={() => toggle('fav', favs)}>★ Favorites</button>
       </div>
       {!!tags.length && (
         <div className="chips">
@@ -63,11 +65,12 @@ export function Recipes() {
             <Link key={r.id} to={`/recipes/${r.id}`} className="card recipe-card">
               <div className="cover">{r.image ? <img src={r.image} alt="" loading="lazy" /> : '🍲'}</div>
               <div className="body">
-                <span className="title">{r.title}</span>
+                <span className="title">{r.favorite && <span title="Favorite">★ </span>}{r.title}</span>
                 <div className="row small muted">
                   {r.totalMinutes && <span>⏱ {minutes(r.totalMinutes)}</span>}
                   {r.servings && <span>🍽 {r.servings}</span>}
                   {r.isPublic && <span>🌍</span>}
+                  {r.rating && <span title={`${r.rating} stars`}>{'★'.repeat(r.rating)}</span>}
                 </div>
                 {!!r.usesExpiring.length && <span className="small" style={{ color: 'var(--warn)' }}>⏳ Uses up {r.usesExpiring.join(', ')}</span>}
                 <span className={`pill ${cls}`} title={r.missing.join(', ')}>{label}{r.ready !== 'ready' && r.missing.length ? ` (${r.missing.length})` : ''}</span>

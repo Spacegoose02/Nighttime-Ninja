@@ -94,11 +94,13 @@ export interface RecipeSummary {
   ingredientCount: number; isPublic: boolean; ready: 'ready' | 'almost' | 'missing'; missing: string[];
   /** Pantry items expiring in the next 3 days that this recipe would use. */
   usesExpiring: string[];
+  favorite: boolean; rating: number | null;
 }
 
 export interface RecipeFull extends Recipe {
   id: string; isPublic: boolean; shareSlug: string | null; status: 'ready' | 'almost' | 'missing'; missing: string[];
   ingredients: (Ingredient & { availability: Availability; matched?: string[]; linked?: boolean })[];
+  favorite: boolean; rating: number | null; notes: string; cookCount: number; lastCooked: string | null;
 }
 
 export interface Meal {

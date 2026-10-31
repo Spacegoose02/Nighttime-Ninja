@@ -558,3 +558,39 @@ test('use it up and leftovers', async () => {
   assert.equal(item.quantity, 2);
   assert.ok(item.expiresOn > new Date().toISOString().slice(0, 10));
 });
+
+test('favorites, ratings, notes, cook count, undo and barcodes', async () => {
+  const { login, call } = await setup();
+  const a = await login('Rater');
+  const { body: home } = await call(a, 'POST', '/api/homes', { name: 'Stars' });
+  const base = `/api/homes/${home.id}`;
+  const { body: egg } = await call(a, 'POST', `${base}/items`, { name: 'Eggs', quantity: 6, barcode: '012345678905' });
+  const { body: saved } = await call(a, 'POST', `${base}/recipes/import`, { save: true, text: 'Scramble\nIngredients\n2 eggs\nInstructions\nWhisk and cook.' });
+  const id = saved.ids[0];
+
+  await call(a, 'PATCH', `${base}/recipes/${id}/meta`, { favorite: true, rating: 4, notes: 'Add chives' });
+  let r = (await call(a, 'GET', `${base}/recipes/${id}`)).body;
+  assert.equal(r.favorite, true);
+  assert.equal(r.rating, 4);
+  assert.equal(r.notes, 'Add chives');
+  assert.equal(r.cookCount, 0);
+  assert.equal((await call(a, 'PATCH', `${base}/recipes/${id}/meta`, { rating: 9 })).body.rating, null, 'out-of-range ratings clear');
+
+  const cooked = (await call(a, 'POST', `${base}/recipes/${id}/cook`, {})).body;
+  assert.equal(cooked.historyIds.length, 1);
+  r = (await call(a, 'GET', `${base}/recipes/${id}`)).body;
+  assert.equal(r.cookCount, 1);
+  const eggs = () => call(a, 'GET', `${base}/items`).then((x) => x.body.find((i: { name: string }) => i.name === 'Eggs').quantity);
+  assert.equal(await eggs(), 4);
+  assert.equal((await call(a, 'POST', `${base}/history/undo`, { ids: cooked.historyIds })).body.undone, 1);
+  assert.equal(await eggs(), 6);
+  assert.equal((await call(a, 'POST', `${base}/history/undo`, { ids: cooked.historyIds })).body.undone, 0, 'undo only once');
+
+  const scan = (await call(a, 'GET', `${base}/barcode/012345678905`)).body;
+  assert.equal(scan.item.id, egg.id);
+  assert.equal((await call(a, 'GET', `${base}/barcode/not-a-code`)).status, 400);
+  const bumped = (await call(a, 'POST', `${base}/items/${egg.id}/adjust`, { delta: 1 })).body;
+  assert.equal(bumped.quantity, 7);
+  await call(a, 'POST', `${base}/history/undo`, { ids: [bumped.historyId] });
+  assert.equal(await eggs(), 6);
+});

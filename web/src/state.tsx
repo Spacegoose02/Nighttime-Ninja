@@ -9,7 +9,8 @@ interface AppState {
   home: Me['homes'][number] | null;
   refresh: () => Promise<void>;
   setHome: (id: string) => void;
-  toast: (msg: string) => void;
+  /** Shows a short message. With undo, it stays longer and has an Undo button. */
+  toast: (msg: string, undo?: () => unknown) => void;
   /** Prefix for the current home's API routes. */
   base: string;
 }
@@ -20,7 +21,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [me, setMe] = useState<Me | null>(null);
   const [loading, setLoading] = useState(true);
   const [homeId, setHomeId] = useState<string | null>(null);
-  const [toastMsg, setToastMsg] = useState<string | null>(null);
+  const [toastMsg, setToastMsg] = useState<{ text: string; undo?: () => unknown } | null>(null);
 
   const refresh = useCallback(async () => {
     try {
@@ -51,9 +52,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
     void api('/api/me', { method: 'PATCH', body: { lastHomeId: id } });
   }, []);
 
-  const toast = useCallback((msg: string) => {
+  const toast = useCallback((text: string, undo?: () => unknown) => {
+    const msg = { text, undo };
     setToastMsg(msg);
-    window.setTimeout(() => setToastMsg((m) => (m === msg ? null : m)), 3200);
+    window.setTimeout(() => setToastMsg((m) => (m === msg ? null : m)), undo ? 8000 : 3200);
   }, []);
 
   // Send changes made with no signal as soon as the connection is back (and at start, in case the app was closed).
@@ -92,7 +94,18 @@ export function AppProvider({ children }: { children: ReactNode }) {
   return (
     <Ctx.Provider value={{ me, loading, homeId, home, refresh, setHome, toast, base: `/api/homes/${homeId}` }}>
       {children}
-      {toastMsg && <div className="toast" role="status">{toastMsg}</div>}
+      {toastMsg && (
+        <div className="toast" role="status">
+          {toastMsg.text}
+          {toastMsg.undo && (
+            <button className="toast-undo" onClick={async () => {
+              const undo = toastMsg.undo!;
+              setToastMsg(null);
+              try { await undo(); revalidate('/api/'); toast('Undone'); } catch (e) { toast((e as Error).message); }
+            }}>Undo</button>
+          )}
+        </div>
+      )}
     </Ctx.Provider>
   );
 }
