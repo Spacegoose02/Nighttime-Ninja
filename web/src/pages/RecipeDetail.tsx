@@ -84,8 +84,9 @@ export function RecipeDetail() {
 
   async function cook() {
     if (!(await dialogs.confirm(`Take the ingredients for ${recipe!.title} out of the pantry?`, { okLabel: 'I cooked it' }))) return;
-    const r = await api<{ used: unknown[]; skipped: string[] }>(`${base}/recipes/${id}/cook`, { body: { servings } });
-    toast(`Used ${r.used.length} pantry items${r.skipped.length ? `; not in pantry: ${r.skipped.join(', ')}` : ''}`);
+    const r = await api<{ used: unknown[]; skipped: string[]; historyIds: number[] }>(`${base}/recipes/${id}/cook`, { body: { servings } });
+    toast(`Used ${r.used.length} pantry items${r.skipped.length ? `; not in pantry: ${r.skipped.join(', ')}` : ''}`,
+      r.historyIds.length ? () => api(`${base}/history/undo`, { body: { ids: r.historyIds } }) : undefined);
     void reload();
     const left = await dialogs.prompt('Any leftovers? Say how many servings and they go in the fridge for 4 days.', '', { okLabel: 'Save leftovers' });
     const n = Number(left);
@@ -98,6 +99,11 @@ export function RecipeDetail() {
   async function toList(all: boolean) {
     const r = await api<{ added: unknown[] }>(`${base}/recipes/${id}/to-shopping`, { body: { servings, all } });
     toast(r.added.length ? `Added ${r.added.length} items to the shopping list` : 'You already have everything');
+  }
+
+  async function meta(change: { favorite?: boolean; rating?: number | null; notes?: string }) {
+    await api(`${base}/recipes/${id}/meta`, { method: 'PATCH', body: change });
+    void reload();
   }
 
   async function share() {
@@ -132,6 +138,22 @@ export function RecipeDetail() {
         {recipe.tags.map((t) => <span key={t} className="pill">{t}</span>)}
         {recipe.sourceUrl && <a className="small" href={recipe.sourceUrl} target="_blank" rel="noreferrer">Original</a>}
       </div>
+      {!cookMode && (
+        <div className="row">
+          <button className={`chip${recipe.favorite ? ' on' : ''}`} aria-pressed={recipe.favorite} onClick={() => meta({ favorite: !recipe.favorite })}>
+            {recipe.favorite ? '★ Favorite' : '☆ Favorite'}
+          </button>
+          <fieldset className="stars"><legend className="sr-only">Rating</legend>
+            {[1, 2, 3, 4, 5].map((n) => (
+              <button key={n} className="star" aria-label={`${n} star${n > 1 ? 's' : ''}`} aria-pressed={recipe.rating === n}
+                onClick={() => meta({ rating: recipe.rating === n ? null : n })}>{recipe.rating && n <= recipe.rating ? '★' : '☆'}</button>
+            ))}
+          </fieldset>
+          <span className="small muted">
+            {recipe.cookCount ? `Cooked ${recipe.cookCount} time${recipe.cookCount === 1 ? '' : 's'}, last on ${new Date(`${recipe.lastCooked!.replace(' ', 'T')}Z`).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}` : 'Not cooked yet'}
+          </span>
+        </div>
+      )}
       {recipe.description && !cookMode && <p style={{ whiteSpace: 'pre-wrap' }}>{recipe.description}</p>}
       {cookMode && recipe.instructions.length > 0 && (
         <div className="card cook-focus stack" aria-live="polite">
@@ -213,6 +235,10 @@ export function RecipeDetail() {
           {!recipe.instructions.length && <p className="muted">No steps written down.</p>}
         </div>
       </div>
+      <label className="field card">📝 Our notes
+        <textarea key={recipe.notes} defaultValue={recipe.notes} rows={3} placeholder="Double the garlic. Kids liked it with rice."
+          onBlur={(e) => { if (e.target.value !== recipe.notes) void meta({ notes: e.target.value }); }} />
+      </label>
       <div className="row">
         <span className="spacer" />
         <button className="danger" onClick={async () => { if (await dialogs.confirm('Delete this recipe?', { okLabel: 'Delete', danger: true })) { await api(`${base}/recipes/${id}`, { method: 'DELETE' }); nav('/recipes'); } }}>Delete recipe</button>

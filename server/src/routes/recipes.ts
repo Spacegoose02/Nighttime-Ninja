@@ -8,6 +8,7 @@ import { convert } from '../../../shared/units.ts';
 import { publicFetch } from '../security.ts';
 import { adjustItem, recordHistory } from './inventory.ts';
 import { homeLabels } from './homes.ts';
+import { body, flag, number, text } from '../schemas.ts';
 import { addShoppingItem } from './shopping.ts';
 
 /** Things nobody tracks in inventory. */
@@ -169,6 +170,7 @@ export function recipeRoutes(app: FastifyInstance, db: DatabaseSync): void {
         id: full.id, title: full.title, image: full.image, servings: full.servings, tags: full.tags,
         totalMinutes: (full.prepMinutes ?? 0) + (full.cookMinutes ?? 0) || null,
         ingredientCount: full.ingredients.length, isPublic: full.isPublic, ready: status, missing,
+        favorite: !!r.favorite, rating: r.rating as number | null,
       };
     });
     return q.ready === 'true' ? list.filter((r) => r.ready === 'ready') : list;
@@ -182,7 +184,12 @@ export function recipeRoutes(app: FastifyInstance, db: DatabaseSync): void {
     const servings = num((req.query as Row).servings);
     const factor = servings && full.servings ? servings / full.servings : 1;
     const checked = checkIngredients(stockIndex(db, ctx.homeId), full.ingredients, factor);
-    return { ...full, ingredients: checked, ...readiness(checked) };
+    const cooks = db.prepare('SELECT COUNT(*) AS n, MAX(cooked_at) AS last FROM recipe_cooks WHERE recipe_id = ?').get(full.id) as Row;
+    return {
+      ...full, ingredients: checked, ...readiness(checked),
+      favorite: !!row.favorite, rating: row.rating as number | null, notes: row.notes as string,
+      cookCount: Number(cooks.n), lastCooked: cooks.last as string | null,
+    };
   });
 
   app.post('/api/homes/:homeId/recipes', async (req) => {
@@ -230,7 +237,9 @@ export function recipeRoutes(app: FastifyInstance, db: DatabaseSync): void {
     const index = stockIndex(db, ctx.homeId);
     const used: { name: string; amount: number; unit: string | null }[] = [];
     const skipped: string[] = [];
+    const before = Number((db.prepare('SELECT COALESCE(MAX(id), 0) AS id FROM inventory_history').get() as Row).id);
     tx(db, () => {
+      db.prepare('INSERT INTO recipe_cooks (home_id, recipe_id, user_id) VALUES (?, ?, ?)').run(ctx.homeId, full.id, ctx.user?.id ?? null);
       for (const ing of full.ingredients) {
         if (ALWAYS_HAVE.has(ing.name.toLowerCase())) continue;
         const stock = findStock(index, ing.name).stock.filter((s) => s.quantity > 0);
@@ -255,7 +264,25 @@ export function recipeRoutes(app: FastifyInstance, db: DatabaseSync): void {
       const mealId = str((req.body as Row)?.mealPlanId, 60);
       if (mealId) db.prepare("UPDATE meal_plan SET cooked_at = datetime('now') WHERE id = ? AND home_id = ?").run(mealId, ctx.homeId);
     });
-    return { used, skipped };
+    // So the app can offer to put it all back.
+    const historyIds = (db.prepare('SELECT id FROM inventory_history WHERE home_id = ? AND id > ?').all(ctx.homeId, before) as Row[]).map((h) => Number(h.id));
+    return { used, skipped, historyIds };
+  });
+
+  // The household's own take on a recipe: favorite, 1 to 5 stars, notes ("double the garlic").
+  app.patch('/api/homes/:homeId/recipes/:id/meta', { schema: body({ favorite: flag, rating: number, notes: text }) }, async (req) => {
+    const ctx = homeCtx(db, req);
+    const id = (req.params as { id: string }).id;
+    if (!db.prepare('SELECT 1 FROM recipes WHERE id = ? AND home_id = ?').get(id, ctx.homeId)) throw new HttpError(404, 'Recipe not found');
+    const b = (req.body ?? {}) as Row;
+    if ('favorite' in b) db.prepare('UPDATE recipes SET favorite = ? WHERE id = ?').run(b.favorite ? 1 : 0, id);
+    if ('rating' in b) {
+      const r = num(b.rating);
+      db.prepare('UPDATE recipes SET rating = ? WHERE id = ?').run(r && r >= 1 && r <= 5 ? Math.round(r) : null, id);
+    }
+    if ('notes' in b) db.prepare('UPDATE recipes SET notes = ? WHERE id = ?').run(str(b.notes, 4000) ?? '', id);
+    const row = db.prepare('SELECT favorite, rating, notes FROM recipes WHERE id = ?').get(id) as Row;
+    return { favorite: !!row.favorite, rating: row.rating, notes: row.notes };
   });
 
   // Puts what's left after a meal in the fridge as its own item, good for 4 days, so it shows up in "use it up".
