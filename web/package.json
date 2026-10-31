@@ -13,9 +13,11 @@
   },
   "dependencies": {
     "@simplewebauthn/browser": "^14.0.0",
+    "barcode-detector": "3.2.3",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
-    "react-router-dom": "^7.18.5"
+    "react-router-dom": "^7.18.5",
+    "zxing-wasm": "3.1.6"
   },
   "devDependencies": {
     "@capacitor/android": "^8.5.3",
