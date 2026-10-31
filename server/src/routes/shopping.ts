@@ -8,6 +8,7 @@ import { matchKey, parseIngredient } from '../../../shared/recipe.ts';
 import { convert } from '../../../shared/units.ts';
 import { stockByName } from './inventory.ts';
 import { body, flag, list, number, text } from '../schemas.ts';
+import { listAdded } from '../push.ts';
 
 const LINE = { name: text, quantity: number, unit: text, category: text, note: text, price: number, store: text };
 
@@ -83,17 +84,18 @@ export function shoppingRoutes(app: FastifyInstance, db: DatabaseSync): void {
     const ctx = homeCtx(db, req);
     const b = (req.body ?? {}) as Row;
     const lines = typeof b.text === 'string' ? b.text.split(/\r?\n|,(?![^(]*\))/).map((s) => s.trim()).filter(Boolean) : [];
+    const tell = (added: Row[]) => { void listAdded(db, ctx.homeId, ctx.user?.id ?? null, added.map((a) => a.name as string)).catch(() => {}); return added; };
     if (lines.length) {
-      return lines.slice(0, 100).map((line) => {
+      return tell(lines.slice(0, 100).map((line) => {
         const p = parseIngredient(line);
         return addShoppingItem(db, ctx.homeId, { name: p.name, quantity: p.quantity, unit: p.unit, note: p.note }, ctx.user?.id ?? null);
-      });
+      }));
     }
     const name = str(b.name, 120);
     if (!name) throw new HttpError(400, 'Name is required');
-    return [addShoppingItem(db, ctx.homeId, {
+    return tell([addShoppingItem(db, ctx.homeId, {
       name, quantity: num(b.quantity), unit: str(b.unit, 20), category: str(b.category, 40), note: str(b.note, 200),
-    }, ctx.user?.id ?? null)];
+    }, ctx.user?.id ?? null)]);
   });
 
   app.patch('/api/homes/:homeId/shopping/:id', { schema: body({ ...LINE, checked: flag, addToInventory: flag }) }, async (req) => {

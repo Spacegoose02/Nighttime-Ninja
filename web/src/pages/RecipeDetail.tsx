@@ -7,6 +7,8 @@ import { amount, minutes, todayIso } from '../format.ts';
 import { celsiusToFahrenheitText } from '../../../shared/units.ts';
 import { findTimers } from '../../../shared/timers.ts';
 import { startTimer, useWakeLock } from '../components/Timers.tsx';
+import { canListen, say, useVoice } from '../components/Voice.tsx';
+import { ingredientMatches } from '../../../shared/recipe.ts';
 import { READY_LABEL } from './Recipes.tsx';
 
 /** Lets someone say "this ingredient is that pantry item". Saved for the whole home, so every recipe uses it. */
@@ -104,6 +106,27 @@ export function RecipeDetail() {
   const [got, setGot] = useState<Set<number>>(new Set());
   const [stepAt, setStepAt] = useState(0);
   useWakeLock(cookMode);
+  const [voice, setVoice] = useState(false);
+  const voiceOn = cookMode && voice;
+  const { heard, error: voiceError } = useVoice(voiceOn, (c) => {
+    if (!recipe) return;
+    const steps = recipe.instructions;
+    const read = (n: number) => say(`Step ${n + 1}. ${units === 'us' ? celsiusToFahrenheitText(steps[n]) : steps[n]}`);
+    if (c.kind === 'next') {
+      if (stepAt < steps.length - 1) { setDone((d) => new Set(d).add(stepAt)); setStepAt(stepAt + 1); read(stepAt + 1); } else say("That's the last step. Enjoy!");
+    } else if (c.kind === 'back') {
+      if (stepAt > 0) { setStepAt(stepAt - 1); read(stepAt - 1); }
+    } else if (c.kind === 'repeat') read(stepAt);
+    else if (c.kind === 'ingredients') say(recipe.ingredients.map((i) => `${amount(i.quantity == null ? null : i.quantity * factor, i.unit, units)} ${i.name}`.trim()).join(', '));
+    else if (c.kind === 'howMuch') {
+      const i = recipe.ingredients.find((x) => ingredientMatches(x.name, c.what) || ingredientMatches(c.what, x.name));
+      say(i ? `${amount(i.quantity == null ? null : i.quantity * factor, i.unit, units) || 'Some'} ${i.name}` : `I don't see ${c.what} in this recipe.`);
+    } else if (c.kind === 'timer') { startTimer(`${recipe.title}: ${c.label}`, c.seconds); say(`Timer set for ${c.label}.`); }
+    else if (c.kind === 'stepTimer') {
+      const t = findTimers(steps[stepAt])[0];
+      if (t) { startTimer(`${recipe.title}: ${t.label}`, t.seconds); say(`Timer set for ${t.label}.`); } else say('This step has no time in it. Say, set a timer for ten minutes.');
+    } else if (c.kind === 'stop') { setVoice(false); say('Okay, I stopped listening.'); }
+  });
   const [planDate, setPlanDate] = useState<string | null>(null);
   const [matching, setMatching] = useState<string | null>(null);
 
@@ -209,6 +232,16 @@ export function RecipeDetail() {
           <div className="muted small">Step {stepAt + 1} of {recipe.instructions.length}</div>
           <p className="cook-focus-step">{units === 'us' ? celsiusToFahrenheitText(recipe.instructions[stepAt]) : recipe.instructions[stepAt]}</p>
           <StepTimers step={recipe.instructions[stepAt]} title={recipe.title} />
+          <div className="row">
+            <button className="ghost" onClick={() => say(`Step ${stepAt + 1}. ${units === 'us' ? celsiusToFahrenheitText(recipe.instructions[stepAt]) : recipe.instructions[stepAt]}`)}>🔊 Read aloud</button>
+            {canListen() && (
+              <button className={voice ? 'primary' : 'ghost'} aria-pressed={voice} onClick={() => {
+                if (!voice) say(`Listening. Say next, back, repeat, or set a timer. Step ${stepAt + 1}. ${recipe.instructions[stepAt]}`);
+                setVoice(!voice);
+              }}>{voice ? '🎙 Listening…' : '🎙 Hands-free'}</button>
+            )}
+          </div>
+          {voiceOn && <div className="small muted">{voiceError ?? (heard ? `Heard: “${heard}”` : 'Try “next”, “back”, “repeat”, “how much flour” or “set a timer for 10 minutes”.')}</div>}
           <div className="row">
             <button disabled={stepAt === 0} onClick={() => setStepAt(stepAt - 1)}>← Back</button>
             <span className="spacer" />
