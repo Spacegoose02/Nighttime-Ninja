@@ -18,3 +18,7 @@ updates:
   - package-ecosystem: docker
     directory: /
     schedule: { interval: weekly }
+    ignore:
+      # Odd-numbered Node releases never become LTS; stay on even (LTS) majors.
+      - dependency-name: node
+        versions: ['25.x', '27.x', '29.x', '31.x']
