@@ -533,3 +533,28 @@ test('request bodies are checked before they reach a handler', async () => {
   assert.equal(ok.body.quantity, 3);
   assert.equal(ok.body.lowThreshold, null);
 });
+
+test('use it up and leftovers', async () => {
+  const { login, call } = await setup();
+  const a = await login('Saver');
+  const { body: home } = await call(a, 'POST', '/api/homes', { name: 'Fridge Watch' });
+  const base = `/api/homes/${home.id}`;
+  const soon = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
+  await call(a, 'POST', `${base}/items`, { name: 'Spinach', quantity: 1, expiresOn: soon });
+  await call(a, 'POST', `${base}/items`, { name: 'Rice', quantity: 2, unit: 'lb', expiresOn: '2099-01-01' });
+  const { body: saved } = await call(a, 'POST', `${base}/recipes/import`, {
+    save: true, text: 'Spinach Rice\nServes 2\nIngredients\n1 cup rice\n2 cups spinach\nInstructions\nCook.',
+  });
+  await call(a, 'POST', `${base}/recipes/import`, { save: true, text: 'Plain Rice\nIngredients\n1 cup rice\nInstructions\nBoil.' });
+  const list = (await call(a, 'GET', `${base}/recipes`)).body as { title: string; usesExpiring: string[] }[];
+  assert.deepEqual(list.find((r) => r.title === 'Spinach Rice')?.usesExpiring, ['Spinach']);
+  assert.deepEqual(list.find((r) => r.title === 'Plain Rice')?.usesExpiring, []);
+
+  assert.equal((await call(a, 'POST', `${base}/recipes/${saved.ids[0]}/leftovers`, { servings: 0 })).status, 400);
+  const left = await call(a, 'POST', `${base}/recipes/${saved.ids[0]}/leftovers`, { servings: 2 });
+  assert.equal(left.status, 200, JSON.stringify(left.body));
+  assert.equal(left.body.location, 'Fridge');
+  const item = (await call(a, 'GET', `${base}/items`)).body.find((i: { name: string }) => i.name === 'Leftover Spinach Rice');
+  assert.equal(item.quantity, 2);
+  assert.ok(item.expiresOn > new Date().toISOString().slice(0, 10));
+});

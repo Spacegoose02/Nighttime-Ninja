@@ -6,7 +6,8 @@ import { HttpError, newId, num, parseJson, randomToken, str } from '../util.ts';
 import { importAny, ingredientMatches, matchKey, type Ingredient, type Recipe } from '../../../shared/recipe.ts';
 import { convert } from '../../../shared/units.ts';
 import { publicFetch } from '../security.ts';
-import { adjustItem } from './inventory.ts';
+import { adjustItem, recordHistory } from './inventory.ts';
+import { homeLabels } from './homes.ts';
 import { addShoppingItem } from './shopping.ts';
 
 /** Things nobody tracks in inventory. */
@@ -92,6 +93,20 @@ function findStock(index: StockIndex, name: string): { stock: Stock[]; linked: b
   return { stock: found, linked: false };
 }
 
+/** Pantry items that are in stock and expire within the next 3 days. */
+export function expiringIds(db: DatabaseSync, homeId: string): Set<string> {
+  const rows = db.prepare("SELECT id FROM items WHERE home_id = ? AND quantity > 0 AND expires_on IS NOT NULL AND expires_on <= date('now', '+3 day')").all(homeId) as Row[];
+  return new Set(rows.map((r) => r.id as string));
+}
+
+/** Names of the soon-to-expire pantry items a recipe would use up. */
+export function usesExpiring(index: StockIndex, ingredients: Ingredient[], expiring: Set<string>): string[] {
+  if (!expiring.size) return [];
+  const names = new Set<string>();
+  for (const ing of ingredients) for (const s of findStock(index, ing.name).stock) if (expiring.has(s.id)) names.add(s.name);
+  return [...names];
+}
+
 export type Availability = 'have' | 'low' | 'missing' | 'unknown';
 
 /** Works out whether each ingredient is covered by inventory, after unit conversion and scaling. */
@@ -145,10 +160,12 @@ export function recipeRoutes(app: FastifyInstance, db: DatabaseSync): void {
     if (q.q) { where += ' AND (title LIKE ? OR tags LIKE ?)'; args.push(`%${q.q}%`, `%${q.q}%`); }
     const rows = db.prepare(`SELECT * FROM recipes WHERE ${where} ORDER BY title COLLATE NOCASE`).all(...args) as Row[];
     const index = stockIndex(db, ctx.homeId);
+    const expiring = expiringIds(db, ctx.homeId);
     const list = rows.map((r) => {
       const full = loadRecipe(db, r);
       const { status, missing } = readiness(checkIngredients(index, full.ingredients));
       return {
+        usesExpiring: usesExpiring(index, full.ingredients, expiring),
         id: full.id, title: full.title, image: full.image, servings: full.servings, tags: full.tags,
         totalMinutes: (full.prepMinutes ?? 0) + (full.cookMinutes ?? 0) || null,
         ingredientCount: full.ingredients.length, isPublic: full.isPublic, ready: status, missing,
@@ -239,6 +256,23 @@ export function recipeRoutes(app: FastifyInstance, db: DatabaseSync): void {
       if (mealId) db.prepare("UPDATE meal_plan SET cooked_at = datetime('now') WHERE id = ? AND home_id = ?").run(mealId, ctx.homeId);
     });
     return { used, skipped };
+  });
+
+  // Puts what's left after a meal in the fridge as its own item, good for 4 days, so it shows up in "use it up".
+  app.post('/api/homes/:homeId/recipes/:id/leftovers', async (req) => {
+    const ctx = homeCtx(db, req);
+    const row = db.prepare('SELECT title FROM recipes WHERE id = ? AND home_id = ?').get((req.params as { id: string }).id, ctx.homeId) as Row | undefined;
+    if (!row) throw new HttpError(404, 'Recipe not found');
+    const servings = num((req.body as Row)?.servings);
+    if (!servings || servings <= 0 || servings > 100) throw new HttpError(400, 'How many servings are left?');
+    const locations = homeLabels(db, ctx.homeId).locations;
+    const location = locations.find((l) => /fridge|refrigerator/i.test(l)) ?? locations[0] ?? 'Fridge';
+    const name = `Leftover ${String(row.title)}`.slice(0, 120);
+    const id = newId();
+    db.prepare(`INSERT INTO items (id, home_id, name, category, location, icon, quantity, unit, expires_on)
+      VALUES (?, ?, ?, 'Other', ?, '🍱', ?, 'serving', date('now', '+4 day'))`).run(id, ctx.homeId, name, location, servings);
+    recordHistory(db, { homeId: ctx.homeId, itemId: id, itemName: name, delta: servings, unit: 'serving', after: servings, reason: 'leftovers', userId: ctx.user?.id ?? null });
+    return { id, name, location };
   });
 
   app.post('/api/homes/:homeId/recipes/:id/to-shopping', async (req) => {

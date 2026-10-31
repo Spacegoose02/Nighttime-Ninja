@@ -92,6 +92,8 @@ export type Availability = 'have' | 'low' | 'missing' | 'unknown';
 export interface RecipeSummary {
   id: string; title: string; image: string | null; servings: number | null; tags: string[]; totalMinutes: number | null;
   ingredientCount: number; isPublic: boolean; ready: 'ready' | 'almost' | 'missing'; missing: string[];
+  /** Pantry items expiring in the next 3 days that this recipe would use. */
+  usesExpiring: string[];
 }
 
 export interface RecipeFull extends Recipe {

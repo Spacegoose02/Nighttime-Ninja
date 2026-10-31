@@ -12,6 +12,7 @@ import { Shopping } from './pages/Shopping.tsx';
 import { MealPlan } from './pages/MealPlan.tsx';
 import { PublicRecipe, Community } from './pages/Public.tsx';
 import { Modal } from './components/Dialog.tsx';
+import { TimerBar } from './components/Timers.tsx';
 
 // The bigger, less-visited pages load the first time they're opened, so the app starts faster on tablets.
 const RecipeEdit = lazy(() => import('./pages/RecipeEdit.tsx').then((m) => ({ default: m.RecipeEdit })));
@@ -125,6 +126,7 @@ export function App() {
           </Routes>
         </Suspense>
       </main>
+      <TimerBar />
       <BottomBar />
     </div>
   );

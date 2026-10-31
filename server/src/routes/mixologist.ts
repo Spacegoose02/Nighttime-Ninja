@@ -83,8 +83,10 @@ const isBar = (r: Row) => String(r.category).toLowerCase() === 'bar' || String(r
 
 /** What's in stock, bar first, written out for the model. */
 export function stockForPrompt(db: DatabaseSync, homeId: string): string {
-  const rows = db.prepare('SELECT name, category, location, quantity, unit FROM items WHERE home_id = ? AND quantity > 0 ORDER BY name COLLATE NOCASE LIMIT 600').all(homeId) as Row[];
-  const line = (r: Row) => `- ${r.name}${r.unit && r.unit !== 'each' ? ` (${r.quantity} ${r.unit})` : (r.quantity as number) > 1 ? ` (${r.quantity})` : ''}`;
+  const rows = db.prepare(`SELECT name, category, location, quantity, unit,
+      CASE WHEN expires_on <= date('now', '+3 day') THEN expires_on END AS use_soon
+    FROM items WHERE home_id = ? AND quantity > 0 ORDER BY name COLLATE NOCASE LIMIT 600`).all(homeId) as Row[];
+  const line = (r: Row) => `- ${r.name}${r.unit && r.unit !== 'each' ? ` (${r.quantity} ${r.unit})` : (r.quantity as number) > 1 ? ` (${r.quantity})` : ''}${r.use_soon ? ` [use soon: expires ${r.use_soon}]` : ''}`;
   const bar = rows.filter(isBar);
   const rest = rows.filter((r) => !isBar(r));
   return [

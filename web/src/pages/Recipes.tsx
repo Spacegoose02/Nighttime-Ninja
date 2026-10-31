@@ -12,6 +12,7 @@ export function Recipes() {
   const [recipes] = useLoad<RecipeSummary[]>(`${base}/recipes`);
   const [q, setQ] = useState('');
   const readyOnly = params.get('ready') === '1';
+  const useUp = params.get('useup') === '1';
   const [tag, setTag] = useState<string | null>(null);
 
   const tags = useMemo(() => {
@@ -22,7 +23,14 @@ export function Recipes() {
 
   const shown = (recipes ?? []).filter((r) =>
     (!q || r.title.toLowerCase().includes(q.toLowerCase()) || r.tags.some((t) => t.includes(q.toLowerCase()))) &&
-    (!readyOnly || r.ready === 'ready') && (!tag || r.tags.includes(tag)));
+    (!readyOnly || r.ready === 'ready') && (!useUp || r.usesExpiring.length > 0) && (!tag || r.tags.includes(tag)));
+  // Using up the most food that's about to go off comes first.
+  if (useUp) shown.sort((a, b) => b.usesExpiring.length - a.usesExpiring.length);
+  const toggle = (key: 'ready' | 'useup', on: boolean) => {
+    const next = new URLSearchParams(params);
+    if (on) next.delete(key); else next.set(key, '1');
+    setParams(next);
+  };
 
   return (
     <div className="stack">
@@ -34,12 +42,16 @@ export function Recipes() {
       </div>
       <div className="row">
         <input placeholder="Search recipes or tags" value={q} onChange={(e) => setQ(e.target.value)} style={{ maxWidth: 380 }} />
-        <button className={`chip${readyOnly ? ' on' : ''}`} onClick={() => setParams(readyOnly ? {} : { ready: '1' })}>✅ Ready to cook</button>
+        <button className={`chip${readyOnly ? ' on' : ''}`} onClick={() => toggle('ready', readyOnly)}>✅ Ready to cook</button>
+        <button className={`chip${useUp ? ' on' : ''}`} onClick={() => toggle('useup', useUp)}>⏳ Use it up</button>
       </div>
       {!!tags.length && (
         <div className="chips">
           {tags.map((t) => <button key={t} className={`chip${tag === t ? ' on' : ''}`} onClick={() => setTag(tag === t ? null : t)}>{t}</button>)}
         </div>
+      )}
+      {useUp && recipes && !shown.length && (
+        <div className="card">None of your recipes use what's expiring soon. <Link to="/chef?ask=useup">Ask Gordy for an idea</Link>.</div>
       )}
       {recipes && !recipes.length && (
         <div className="card">No recipes yet. Add one, paste a link, or bring everything over from KitchenOwl with <Link to="/recipes/import">Import</Link>.</div>
@@ -57,6 +69,7 @@ export function Recipes() {
                   {r.servings && <span>🍽 {r.servings}</span>}
                   {r.isPublic && <span>🌍</span>}
                 </div>
+                {!!r.usesExpiring.length && <span className="small" style={{ color: 'var(--warn)' }}>⏳ Uses up {r.usesExpiring.join(', ')}</span>}
                 <span className={`pill ${cls}`} title={r.missing.join(', ')}>{label}{r.ready !== 'ready' && r.missing.length ? ` (${r.missing.length})` : ''}</span>
               </div>
             </Link>

@@ -14,6 +14,7 @@ export const GORDY: ChatPersona = {
   intro: "Well hey there, sugar, come on in! I'm Gordy Scavengé. Pull up a stool and tell me what you're craving. Southern comfort food, a perfect steak, Virginia-style Mexican, homemade rolls and biscuits, sweet tea or lemonade, that's my home turf, but I'll help with anything from the kitchen. I can see what's in your pantry, too.",
   starters: [
     'What can I cook tonight with what I have?',
+    'What should I use up first?',
     "Hardee's-style buttermilk biscuits",
     'Texas Roadhouse rolls with honey cinnamon butter',
     'Virginia-style Mexican white sauce',
@@ -25,6 +26,8 @@ export const GORDY: ChatPersona = {
 };
 
 type Tab = 'chat' | 'perfect';
+
+const USE_UP = "What can I cook to use up the things in my kitchen that are about to expire?";
 
 /** The AI chef with Gordy Scavengé: a chat, and "Help me perfect my recipe". */
 export function Chef() {
@@ -47,7 +50,7 @@ export function Chef() {
           <span className="muted">Set <code>ANTHROPIC_API_KEY</code> on the server (the same key the Mixologist uses) and restart.</span>
         </div>
       )}
-      {tab === 'chat' ? <Chat disabled={!status?.available} persona={GORDY} /> : <Perfect disabled={!status?.available} />}
+      {tab === 'chat' ? <Chat disabled={!status?.available} persona={GORDY} initialDraft={params.get('ask') === 'useup' ? USE_UP : undefined} /> : <Perfect disabled={!status?.available} />}
     </div>
   );
 }
