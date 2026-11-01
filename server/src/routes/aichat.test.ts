@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { chatLoop, wantsToSave, type ChatAction } from './aichat.ts';
+import { chatLoop, saveApproved, wantsToSave, type ChatAction } from './aichat.ts';
 
 // A stand-in for Claude that plays back scripted replies and records what it was asked.
 function fake(script: ({ text?: string; tool?: { name: string; input: object } })[]) {
@@ -38,6 +38,29 @@ test('knows when someone is asking to save', () => {
   assert.ok(wantsToSave('add it to my recipes'));
   assert.ok(!wantsToSave('add the flour to my shopping list'));
   assert.ok(!wantsToSave('what goes with biscuits?'));
+  assert.ok(!wantsToSave('can you keep it under 30 minutes?'));
+  assert.ok(!wantsToSave('how long can I store leftovers?'));
+  assert.ok(!wantsToSave('remember I am vegetarian'));
+  assert.ok(!wantsToSave('any tricks to save time on the dough?'));
+  assert.ok(!wantsToSave("don't save this one"));
+});
+
+test('a yes to an offer to save counts as asking, and nothing else does', () => {
+  const offer = `${RECIPE}\n\nWant me to save this to your recipe book?`;
+  assert.ok(saveApproved([{ role: 'user', content: 'biscuits' }, { role: 'assistant', content: offer }, { role: 'user', content: 'Yes please!' }]));
+  assert.ok(saveApproved([{ role: 'user', content: 'biscuits' }, { role: 'assistant', content: offer }, { role: 'user', content: 'sure' }]));
+  assert.ok(!saveApproved([{ role: 'user', content: 'biscuits' }, { role: 'assistant', content: offer }, { role: 'user', content: 'no thanks' }]));
+  assert.ok(!saveApproved([{ role: 'user', content: 'biscuits' }, { role: 'assistant', content: 'Want them flakier?' }, { role: 'user', content: 'yes' }]));
+  assert.ok(!saveApproved([{ role: 'user', content: 'biscuits recipe' }]));
+});
+
+test('a save the person did not ask for is turned away, and Gordy is told to ask first', async () => {
+  const saves: string[] = [];
+  const { askFn, calls } = fake([{ tool: { name: 'save_recipe', input: { title: 'Biscuits' } } }, { text: `${RECIPE}\n\nWant me to save it?` }]);
+  const out = await chatLoop(askFn, turn(saves), [{ role: 'user', content: 'biscuits recipe' }], false);
+  assert.deepEqual(saves, []);
+  assert.equal(out.actions.length, 0);
+  assert.match(JSON.stringify(calls[1].messages.at(-1)), /Ask them whether they want it saved/);
 });
 
 test('asking to save forces a real save, and the reply does not repeat the recipe', async () => {
@@ -50,10 +73,10 @@ test('asking to save forces a real save, and the reply does not repeat the recip
   assert.equal(out.actions[0].type, 'saved');
 });
 
-test('claiming a save that never happened triggers a real save', async () => {
+test('when asked to save, claiming a save that never happened triggers a real save', async () => {
   const saves: string[] = [];
   const { askFn, calls } = fake([{ text: "I've saved your biscuits to the recipe book!" }, { tool: { name: 'save_recipe', input: { title: 'Biscuits' } } }]);
-  const out = await chatLoop(askFn, turn(saves), [{ role: 'user', content: 'biscuits recipe' }], false);
+  const out = await chatLoop(askFn, { ...turn(saves), canForce: true }, [{ role: 'user', content: 'save my biscuits recipe' }], true);
   assert.deepEqual(saves, ['Biscuits']);
   assert.deepEqual(calls[1].tool_choice, { type: 'tool', name: 'save_recipe' });
   assert.equal(out.actions.length, 1);
@@ -75,11 +98,18 @@ test('models that refuse a forced tool call are asked to save in a system messag
   assert.equal(out.reply, 'Saved it, sugar!');
 });
 
-test('a false save claim on those models gets a system message too', async () => {
+test('an unasked false save claim saves nothing and says so', async () => {
+  const saves: string[] = [];
+  const { askFn } = fake([{ text: "I've saved your biscuits to the recipe book!" }, { tool: { name: 'save_recipe', input: { title: 'Biscuits' } } }]);
+  const out = await chatLoop(askFn, { ...turn(saves), canForce: false }, [{ role: 'user', content: 'biscuits recipe' }], false);
+  assert.deepEqual(saves, []);
+  assert.match(out.reply, /Nothing was saved/);
+});
+
+test('when asked, a false save claim on those models gets a system message too', async () => {
   const saves: string[] = [];
   const { askFn, calls } = fake([{ text: "I've saved your biscuits to the recipe book!" }, { tool: { name: 'save_recipe', input: { title: 'Biscuits' } } }]);
-  const out = await chatLoop(askFn, { ...turn(saves), canForce: false }, [{ role: 'user', content: 'biscuits recipe' }], false);
-  assert.equal(calls[0].messages.some((m) => m.role === 'system'), false);
+  const out = await chatLoop(askFn, { ...turn(saves), canForce: false }, [{ role: 'user', content: 'save my biscuits' }], true);
   assert.equal(calls[1].tool_choice, undefined);
   assert.equal(calls[1].messages.at(-1)!.role, 'system');
   assert.deepEqual(saves, ['Biscuits']);
@@ -94,7 +124,7 @@ test('knows which models take a forced tool call', async () => {
 
 test('if the save still fails, the reply says so instead of pretending', async () => {
   const { askFn } = fake([{ text: "It's saved!" }, { text: 'oops' }]);
-  const out = await chatLoop(askFn, turn([]), [{ role: 'user', content: 'biscuits' }], false);
+  const out = await chatLoop(askFn, turn([]), [{ role: 'user', content: 'save the biscuits' }], true);
   assert.match(out.reply, /didn't actually save/);
   assert.equal(out.actions.length, 0);
 });
@@ -120,7 +150,7 @@ test('streams each round as it is written, with a blank line between rounds', as
     { text: 'Saved Biscuits for you.' },
   ]);
   let heard = '';
-  const out = await chatLoop(askFn, turn(saves), [{ role: 'user', content: 'biscuits please' }], false, (t) => { heard += t; });
+  const out = await chatLoop(askFn, turn(saves), [{ role: 'user', content: 'save biscuits please' }], true, (t) => { heard += t; });
   assert.equal(heard, 'Let me check your pantry. \n\nSaved Biscuits for you.');
   assert.equal(out.reply, 'Saved Biscuits for you.');
 });
