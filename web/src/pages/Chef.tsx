@@ -51,7 +51,7 @@ export function Chef() {
           <span className="muted">Set <code>ANTHROPIC_API_KEY</code> on the server (the same key the Mixologist uses) and restart.</span>
         </div>
       )}
-      {tab === 'chat' ? <Chat disabled={!status?.available} persona={GORDY} initialDraft={params.get('ask') === 'useup' ? USE_UP : undefined} /> : <Perfect disabled={!status?.available} />}
+      {tab === 'chat' ? <Chat disabled={!status?.available} persona={GORDY} initialDraft={params.get('ask') === 'useup' ? USE_UP : params.get('ask')?.slice(0, 500) || undefined} /> : <Perfect disabled={!status?.available} />}
     </div>
   );
 }

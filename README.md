@@ -8,6 +8,7 @@
 
 - **Recipes** in one standard format, imported from recipe websites (schema.org), pasted text, files, or **KitchenOwl**. Scale servings, cook mode, and share any recipe with a public link.
 - **Ready to cook**: every recipe shows whether your pantry has what it needs. Tap **I cooked this** and the ingredients are taken out of inventory.
+- **Kitchen tools**: tick off the gear you own (air fryer, stand mixer, cocktail shaker and so on). Recipes that need something you don't have get a 🍳 note, the recipe list can show only what you can make, and Gordy and Rocco cook around what you've got.
 - **Pantry inventory** with green photo/icon tiles, low-stock warnings, expiry dates and a full **history** of every change.
 - **Shopping lists**: Main plus as many as you like (a quick trip, long-term buys), with items you can move between them. Quick add (“2 lb chicken, milk, 3 avocados”), suggestions from what you buy most, purchase history, and checked-off items flowing into the pantry.
 - **7-day meal plan** that can fill the shopping list for the week and shows up in **Google Calendar** as a subscribed calendar.

@@ -321,6 +321,10 @@ const MIGRATIONS: string[] = [
   UPDATE shopping_items SET list_id = (SELECT l.id FROM shopping_lists l WHERE l.home_id = shopping_items.home_id);
   CREATE INDEX shopping_list_items ON shopping_items(list_id, checked);
   `,
+  // Kitchen tools: the gear a home owns, so recipes and the AI helpers can skip what they can't make. Empty = not set up.
+  `
+  ALTER TABLE home_settings ADD COLUMN equipment TEXT NOT NULL DEFAULT '[]';
+  `,
 ];
 
 export function openDb(dataDir: string): DatabaseSync {

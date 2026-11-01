@@ -13,6 +13,8 @@ import { publicFetch } from '../security.ts';
 import { list, body, number, text } from '../schemas.ts';
 import { checkIngredients, loadRecipe, stockIndex } from './recipes.ts';
 import { stockForPrompt } from './mixologist.ts';
+import { homeTools } from './homes.ts';
+import { missingTools } from '../../../shared/equipment.ts';
 import { checkOff, mainList } from './shopping.ts';
 import { stockByName } from './inventory.ts';
 import { cleanRecipe, PERSONA, type PlainRecipe, RECIPE_SCHEMA, REFUSED } from './chef.ts';
@@ -137,10 +139,15 @@ export function kitchenAiRoutes(app: FastifyInstance, db: DatabaseSync): void {
       .map((r) => `${r.date} ${r.slot}`));
     const open = dates.flatMap((d) => slots.filter((s) => !taken.has(`${d} ${s}`)).map((s) => `${d} ${s}`));
     if (!open.length) throw new HttpError(400, 'Those days are already planned');
-    const book = db.prepare(`SELECT r.id, r.title, r.tags, r.favorite, r.rating,
+    const book = db.prepare(`SELECT r.id, r.title, r.tags, r.favorite, r.rating, r.instructions,
         (SELECT MAX(cooked_at) FROM recipe_cooks c WHERE c.recipe_id = r.id) AS last_cooked
       FROM recipes r WHERE r.home_id = ? ORDER BY r.favorite DESC, r.rating DESC LIMIT 300`).all(ctx.homeId) as Row[];
     const bookIds = new Set(book.map((r) => r.id as string));
+    const tools = homeTools(db, ctx.homeId);
+    const gearNote = (r: Row) => {
+      const lacking = missingTools({ title: r.title as string, instructions: parseJson<string[]>(r.instructions, []) }, tools);
+      return lacking.length ? ` | needs ${lacking.join(', ')} (they don't have it)` : '';
+    };
     claude(db);
     limitAi(ctx);
     await keepAlive(reply, async () => {
@@ -154,11 +161,12 @@ export function kitchenAiRoutes(app: FastifyInstance, db: DatabaseSync): void {
           content: [
             `Plan these open meals for me: ${open.join(', ')}.`,
             'Use dishes from my recipe book where they fit (give their id), and suggest a new dish with its full recipe only when it clearly helps, at most two new ones.',
+            tools.length ? 'Skip book recipes marked as needing gear they don\'t have, unless you can say how to make it with what they own.' : null,
             'Use up anything marked [use soon] early in the week. Mix it up: no repeats, vary the proteins, and lean on favorites and things we have not cooked lately. Weeknights should be quick.',
             b.notes && `What I'm hoping for: ${str(b.notes, 500)}`,
             '',
             'My recipe book (id | title | tags | favorite | rating | last cooked):',
-            ...book.map((r) => `${r.id} | ${r.title} | ${parseJson<string[]>(r.tags, []).join(', ')} | ${r.favorite ? 'yes' : ''} | ${r.rating ?? ''} | ${r.last_cooked ?? 'never'}`),
+            ...book.map((r) => `${r.id} | ${r.title} | ${parseJson<string[]>(r.tags, []).join(', ')} | ${r.favorite ? 'yes' : ''} | ${r.rating ?? ''} | ${r.last_cooked ?? 'never'}${gearNote(r)}`),
             book.length ? '' : '(empty, so every dish is new)',
           ].filter((x) => x != null && x !== false).join('\n'),
         }],

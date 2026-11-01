@@ -10,6 +10,7 @@ import { VersionCard } from '../components/UpdateBanner.tsx';
 import { SecurityCard } from './Security.tsx';
 import { Admin } from './settings/Admin.tsx';
 import { PlacesAndCategories } from './settings/Labels.tsx';
+import { KitchenTools } from './settings/KitchenTools.tsx';
 import { DietsAndAllergies } from './settings/Diets.tsx';
 import { Reminders } from './settings/Reminders.tsx';
 
@@ -234,6 +235,7 @@ export function Settings() {
       <Reminders />
       <SecurityCard />
       <HomeSettings />
+      <KitchenTools />
       <PlacesAndCategories />
       <VersionCard />
       {me?.user.isAdmin && <Admin />}

@@ -270,6 +270,41 @@ test('custom places and categories, and the running-low marker', async () => {
   assert.equal(items[0].markedLow, false, 'restocking clears the mark');
 });
 
+test('kitchen tools: anyone in the home can set them, recipes flag missing gear, and the AI hears about it', async () => {
+  const { login, call } = await setup();
+  const boss = await login('Boss');
+  const kid = await login('Kid');
+  const { body: home } = await call(boss, 'POST', '/api/homes', { name: 'Home' });
+  const base = `/api/homes/${home.id}`;
+  const { body: joined } = await call(boss, 'GET', base);
+  await call(kid, 'POST', '/api/homes/join', { code: joined.joinCode });
+  assert.deepEqual(joined.settings.equipment, []);
+  const { body: rec } = await call(boss, 'POST', `${base}/recipes`, { title: 'Wings', ingredients: [{ name: 'wings', quantity: 2, unit: 'lb' }], instructions: ['Air fry at 380°F for 25 minutes.'] });
+  assert.deepEqual((await call(boss, 'GET', `${base}/recipes`)).body[0].missingTools, [], 'nothing is flagged before tools are set up');
+  const saved = await call(kid, 'PUT', `${base}/equipment`, { equipment: ['oven', 'stovetop', 'oven', 'Tortilla press'] });
+  assert.equal(saved.status, 200, JSON.stringify(saved.body));
+  assert.deepEqual(saved.body.equipment, ['oven', 'stovetop', 'Tortilla press']);
+  assert.deepEqual((await call(boss, 'GET', base)).body.settings.equipment, ['oven', 'stovetop', 'Tortilla press']);
+  assert.deepEqual((await call(boss, 'GET', `${base}/recipes`)).body[0].missingTools, ['Air fryer']);
+  assert.deepEqual((await call(boss, 'GET', `${base}/recipes/${rec.id}`)).body.missingTools, ['Air fryer']);
+  await call(boss, 'PUT', `${base}/equipment`, { equipment: ['oven', 'air-fryer'] });
+  assert.deepEqual((await call(boss, 'GET', `${base}/recipes/${rec.id}`)).body.missingTools, []);
+});
+
+test('Gordy and Rocco see the kitchen tools once a home lists them', async () => {
+  const db = openMemoryDb();
+  const { createHome } = await import('./routes/homes.ts');
+  const { stockForPrompt } = await import('./routes/mixologist.ts');
+  db.prepare("INSERT INTO users (id, name) VALUES ('u1', 'Sam')").run();
+  const homeId = createHome(db, 'u1', 'Den');
+  assert.ok(!stockForPrompt(db, homeId).includes('Kitchen tools'));
+  db.prepare("INSERT OR IGNORE INTO home_settings (home_id) VALUES (?)").run(homeId);
+  db.prepare("UPDATE home_settings SET equipment = ? WHERE home_id = ?").run(JSON.stringify(['oven', 'cocktail-shaker']), homeId);
+  const text = stockForPrompt(db, homeId);
+  assert.match(text, /Kitchen tools this household owns[^\n]*\n- Oven, Cocktail shaker/);
+  assert.match(text, /They do not have: .*Air fryer/);
+});
+
 test('only home managers can add or change places and categories', async () => {
   const { login, call } = await setup();
   const boss = await login('Boss');
