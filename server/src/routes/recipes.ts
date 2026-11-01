@@ -7,8 +7,9 @@ import { importAny, ingredientMatches, matchKey, type Ingredient, type Recipe } 
 import { convertFor } from '../../../shared/units.ts';
 import { publicFetch } from '../security.ts';
 import { adjustItem, recordHistory } from './inventory.ts';
-import { homeEaters, homeLabels } from './homes.ts';
+import { homeEaters, homeLabels, homeTools } from './homes.ts';
 import { dietClashes } from '../../../shared/diets.ts';
+import { missingTools } from '../../../shared/equipment.ts';
 import { body, flag, list, number, text } from '../schemas.ts';
 import { addShoppingItem } from './shopping.ts';
 
@@ -164,12 +165,14 @@ export function recipeRoutes(app: FastifyInstance, db: DatabaseSync): void {
     const index = stockIndex(db, ctx.homeId);
     const expiring = expiringIds(db, ctx.homeId);
     const eaters = homeEaters(db, ctx.homeId);
+    const tools = homeTools(db, ctx.homeId);
     const list = rows.map((r) => {
       const full = loadRecipe(db, r);
       const { status, missing } = readiness(checkIngredients(index, full.ingredients));
       return {
         usesExpiring: usesExpiring(index, full.ingredients, expiring),
         dietWarnings: dietClashes(full.ingredients.filter((i) => !i.optional), eaters).length,
+        missingTools: missingTools(full, tools),
         id: full.id, title: full.title, image: full.image, servings: full.servings, tags: full.tags,
         totalMinutes: (full.prepMinutes ?? 0) + (full.cookMinutes ?? 0) || null,
         ingredientCount: full.ingredients.length, isPublic: full.isPublic, ready: status, missing,
@@ -193,6 +196,7 @@ export function recipeRoutes(app: FastifyInstance, db: DatabaseSync): void {
       favorite: !!row.favorite, rating: row.rating as number | null, notes: row.notes as string, collections: parseJson<string[]>(row.collections, []),
       cookCount: Number(cooks.n), lastCooked: cooks.last as string | null,
       dietClashes: dietClashes(full.ingredients, homeEaters(db, ctx.homeId)),
+      missingTools: missingTools(full, homeTools(db, ctx.homeId)),
       nutrition: parseJson<Record<string, number> | null>(row.nutrition, null),
     };
   });

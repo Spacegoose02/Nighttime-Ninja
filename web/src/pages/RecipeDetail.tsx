@@ -237,6 +237,12 @@ export function RecipeDetail() {
           </ul>
         </div>
       )}
+      {!!recipe.missingTools.length && !cookMode && (
+        <div className="card" role="note">
+          <strong>🍳 Needs gear you don't have:</strong> {recipe.missingTools.join(', ')}.{' '}
+          <Link to={`/chef?ask=${encodeURIComponent(`How can I make ${recipe.title} without ${recipe.missingTools.join(' or ')}?`)}`}>Ask Gordy for a workaround</Link>
+        </div>
+      )}
       {recipe.description && !cookMode && <p style={{ whiteSpace: 'pre-wrap' }}>{recipe.description}</p>}
       {cookMode && recipe.instructions.length > 0 && (
         <div className="card cook-focus stack" aria-live="polite">

@@ -6,6 +6,7 @@ import { HttpError, newId, randomToken, readableCode, requireStr, sha256, str } 
 import { CATEGORIES, LOCATIONS } from '../../../shared/catalog.ts';
 import { body, flag, list, oneOf, text } from '../schemas.ts';
 import { DIETS, type Eater } from '../../../shared/diets.ts';
+import { cleanTools } from '../../../shared/equipment.ts';
 
 export type LabelKind = 'locations' | 'categories';
 const DEFAULT_LABELS: Record<LabelKind, readonly string[]> = { locations: LOCATIONS, categories: CATEGORIES };
@@ -15,6 +16,12 @@ export function homeEaters(db: DatabaseSync, homeId: string): Eater[] {
   return (db.prepare(`SELECT u.name, m.diets, m.allergies FROM home_members m JOIN users u ON u.id = m.user_id
     WHERE m.home_id = ? AND (m.diets != '[]' OR m.allergies != '[]')`).all(homeId) as Row[])
     .map((r) => ({ name: r.name as string, diets: JSON.parse(r.diets as string), allergies: JSON.parse(r.allergies as string) }));
+}
+
+/** The kitchen tools a home owns. Empty when nobody has set them up. */
+export function homeTools(db: DatabaseSync, homeId: string): string[] {
+  const row = db.prepare('SELECT equipment FROM home_settings WHERE home_id = ?').get(homeId) as Row | undefined;
+  try { return cleanTools(JSON.parse((row?.equipment as string) ?? '[]')); } catch { return []; }
 }
 
 /** A home's pantry locations and category labels, falling back to the built-in lists. */
@@ -104,6 +111,7 @@ export function homeRoutes(app: FastifyInstance, db: DatabaseSync): void {
         stores: JSON.parse((settings?.stores as string) ?? '[]'),
         krogerLocationId: settings?.kroger_location_id ?? null,
         ...homeLabels(db, ctx.homeId),
+        equipment: homeTools(db, ctx.homeId),
       },
     };
   });
@@ -143,6 +151,15 @@ export function homeRoutes(app: FastifyInstance, db: DatabaseSync): void {
       }
     });
     return homeLabels(db, ctx.homeId);
+  });
+
+  // Kitchen tools: anyone in the home can tick off the gear they have.
+  app.put('/api/homes/:homeId/equipment', { schema: body({ equipment: list(text, 150) }, ['equipment']) }, async (req) => {
+    const ctx = homeCtx(db, req);
+    const equipment = cleanTools((req.body as Row).equipment);
+    db.prepare('INSERT OR IGNORE INTO home_settings (home_id) VALUES (?)').run(ctx.homeId);
+    db.prepare('UPDATE home_settings SET equipment = ? WHERE home_id = ?').run(JSON.stringify(equipment), ctx.homeId);
+    return { equipment };
   });
 
   app.delete('/api/homes/:homeId', async (req) => {

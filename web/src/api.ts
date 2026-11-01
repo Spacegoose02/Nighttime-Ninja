@@ -110,6 +110,8 @@ export interface RecipeSummary {
   favorite: boolean; rating: number | null; collections: string[];
   /** How many ingredients clash with someone's diet or allergy. */
   dietWarnings: number;
+  /** Gear the recipe needs that the home doesn't have (empty until the home lists its kitchen tools). */
+  missingTools: string[];
 }
 
 export interface RecipeFull extends Recipe {
@@ -117,6 +119,7 @@ export interface RecipeFull extends Recipe {
   ingredients: (Ingredient & { availability: Availability; matched?: string[]; linked?: boolean })[];
   favorite: boolean; rating: number | null; notes: string; cookCount: number; lastCooked: string | null; collections: string[];
   dietClashes: { ingredient: string; person: string; reason: string }[];
+  missingTools: string[];
   nutrition: Nutrition | null;
 }
 
@@ -131,7 +134,7 @@ export interface Meal {
 export interface HomeDetail {
   id: string; name: string; role: 'manager' | 'member'; joinCode: string; calendarUrl: string | null;
   members: { id: string; name: string; avatar: string; role: string; joined_at: string; diets: string[]; allergies: string[] }[];
-  settings: { zipCode: string | null; stores: string[]; krogerLocationId: string | null; locations: string[]; categories: string[] };
+  settings: { zipCode: string | null; stores: string[]; krogerLocationId: string | null; locations: string[]; categories: string[]; equipment: string[] };
 }
 
 /** Reads an image file into a data URL, shrinking big photos so uploads stay small. */

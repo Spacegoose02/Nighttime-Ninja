@@ -8,7 +8,8 @@ import { HttpError, localDate, num, str } from '../util.ts';
 import type { Ingredient } from '../../../shared/recipe.ts';
 import { checkIngredients, saveRecipe, stockIndex } from './recipes.ts';
 import { addShoppingItem } from './shopping.ts';
-import { homeEaters } from './homes.ts';
+import { homeEaters, homeTools } from './homes.ts';
+import { toolsForPrompt } from '../../../shared/equipment.ts';
 import { dietsForPrompt } from '../../../shared/diets.ts';
 import { existingRecipeId, runChat, TOOL_RULES } from './aichat.ts';
 import { aiWebAccess, ask, claude, keepAlive, limitAi, MODEL_CHOICES, mixologistModel, textOf } from '../claude.ts';
@@ -19,6 +20,7 @@ A mixologist is more than a bartender: a master at crafting drinks who invents n
 
 How you work:
 - You can see what the household has in stock (below). Build drinks from it first. Use the item names as they appear there, so the app can match them to the pantry.
+- When their bar tools are listed below, mix with that gear (no shaker? build it in the glass or use a jar with a lid, and say so).
 - When someone lists ingredients, suggest drinks they can make right now from exactly those, and say plainly if a drink needs something they didn't mention.
 - Give amounts in US bar measures: oz, dashes, barspoons, splashes, "top with". One shot is 1.5 oz.
 - For each recipe give a short name, one line on the taste, the ingredients as a list with amounts, then a short "Build:" with the method and glass.
@@ -97,7 +99,7 @@ export function stockForPrompt(db: DatabaseSync, homeId: string): string {
     '',
     'Everything else in stock (juices, sodas, fruit, dairy, sweeteners and so on are fair game):',
     rest.length ? rest.map(line).join('\n') : '- (pantry is empty)',
-    ...[dietsForPrompt(homeEaters(db, homeId))].filter((x): x is string => !!x).flatMap((d) => ['', d]),
+    ...[dietsForPrompt(homeEaters(db, homeId)), toolsForPrompt(homeTools(db, homeId))].filter((x): x is string => !!x).flatMap((d) => ['', d]),
   ].join('\n');
 }
 
