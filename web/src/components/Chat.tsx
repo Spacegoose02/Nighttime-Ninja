@@ -46,7 +46,28 @@ export function Markdown({ text }: { text: string }) {
 /* ---------- the chat itself ---------- */
 
 interface ChatAction { type: 'shopping' | 'saved'; label: string; recipeId?: string }
-interface ChatMsg { role: 'user' | 'assistant'; content: string; actions?: ChatAction[] }
+interface WebSource { url: string; title: string }
+interface ChatMsg { role: 'user' | 'assistant'; content: string; actions?: ChatAction[]; sources?: WebSource[] }
+
+/** The site's name, e.g. "seriouseats.com", for a source with no page title. */
+function siteOf(url: string): string {
+  try { return new URL(url).hostname.replace(/^www\./, ''); } catch { return url; }
+}
+
+/** Web pages a reply drew on, as links that open in a new tab. */
+function Sources({ sources }: { sources: WebSource[] }) {
+  return (
+    <div className="small muted" style={{ marginTop: 8 }}>
+      🌐 Sources:{' '}
+      {sources.map((s, i) => (
+        <Fragment key={s.url}>
+          {i > 0 && ' · '}
+          <a href={s.url} target="_blank" rel="noopener noreferrer" title={s.url}>{s.title || siteOf(s.url)}</a>
+        </Fragment>
+      ))}
+    </div>
+  );
+}
 
 export interface ChatPersona {
   /** API path under the home, e.g. "mixologist/chat". */
@@ -162,13 +183,13 @@ export function Chat({ disabled, persona, initialDraft }: { disabled: boolean; p
     let preview = '';
     try {
       // Send what the app did after each reply too, so the chef knows what's already saved.
-      const res = await apiStream<{ reply: string; actions: ChatAction[]; chatId: string }>(
+      const res = await apiStream<{ reply: string; actions: ChatAction[]; sources?: WebSource[]; chatId: string }>(
         `${base}/${persona.endpoint}`,
-        { chatId, messages: next.map(({ role, content: c, actions }) => ({ role, content: c, actions })) },
+        { chatId, messages: next.map(({ role, content: c, actions, sources }) => ({ role, content: c, actions, sources })) },
         (text) => { preview += text; setStreaming(preview); },
       );
       setChatId(res.chatId);
-      setMsgs([...next, { role: 'assistant', content: res.reply, actions: res.actions }]);
+      setMsgs([...next, { role: 'assistant', content: res.reply, actions: res.actions, sources: res.sources }]);
       setAnnounce(`${persona.name}: ${res.reply.replace(/[*_#`>]/g, '')}`);
     } catch (e) {
       toast((e as Error).message);
@@ -210,6 +231,7 @@ export function Chat({ disabled, persona, initialDraft }: { disabled: boolean; p
                   : <Link key={j} className="pill ok" to="/shopping">🛒 {a.label}</Link>)}
               </div>
             )}
+            {m.role === 'assistant' && !!m.sources?.length && <Sources sources={m.sources} />}
           </div>
           </div>
         ))}

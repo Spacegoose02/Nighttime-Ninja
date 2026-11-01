@@ -91,3 +91,43 @@ test('streams each round as it is written, with a blank line between rounds', as
   assert.equal(heard, 'Let me check your pantry. \n\nSaved Biscuits for you.');
   assert.equal(out.reply, 'Saved Biscuits for you.');
 });
+
+test('a paused web search picks up where it left off, and the pages it used come back as sources', async () => {
+  const replies = [
+    {
+      stop_reason: 'pause_turn',
+      content: [
+        { type: 'text', text: 'Let me look that up, sugar.' },
+        { type: 'server_tool_use', id: 's1', name: 'web_search', input: { query: 'texas roadhouse rolls' } },
+      ],
+    },
+    {
+      stop_reason: 'end_turn',
+      content: [
+        { type: 'text', text: 'The secret is ' },
+        { type: 'text', text: 'honey in the dough', citations: [{ type: 'web_search_result_location', url: 'https://example.com/rolls', title: 'Copycat Rolls', cited_text: '', encrypted_index: '' }] },
+        { type: 'text', text: '.' },
+        { type: 'web_fetch_tool_result', tool_use_id: 'f1', content: { type: 'web_fetch_result', url: 'https://example.org/butter', retrieved_at: null, content: { type: 'document', title: null, source: { type: 'text', media_type: 'text/plain', data: '' } } } },
+      ],
+    },
+  ];
+  const sent: unknown[][] = [];
+  let i = 0;
+  const askFn = async (p: { messages: unknown[] }) => { sent.push([...p.messages]); return replies[i++] as never; };
+  const out = await chatLoop(askFn as never, turn([]), [{ role: 'user', content: 'find me texas roadhouse rolls' }], false);
+  assert.equal(sent.length, 2);
+  // The paused turn goes back as the last message so Claude can carry on.
+  assert.equal((sent[1].at(-1) as { role: string }).role, 'assistant');
+  assert.equal(out.reply, 'Let me look that up, sugar.\n\nThe secret is honey in the dough.');
+  assert.deepEqual(out.sources, [
+    { url: 'https://example.com/rolls', title: 'Copycat Rolls' },
+    { url: 'https://example.org/butter', title: '' },
+  ]);
+});
+
+test('a refused reply has no sources', async () => {
+  const askFn = async () => ({ stop_reason: 'refusal', content: [{ type: 'text', text: 'x', citations: [{ type: 'web_search_result_location', url: 'https://example.com', title: 'x', cited_text: '', encrypted_index: '' }] }] }) as never;
+  const out = await chatLoop(askFn, turn([]), [{ role: 'user', content: 'hi' }], false);
+  assert.deepEqual(out.sources, []);
+  assert.equal(out.reply, 'no');
+});

@@ -25,6 +25,27 @@ export function mixologistModel(db: DatabaseSync): string | null {
   return getSetting(db, 'mixologistModel') ?? config.anthropic.model;
 }
 
+/** Models that take the newer web tools, which filter search results before they reach Claude. */
+const FILTERED_WEB_MODELS = new Set(['claude-opus-5-5', 'claude-opus-5', 'claude-opus-4-8', 'claude-opus-4-7', 'claude-opus-4-6', 'claude-sonnet-5-5', 'claude-sonnet-5', 'claude-sonnet-4-6']);
+
+/** Whether Gordy and Rocco may search the web. On unless an admin turns it off in Settings. */
+export function aiWebAccess(db: DatabaseSync): boolean {
+  return getSetting(db, 'aiWebAccess') !== 'off';
+}
+
+/**
+ * Claude's own web search and web fetch, run by Anthropic, so there's nothing extra to host or sign up for.
+ * Each search is billed to the server's Claude key, so a reply gets at most a few of each.
+ */
+export function webTools(db: DatabaseSync): Anthropic.Beta.BetaToolUnion[] {
+  const model = mixologistModel(db);
+  if (!model || !aiWebAccess(db)) return [];
+  const pages = { max_uses: 3, max_content_tokens: 20000, citations: { enabled: true } };
+  return FILTERED_WEB_MODELS.has(model)
+    ? [{ type: 'web_search_20260209', name: 'web_search', max_uses: 3 }, { type: 'web_fetch_20260209', name: 'web_fetch', ...pages }]
+    : [{ type: 'web_search_20250305', name: 'web_search', max_uses: 3 }, { type: 'web_fetch_20250910', name: 'web_fetch', ...pages }];
+}
+
 let client: Anthropic | null = null;
 
 export function claude(db: DatabaseSync): { client: Anthropic; model: string } {
@@ -89,8 +110,38 @@ export async function ask(db: DatabaseSync, params: Omit<Anthropic.Beta.MessageC
   }
 }
 
+/**
+ * The reply's text. Text blocks that sit next to each other are one passage (a cited answer comes back split
+ * into pieces at each citation), so they join as they are; a tool call or search in between starts a new paragraph.
+ */
 export function textOf(m: Anthropic.Beta.BetaMessage): string {
-  return m.content.flatMap((b) => (b.type === 'text' ? [b.text] : [])).join('\n\n').trim();
+  const parts: string[] = [];
+  let joined = false;
+  for (const b of m.content) {
+    if (b.type === 'text') {
+      if (joined) parts[parts.length - 1] += b.text;
+      else parts.push(b.text);
+      joined = true;
+    } else if (b.type !== 'thinking' && b.type !== 'redacted_thinking') {
+      joined = false;
+    }
+  }
+  return parts.map((p) => p.trim()).filter(Boolean).join('\n\n');
+}
+
+export interface WebSource { url: string; title: string }
+
+/** The web pages a reply drew on: the ones it cites, and any page it read in full. */
+export function sourcesOf(m: Anthropic.Beta.BetaMessage): WebSource[] {
+  const out: WebSource[] = [];
+  for (const b of m.content) {
+    if (b.type === 'text') {
+      for (const c of b.citations ?? []) if (c.type === 'web_search_result_location') out.push({ url: c.url, title: c.title ?? '' });
+    } else if (b.type === 'web_fetch_tool_result' && b.content.type === 'web_fetch_result') {
+      out.push({ url: b.content.url, title: b.content.content.title ?? '' });
+    }
+  }
+  return out;
 }
 
 /**

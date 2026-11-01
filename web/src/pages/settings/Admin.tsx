@@ -48,24 +48,31 @@ export function Admin() {
   );
 }
 
-/** Server admin: which Claude model the Mixologist uses. */
+/** Server admin: which Claude model the AI helpers use, and whether they may search the web. */
 function AdminMixologist() {
   const { toast } = useApp();
-  const [s, reload] = useLoad<{ available: boolean; model: string | null; envModel: string | null; choices: { id: string; label: string; blurb: string }[] }>('/api/admin/mixologist');
+  const [s, reload] = useLoad<{ available: boolean; model: string | null; envModel: string | null; choices: { id: string; label: string; blurb: string }[]; webAccess: boolean }>('/api/admin/mixologist');
   if (!s) return null;
   const choices = s.envModel && !s.choices.some((c) => c.id === s.envModel)
     ? [...s.choices, { id: s.envModel, label: s.envModel, blurb: 'From ANTHROPIC_MODEL' }]
     : s.choices;
   const pick = async (model: string) => { await api('/api/admin/mixologist', { method: 'PATCH', body: { model } }); await reload(); toast('Saved'); };
+  const setWeb = async (webAccess: boolean) => { await api('/api/admin/mixologist', { method: 'PATCH', body: { webAccess } }); await reload(); toast('Saved'); };
   return (
     <div className="stack">
       <h3>🍸 Mixologist model</h3>
       {s.available ? (
-        <div className="chips">
-          {choices.map((c) => (
-            <button key={c.id} className={`chip${s.model === c.id ? ' on' : ''}`} title={c.id} onClick={() => pick(c.id)}>{c.label} · {c.blurb}</button>
-          ))}
-        </div>
+        <>
+          <div className="chips">
+            {choices.map((c) => (
+              <button key={c.id} className={`chip${s.model === c.id ? ' on' : ''}`} title={c.id} onClick={() => pick(c.id)}>{c.label} · {c.blurb}</button>
+            ))}
+          </div>
+          <label className="row small" style={{ gap: 6 }}>
+            <input type="checkbox" checked={s.webAccess} onChange={(e) => void setWeb(e.target.checked)} style={{ width: 20, minHeight: 20 }} />
+            🌐 Let Gordy and Rocco search the web (up to 3 searches a reply, billed to your Claude key)
+          </label>
+        </>
       ) : (
         <p className="small muted" style={{ margin: 0 }}>Add <code>ANTHROPIC_API_KEY</code> to the server and restart to turn on the Mixologist, then pick a model here.</p>
       )}

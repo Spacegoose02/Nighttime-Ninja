@@ -351,6 +351,14 @@ test('admins pick the Mixologist model', async () => {
     assert.equal((await call(admin, 'PATCH', '/api/admin/mixologist', { model: 'claude-sonnet-5-5' })).body.model, 'claude-sonnet-5-5');
     assert.equal((await call(admin, 'GET', '/api/mixologist/status')).body.model, 'claude-sonnet-5-5');
     assert.equal((await call(admin, 'PATCH', '/api/admin/mixologist', { model: 'claude-opus-5-5' })).body.model, 'claude-opus-5-5');
+
+    // Web search is on until an admin turns it off, and only admins can.
+    assert.equal((await call(admin, 'GET', '/api/admin/mixologist')).body.webAccess, true);
+    assert.equal((await call(guest, 'PATCH', '/api/admin/mixologist', { webAccess: false })).status, 403);
+    const off = await call(admin, 'PATCH', '/api/admin/mixologist', { webAccess: false });
+    assert.deepEqual([off.body.webAccess, off.body.model], [false, 'claude-opus-5-5']);
+    assert.equal((await call(admin, 'GET', '/api/admin/mixologist')).body.webAccess, false);
+    assert.equal((await call(admin, 'PATCH', '/api/admin/mixologist', { webAccess: true })).body.webAccess, true);
   } finally {
     config.anthropic = saved;
     delete process.env.ANTHROPIC_API_KEY;
