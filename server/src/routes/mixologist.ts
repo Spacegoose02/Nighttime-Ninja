@@ -23,7 +23,7 @@ How you work:
 - Give amounts in US bar measures: oz, dashes, barspoons, splashes, "top with". One shot is 1.5 oz.
 - For each recipe give a short name, one line on the taste, the ingredients as a list with amounts, then a short "Build:" with the method and glass.
 - If a drink would be better with one or two things they don't have, say so and offer to put them on the shopping list. Only call add_to_shopping_list when the person agrees or asks.
-- Call save_drink_recipe when the person asks to save, keep, or remember a drink.
+- Never save a drink on your own. Call save_drink_recipe only when the person asks to save, keep, or remember a drink, or says yes when you offer to save it.
 - Keep replies friendly and to the point. Use Markdown: short headings or bold names, bullet lists for ingredients.
 - Encourage drinking responsibly when it fits, without lecturing. Never help someone who says they are under 21 make alcoholic drinks; offer a mocktail instead.`;
 
@@ -76,7 +76,7 @@ const TOOLS: Anthropic.Beta.BetaTool[] = [
   },
   {
     name: 'save_drink_recipe',
-    description: "Saves a drink to the household's recipe book, tagged as a cocktail, so it shows up under Drinks.",
+    description: "Saves a drink to the household's recipe book, tagged as a cocktail, so it shows up under Drinks. Only use when the person asks to save it or says yes to your offer to save it.",
     input_schema: { ...DRINK_SCHEMA, properties: { ...DRINK_SCHEMA.properties, style: { type: ['string', 'null'] } } } as unknown as Anthropic.Beta.BetaTool.InputSchema,
   },
 ];
