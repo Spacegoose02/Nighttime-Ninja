@@ -5,6 +5,7 @@ import { BarcodeScanner } from '../components/BarcodeScanner.tsx';
 import { api, fileToDataUrl, freezerMonths, tileState, type Item } from '../api.ts';
 import { useApp, useLoad } from '../state.tsx';
 import { useListPicker } from '../components/ListPicker.tsx';
+import { IconPicker } from '../components/IconPicker.tsx';
 import { useUrlState } from '../urlState.ts';
 import { amount } from '../format.ts';
 import { CATEGORIES, LOCATIONS, guessItem } from '../../../shared/catalog.ts';
@@ -137,8 +138,8 @@ export function ItemEditor({ item, draft, labels, canAdd, onClose }: {
           <label className="field" style={{ flex: 1 }}>Frozen on<input type="date" value={f.frozenOn} onChange={set('frozenOn')} placeholder="Today" /></label>
         )}
       </div>
+      <IconPicker value={f.icon} guess={guessItem(f.name).icon} onChange={(icon) => setF({ ...f, icon })} />
       <div className="row">
-        <label className="field" style={{ width: 110 }}>Icon<input value={f.icon} onChange={set('icon')} placeholder={guessItem(f.name).icon} /></label>
         <label className="field" style={{ flex: 1 }}>Photo<input type="file" accept="image/*" capture="environment" onChange={(e) => photo(e.target.files?.[0])} /></label>
         {f.photo && <button className="ghost" onClick={() => setF({ ...f, photo: '' })}>Remove photo</button>}
       </div>

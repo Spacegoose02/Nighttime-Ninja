@@ -220,6 +220,16 @@ label.field { display: flex; flex-direction: column; gap: 6px; font-weight: 600;
 }
 .chip.on { background: var(--primary); color: var(--on-primary); border-color: transparent; }
 
+/* pantry icon picker */
+.icon-picker { display: flex; flex-direction: column; gap: 6px; }
+.icon-picker > span { font-weight: 600; font-size: 0.9rem; }
+.icon-current { justify-content: flex-start; align-self: flex-start; }
+.icon-panel { border: 1px solid var(--border); border-radius: 14px; padding: 10px; max-height: 320px; overflow-y: auto; background: var(--surface-2); }
+.icon-panel .row input { flex: 1; }
+.icon-grid { display: grid; gap: 4px; grid-template-columns: repeat(auto-fill, minmax(44px, 1fr)); }
+.icon-cell { min-height: 44px; padding: 0; font-size: 1.5rem; border-radius: 10px; background: var(--surface); }
+.icon-cell.on { outline: 3px solid var(--primary); outline-offset: -3px; }
+
 /* green item tiles */
 .tiles { display: grid; gap: 14px; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
 .tile {
