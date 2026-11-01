@@ -11,7 +11,7 @@ import { addShoppingItem } from './shopping.ts';
 import { homeEaters } from './homes.ts';
 import { dietsForPrompt } from '../../../shared/diets.ts';
 import { existingRecipeId, runChat, TOOL_RULES } from './aichat.ts';
-import { ask, claude, keepAlive, limitAi, MODEL_CHOICES, mixologistModel, textOf } from '../claude.ts';
+import { aiWebAccess, ask, claude, keepAlive, limitAi, MODEL_CHOICES, mixologistModel, textOf } from '../claude.ts';
 
 const PERSONA = `You are the Mixologist inside Nighttime Ninja, a home kitchen app run by a raccoon chef.
 
@@ -166,17 +166,24 @@ export function mixologistRoutes(app: FastifyInstance, db: DatabaseSync): void {
 
   app.get('/api/admin/mixologist', async (req) => {
     requireAdmin(req);
-    return { available: !!config.anthropic, model: mixologistModel(db), envModel: config.anthropic?.model ?? null, choices: MODEL_CHOICES };
+    return { available: !!config.anthropic, model: mixologistModel(db), envModel: config.anthropic?.model ?? null, choices: MODEL_CHOICES, webAccess: aiWebAccess(db) };
   });
 
   app.patch('/api/admin/mixologist', async (req) => {
     requireAdmin(req);
-    const model = str(((req.body ?? {}) as Row).model, 80);
+    const b = (req.body ?? {}) as Row;
+    // Web search for Gordy and Rocco: on by default, so only "off" is stored.
+    if (typeof b.webAccess === 'boolean') {
+      if (b.webAccess) db.prepare("DELETE FROM server_settings WHERE key = 'aiWebAccess'").run();
+      else setSetting(db, 'aiWebAccess', 'off');
+      if (b.model === undefined) return { model: mixologistModel(db), webAccess: aiWebAccess(db) };
+    }
+    const model = str(b.model, 80);
     if (!model || !(MODEL_CHOICES.some((c) => c.id === model) || model === config.anthropic?.model)) throw new HttpError(400, 'Pick one of the listed models');
     // Picking the env var's model clears the override, so ANTHROPIC_MODEL takes over again.
     if (model === config.anthropic?.model) db.prepare("DELETE FROM server_settings WHERE key = 'mixologistModel'").run();
     else setSetting(db, 'mixologistModel', model);
-    return { model: mixologistModel(db) };
+    return { model: mixologistModel(db), webAccess: aiWebAccess(db) };
   });
 
   app.post('/api/homes/:homeId/mixologist/chat', async (req, reply) => {
