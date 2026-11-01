@@ -28,6 +28,15 @@ export function mixologistModel(db: DatabaseSync): string | null {
 /** Models that take the newer web tools, which filter search results before they reach Claude. */
 const FILTERED_WEB_MODELS = new Set(['claude-opus-5-5', 'claude-opus-5', 'claude-opus-4-8', 'claude-opus-4-7', 'claude-opus-4-6', 'claude-sonnet-5-5', 'claude-sonnet-5', 'claude-sonnet-4-6']);
 
+/**
+ * Models that accept a forced tool call (tool_choice "tool"). Newer ones (Claude Opus 5.5, Claude Sonnet 5.5,
+ * Claude Fable 5.1) turn the whole request down with a 400, so for anything not listed here the chat asks for
+ * the tool in a system message instead. That's also the guess for models newer than this list.
+ */
+const FORCED_TOOL_MODELS = /^claude-(3-|opus-4|sonnet-4|haiku-4)|^claude-(opus|sonnet|fable)-5(-\d{8})?$|^claude-haiku-5-5(-\d{8})?$/;
+
+export const canForceTool = (model: string): boolean => FORCED_TOOL_MODELS.test(model);
+
 /** Whether Gordy and Rocco may search the web. On unless an admin turns it off in Settings. */
 export function aiWebAccess(db: DatabaseSync): boolean {
   return getSetting(db, 'aiWebAccess') !== 'off';

@@ -6,7 +6,7 @@ import type { DatabaseSync } from 'node:sqlite';
 import { homeCtx, type HomeCtx } from '../auth.ts';
 import type { Row } from '../db.ts';
 import { HttpError, newId, str } from '../util.ts';
-import { ask, claude, keepAlive, limitAi, sourcesOf, textOf, webTools, type WebSource } from '../claude.ts';
+import { ask, canForceTool, claude, keepAlive, limitAi, sourcesOf, textOf, webTools, type WebSource } from '../claude.ts';
 
 export type ChatKind = 'mixologist' | 'chef';
 export interface ChatAction { type: 'shopping' | 'saved'; label: string; recipeId?: string }
@@ -96,7 +96,7 @@ export async function runChat(db: DatabaseSync, req: FastifyRequest, reply: Fast
   const b = (req.body ?? {}) as Row;
   const history = readHistory(b);
   if (!history.length || history[history.length - 1].role !== 'user') throw new HttpError(400, 'Say something first');
-  claude(db);
+  const { model } = claude(db);
   limitAi(ctx);
   const chatId = str(b.chatId, 60);
   const lastUser = history[history.length - 1].content;
@@ -107,7 +107,7 @@ export async function runChat(db: DatabaseSync, req: FastifyRequest, reply: Fast
   const web = webTools(db);
   const withWeb = web.length ? { ...turn, tools: [...turn.tools, ...web], system: [...turn.system, { type: 'text' as const, text: WEB_RULES }] } : turn;
   await keepAlive(reply, async (onText) => {
-    const { reply: replyText, actions, sources } = await chatLoop((p, t) => ask(db, p, t), withWeb, history, wantsSave, onText);
+    const { reply: replyText, actions, sources } = await chatLoop((p, t) => ask(db, p, t), { ...withWeb, canForce: canForceTool(model) }, history, wantsSave, onText);
     const stored: StoredMsg[] = [...history, { role: 'assistant', content: replyText, actions, ...(sources.length ? { sources } : {}) }];
     const id = saveChat(db, ctx, turn.kind, chatId, stored);
     return { reply: replyText, actions, sources, chatId: id };
@@ -120,15 +120,19 @@ type AskFn = (p: Omit<Anthropic.Beta.MessageCreateParamsNonStreaming, 'model' | 
  * The tool loop on its own (no HTTP), so it can be tested with a stand-in for Claude.
  * onText hears each round's text as it's written, with a blank line between rounds. It's only a preview:
  * the returned reply is what to keep, since it can drop or add lines once the tools have run.
+ * canForce says whether the model takes a forced tool call. When it doesn't (Claude Opus 5.5 and other newer
+ * models reject one outright), a save is asked for in a system message instead, which stays in the conversation.
  */
-export async function chatLoop(askFn: AskFn, turn: Pick<ChatTurn, 'system' | 'tools' | 'saveTool' | 'refused' | 'empty' | 'runTool'>, history: StoredMsg[], wantsSave: boolean, onText?: (text: string) => void): Promise<{ reply: string; actions: ChatAction[]; sources: WebSource[] }> {
+export async function chatLoop(askFn: AskFn, turn: Pick<ChatTurn, 'system' | 'tools' | 'saveTool' | 'refused' | 'empty' | 'runTool'> & { canForce?: boolean }, history: StoredMsg[], wantsSave: boolean, onText?: (text: string) => void): Promise<{ reply: string; actions: ChatAction[]; sources: WebSource[] }> {
   const messages = toClaude(history);
   const actions: ChatAction[] = [];
   const sources = new Map<string, WebSource>();
   let finalText = '';
   const earlier: string[] = [];
   let streamed = false;
-  const round = (force: string | null, preview = true) => {
+  const canForce = turn.canForce ?? true;
+  const round = (force: string | null, why: string, preview = true) => {
+    if (force && !canForce) messages.push({ role: 'system', content: `${why} Call the ${force} tool now, before you write your reply.` });
     let first = true;
     const hear = onText && preview ? (t: string) => {
       if (first && streamed) onText('\n\n');
@@ -138,7 +142,7 @@ export async function chatLoop(askFn: AskFn, turn: Pick<ChatTurn, 'system' | 'to
     } : undefined;
     return askFn({
       system: turn.system, tools: turn.tools, messages,
-      ...(force ? { tool_choice: { type: 'tool' as const, name: force } } : {}),
+      ...(force && canForce ? { tool_choice: { type: 'tool' as const, name: force } } : {}),
       output_config: { effort: 'low' },
     }, hear);
   };
@@ -147,7 +151,7 @@ export async function chatLoop(askFn: AskFn, turn: Pick<ChatTurn, 'system' | 'to
   let force: string | null = wantsSave ? turn.saveTool : null;
   let refused = false;
   for (let i = 0; i < 8; i++) {
-    const res = await round(force);
+    const res = await round(force, 'The person just asked to save a recipe. If that is what they mean, save it with the full recipe.');
     force = null;
     if (res.stop_reason === 'refusal') { refused = true; break; }
     for (const s of sourcesOf(res)) if (!sources.has(s.url)) sources.set(s.url, s);
@@ -178,7 +182,7 @@ export async function chatLoop(askFn: AskFn, turn: Pick<ChatTurn, 'system' | 'to
     messages.push({ role: 'assistant', content: finalText || '.' });
     messages.push({ role: 'user', content: 'You said it was saved, but nothing was saved yet. Save it now with the tool.' });
     try {
-      const res = await round(turn.saveTool, false);
+      const res = await round(turn.saveTool, 'Nothing was saved yet.', false);
       for (const block of res.content) {
         if (block.type === 'tool_use') {
           try { turn.runTool(block.name, block.input as Row, actions); } catch { /* reported below */ }

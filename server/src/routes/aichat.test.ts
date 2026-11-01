@@ -4,10 +4,10 @@ import { chatLoop, wantsToSave, type ChatAction } from './aichat.ts';
 
 // A stand-in for Claude that plays back scripted replies and records what it was asked.
 function fake(script: ({ text?: string; tool?: { name: string; input: object } })[]) {
-  const calls: { tool_choice?: unknown }[] = [];
+  const calls: { tool_choice?: unknown; messages: { role: string; content?: unknown }[] }[] = [];
   let i = 0;
-  const askFn = async (p: { tool_choice?: unknown }, onText?: (t: string) => void) => {
-    calls.push(p);
+  const askFn = async (p: { tool_choice?: unknown; messages: { role: string; content?: unknown }[] }, onText?: (t: string) => void) => {
+    calls.push({ ...p, messages: [...p.messages] });
     const step = script[Math.min(i++, script.length - 1)];
     if (step.text && onText) for (const word of step.text.split(/(?<= )/)) onText(word);
     const content: object[] = [];
@@ -57,6 +57,39 @@ test('claiming a save that never happened triggers a real save', async () => {
   assert.deepEqual(saves, ['Biscuits']);
   assert.deepEqual(calls[1].tool_choice, { type: 'tool', name: 'save_recipe' });
   assert.equal(out.actions.length, 1);
+});
+
+test('models that refuse a forced tool call are asked to save in a system message instead', async () => {
+  const saves: string[] = [];
+  const { askFn, calls } = fake([{ tool: { name: 'save_recipe', input: { title: 'Biscuits' } } }, { text: 'Saved it, sugar!' }]);
+  const out = await chatLoop(askFn, { ...turn(saves), canForce: false }, [{ role: 'user', content: RECIPE }, { role: 'assistant', content: RECIPE }, { role: 'user', content: 'save it' }], true);
+  assert.equal(calls[0].tool_choice, undefined);
+  const last = calls[0].messages.at(-1)!;
+  assert.equal(last.role, 'system');
+  assert.match(String(last.content), /save_recipe/);
+  assert.equal(calls[0].messages.at(-2)!.role, 'user');
+  // The note stays put on the next round, so the conversation only ever grows.
+  assert.deepEqual(calls[1].messages.slice(0, 4), calls[0].messages);
+  assert.equal(calls[1].tool_choice, undefined);
+  assert.deepEqual(saves, ['Biscuits']);
+  assert.equal(out.reply, 'Saved it, sugar!');
+});
+
+test('a false save claim on those models gets a system message too', async () => {
+  const saves: string[] = [];
+  const { askFn, calls } = fake([{ text: "I've saved your biscuits to the recipe book!" }, { tool: { name: 'save_recipe', input: { title: 'Biscuits' } } }]);
+  const out = await chatLoop(askFn, { ...turn(saves), canForce: false }, [{ role: 'user', content: 'biscuits recipe' }], false);
+  assert.equal(calls[0].messages.some((m) => m.role === 'system'), false);
+  assert.equal(calls[1].tool_choice, undefined);
+  assert.equal(calls[1].messages.at(-1)!.role, 'system');
+  assert.deepEqual(saves, ['Biscuits']);
+  assert.equal(out.actions.length, 1);
+});
+
+test('knows which models take a forced tool call', async () => {
+  const { canForceTool } = await import('../claude.ts');
+  for (const m of ['claude-opus-5', 'claude-opus-4-8', 'claude-sonnet-5', 'claude-sonnet-4-5-20250929', 'claude-haiku-5-5', 'claude-haiku-4-5', 'claude-fable-5']) assert.ok(canForceTool(m), m);
+  for (const m of ['claude-opus-5-5', 'claude-sonnet-5-5', 'claude-fable-5-1', 'claude-mythos-5-1', 'claude-opus-6']) assert.ok(!canForceTool(m), m);
 });
 
 test('if the save still fails, the reply says so instead of pretending', async () => {
