@@ -17,6 +17,7 @@ import { PlacesAndCategories } from './settings/Labels.tsx';
 import { KitchenTools } from './settings/KitchenTools.tsx';
 import { DietsAndAllergies } from './settings/Diets.tsx';
 import { Reminders } from './settings/Reminders.tsx';
+import { CalendarSync } from './settings/CalendarSync.tsx';
 
 const THEMES = [
   { id: 'auto', name: 'Match my device', swatch: 'linear-gradient(135deg, #2f7d4f 50%, #0f1612 50%)' },
@@ -184,6 +185,7 @@ function HomeSettings() {
           {isManager && <button onClick={async () => { await api(`${base}/calendar-token`, { body: {} }); await reload(); toast('Old link turned off'); }}>Reset link</button>}
         </div>
       )}
+      <CalendarSync isManager={isManager} />
 
       <h3>Stores</h3>
       <div className="chips">
