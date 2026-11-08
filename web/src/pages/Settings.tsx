@@ -235,6 +235,7 @@ function HomeSettings() {
           <h3>Backup</h3>
           <div className="row">
             <a className="btn" href={`${base}/export`}>⬇️ Download everything (JSON)</a>
+            <a className="btn" href={`${base}/export/paprika`} title="Opens in Paprika, Mealie and Tandoor">⬇️ Recipes for another app (Paprika file)</a>
             <button className="danger" onClick={async () => {
               if (await dialogs.prompt(`Type the home name to delete it forever: ${home.name}`, '', { okLabel: 'Delete forever', danger: true, mustType: home.name }) !== home.name) return;
               await api(base, { method: 'DELETE' });

@@ -53,5 +53,9 @@ export const config = {
   anthropic: process.env.ANTHROPIC_API_KEY
     ? { apiKey: process.env.ANTHROPIC_API_KEY, model: process.env.ANTHROPIC_MODEL || 'claude-opus-5-5' }
     : null,
+  // Your own AI server (Ollama, LM Studio, llama.cpp, vLLM…) with an OpenAI-compatible API. When set, it's used instead of Claude.
+  localAi: process.env.AI_BASE_URL
+    ? { baseUrl: process.env.AI_BASE_URL, model: process.env.AI_MODEL || 'llama3.1', apiKey: process.env.AI_API_KEY || null }
+    : null,
   webDist: path.resolve(process.env.WEB_DIST || fileURLToPath(new URL('../../web/dist', import.meta.url))),
 };

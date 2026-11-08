@@ -1,3 +1,8 @@
+---
+title: Development
+nav_order: 9
+---
+
 # Development
 
 Requires Node.js 24 or newer.
@@ -30,4 +35,4 @@ Tagging a release (`git tag v0.1.0 && git push --tags`) builds the Docker image,
 
 To publish a signed Android release instead of a debug build, add four repository secrets: `ANDROID_KEYSTORE_BASE64` (your `.jks` file, base64-encoded), `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS` and `ANDROID_KEY_PASSWORD`. Keep the keystore safe: every future update has to be signed with the same key. Phones that installed an older debug-signed APK need to uninstall it once before installing the signed one.
 
-See [CONTRIBUTING.md](../CONTRIBUTING.md) for how to send a change.
+See [CONTRIBUTING.md](https://github.com/Spacegoose02/Nighttime-Ninja/blob/main/CONTRIBUTING.md) for how to send a change.

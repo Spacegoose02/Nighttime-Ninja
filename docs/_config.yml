@@ -1,0 +1,21 @@
+# The documentation site at https://spacegoose02.github.io/Nighttime-Ninja/, built by GitHub Pages from this folder.
+title: Nighttime Ninja
+description: A self-hosted, tablet-first kitchen manager. Recipes, pantry, shopping lists and meal plan, run by a very organized raccoon.
+remote_theme: just-the-docs/just-the-docs@v0.10.1
+plugins:
+  - jekyll-remote-theme
+  - jekyll-relative-links
+relative_links:
+  enabled: true
+  collections: false
+search_enabled: true
+color_scheme: light
+aux_links:
+  GitHub: https://github.com/Spacegoose02/Nighttime-Ninja
+  Releases: https://github.com/Spacegoose02/Nighttime-Ninja/releases
+footer_content: "Nighttime Ninja is open source under the MIT license."
+gh_edit_link: true
+gh_edit_repository: https://github.com/Spacegoose02/Nighttime-Ninja
+gh_edit_branch: main
+gh_edit_source: docs
+gh_edit_view_mode: edit

@@ -22,6 +22,7 @@ jobs:
       - run: npm run typecheck
       - run: npm test
       - run: npm run build
+      - run: npm run budget
       # One real run through the app in a browser: first account, a home, the shopping list, the pantry.
       - run: npx playwright install --with-deps chromium
       - run: npm run test:e2e
