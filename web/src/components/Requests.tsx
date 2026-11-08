@@ -59,9 +59,9 @@ export function Requests({ onAnswered }: { onAnswered?: () => void }) {
       {lists && lists.length > 1 && (
         <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
           <span className="small muted">{t('Yes adds to')}</span>
-          <div className="chips" role="radiogroup" aria-label={t('Yes adds to')}>
+          <div className="chips">
             {lists.map((l) => (
-              <button key={l.id} role="radio" aria-checked={l.id === listId} className={`chip${l.id === listId ? ' on' : ''}`} onClick={() => pickList(l.id)}>{l.name}</button>
+              <button key={l.id} aria-pressed={l.id === listId} className={`chip${l.id === listId ? ' on' : ''}`} onClick={() => pickList(l.id)}>{l.name}</button>
             ))}
           </div>
         </div>
