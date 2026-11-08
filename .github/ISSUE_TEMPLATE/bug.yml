@@ -1,0 +1,31 @@
+name: Bug report
+description: Something isn't working as it should
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What did you do, what did you expect, and what happened instead?
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: Shown in Settings, or in the Docker image tag.
+      placeholder: "0.11.0"
+    validations:
+      required: true
+  - type: dropdown
+    id: where
+    attributes:
+      label: How do you run it?
+      multiple: true
+      options: [Docker, Unraid, Android app, Windows app, Browser on a phone, Browser on a computer or tablet]
+  - type: textarea
+    id: logs
+    attributes:
+      label: Server log (optional)
+      description: Remove anything private, such as e-mail addresses, tokens or your server address.
+      render: text

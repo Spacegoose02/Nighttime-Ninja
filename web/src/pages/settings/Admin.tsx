@@ -19,6 +19,7 @@ export function Admin() {
       <h2>Server admin</h2>
       <AdminSignIn />
       <AdminMixologist />
+      <AdminBackups />
       <h3>People</h3>
       <table>
         <thead><tr><th>Person</th><th>Sign-in</th><th>Homes</th><th>Admin</th><th /></tr></thead>
@@ -75,6 +76,38 @@ function AdminMixologist() {
         </>
       ) : (
         <p className="small muted" style={{ margin: 0 }}>Add <code>ANTHROPIC_API_KEY</code> to the server and restart to turn on the Mixologist, then pick a model here.</p>
+      )}
+    </div>
+  );
+}
+
+interface Backups { dir: string; backups: { name: string; kind: 'nightly' | 'upgrade' | 'manual'; size: number; createdAt: string }[] }
+const KIND = { nightly: 'Nightly', upgrade: 'Before an upgrade', manual: 'Made by hand' } as const;
+
+/** Server admin: the automatic database backups, with a download link for each. */
+function AdminBackups() {
+  const { toast } = useApp();
+  const [data, reload] = useLoad<Backups>('/api/admin/backups');
+  if (!data) return null;
+  const now = async () => { await api('/api/admin/backups', { method: 'POST', body: {} }); await reload(); toast('Backup made'); };
+  return (
+    <div className="stack">
+      <h3>Backups</h3>
+      <p className="small muted" style={{ margin: 0 }}>
+        The database is copied every night (last 7 kept) and before every upgrade (last 3 kept), into <code>{data.dir}</code>.
+        Photos live in the <code>uploads</code> folder next to it; back that up with the rest of your data folder.
+        To restore, stop the server, replace <code>nighttime-ninja.db</code> with a backup, and start it again.
+      </p>
+      <div className="row"><button onClick={now}>Back up now</button></div>
+      {data.backups.length === 0 ? <p className="small muted" style={{ margin: 0 }}>No backups yet. The first nightly one is made a minute after the server starts.</p> : (
+        <ul className="plain stack" style={{ gap: 4 }}>
+          {data.backups.map((b) => (
+            <li key={b.name} className="row small" style={{ justifyContent: 'space-between' }}>
+              <span>{new Date(b.createdAt).toLocaleString()} <span className="muted">· {KIND[b.kind]} · {(b.size / 1048576).toFixed(1)} MB</span></span>
+              <a href={`/api/admin/backups/${encodeURIComponent(b.name)}`} download>Download</a>
+            </li>
+          ))}
+        </ul>
       )}
     </div>
   );

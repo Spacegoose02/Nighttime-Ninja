@@ -4,6 +4,8 @@ import type { RecipeSummary } from '../api.ts';
 import { useUrlState } from '../urlState.ts';
 import { useApp, useLoad } from '../state.tsx';
 import { minutes } from '../format.ts';
+import { recipeEmoji, recipeTint } from '../recipeArt.ts';
+import { Icon } from '../components/Icon.tsx';
 
 export const READY_LABEL = { ready: ['ok', '✅ Ready to cook'], almost: ['warn', '🟡 Almost'], missing: ['bad', 'Missing items'] } as const;
 
@@ -52,9 +54,9 @@ export function Recipes() {
     <div className="stack">
       <div className="topbar">
         <h1>Recipes</h1>
-        <Link className="btn" to="/recipes/community">🌍 Shared</Link>
-        <Link className="btn" to="/recipes/import">⬇️ Import</Link>
-        <Link className="btn primary" to="/recipes/new">＋ New</Link>
+        <Link className="btn" to="/recipes/community"><Icon name="globe" /> Shared</Link>
+        <Link className="btn" to="/recipes/import"><Icon name="download" /> Import</Link>
+        <Link className="btn primary" to="/recipes/new"><Icon name="add" /> New</Link>
       </div>
       <div className="row">
         <input placeholder="Search recipes or tags" value={q} onChange={(e) => setQ(e.target.value)} style={{ maxWidth: 380 }} />
@@ -89,7 +91,9 @@ export function Recipes() {
           const [cls, label] = READY_LABEL[r.ready];
           return (
             <Link key={r.id} to={`/recipes/${r.id}`} className="card recipe-card">
-              <div className="cover">{r.image ? <img src={r.image} alt="" loading="lazy" /> : '🍲'}</div>
+              {r.image
+                ? <div className="cover"><img src={r.image} alt="" loading="lazy" decoding="async" /></div>
+                : <div className="cover" style={{ background: recipeTint(r.title) }} aria-hidden>{recipeEmoji(r.title, r.tags)}</div>}
               <div className="body">
                 <span className="title">{r.favorite && <span title="Favorite">★ </span>}{r.title}</span>
                 <div className="row small muted">

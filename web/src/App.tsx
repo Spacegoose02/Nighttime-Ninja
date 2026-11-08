@@ -13,6 +13,7 @@ import { MealPlan } from './pages/MealPlan.tsx';
 import { PublicRecipe, Community } from './pages/Public.tsx';
 import { Modal } from './components/Dialog.tsx';
 import { TimerBar } from './components/Timers.tsx';
+import { Icon, type IconName } from './components/Icon.tsx';
 
 // The bigger, less-visited pages load the first time they're opened, so the app starts faster on tablets.
 const RecipeEdit = lazy(() => import('./pages/RecipeEdit.tsx').then((m) => ({ default: m.RecipeEdit })));
@@ -23,17 +24,17 @@ const Feed = lazy(() => import('./pages/Feed.tsx').then((m) => ({ default: m.Fee
 const Settings = lazy(() => import('./pages/Settings.tsx').then((m) => ({ default: m.Settings })));
 const Chef = lazy(() => import('./pages/Chef.tsx').then((m) => ({ default: m.Chef })));
 
-const NAV = [
-  { to: '/', ico: '🏠', label: 'Home', end: true },
-  { to: '/inventory', ico: '🥫', label: 'Pantry' },
-  { to: '/recipes', ico: '📖', label: 'Recipes' },
-  { to: '/shopping', ico: '🛒', label: 'Shopping' },
-  { to: '/plan', ico: '📅', label: 'Meal Plan' },
-  { to: '/chef', ico: '👨‍🍳', label: 'Chef Gordy' },
-  { to: '/mixologist', ico: '🍸', label: 'Mixologist' },
-  { to: '/deals', ico: '🏷️', label: 'Deals' },
-  { to: '/feed', ico: '📺', label: 'Feed' },
-  { to: '/settings', ico: '⚙️', label: 'Settings' },
+const NAV: { to: string; ico: IconName; label: string; end?: boolean; group: 'kitchen' | 'helpers' | 'discover' | 'you' }[] = [
+  { to: '/', ico: 'home', label: 'Home', end: true, group: 'kitchen' },
+  { to: '/inventory', ico: 'pantry', label: 'Pantry', group: 'kitchen' },
+  { to: '/recipes', ico: 'recipes', label: 'Recipes', group: 'kitchen' },
+  { to: '/shopping', ico: 'shopping', label: 'Shopping', group: 'kitchen' },
+  { to: '/plan', ico: 'plan', label: 'Meal Plan', group: 'kitchen' },
+  { to: '/chef', ico: 'chef', label: 'Chef Gordy', group: 'helpers' },
+  { to: '/mixologist', ico: 'bar', label: 'Mixologist', group: 'helpers' },
+  { to: '/deals', ico: 'deals', label: 'Deals', group: 'discover' },
+  { to: '/feed', ico: 'feed', label: 'Feed', group: 'discover' },
+  { to: '/settings', ico: 'settings', label: 'Settings', group: 'you' },
 ];
 
 /** The phone tab bar keeps these; everything else lives under More. */
@@ -42,7 +43,7 @@ const PHONE_TABS = new Set(['/', '/inventory', '/recipes', '/shopping']);
 function NavItem({ n, onClick }: { n: (typeof NAV)[number]; onClick?: () => void }) {
   return (
     <NavLink to={n.to} end={n.end} onClick={onClick} className={({ isActive }) => `nav-link${isActive ? ' active' : ''}`}>
-      <span className="ico" aria-hidden>{n.ico}</span>
+      <Icon name={n.ico} className="ico" />
       {n.label}
     </NavLink>
   );
@@ -55,7 +56,12 @@ function Rail() {
       <div className="brand" title="Nighttime Ninja">
         <RaccoonAvatar variant={me?.user.avatar} size={56} />
       </div>
-      {NAV.map((n) => <NavItem key={n.to} n={n} />)}
+      {NAV.map((n, i) => (
+        <span key={n.to} className="nav-group-item">
+          {i > 0 && NAV[i - 1].group !== n.group && <hr className="nav-sep" />}
+          <NavItem n={n} />
+        </span>
+      ))}
     </nav>
   );
 }
@@ -70,7 +76,7 @@ function BottomBar() {
     <nav className="bottom-bar" aria-label="Main">
       {NAV.filter((n) => PHONE_TABS.has(n.to)).map((n) => <NavItem key={n.to} n={n} />)}
       <button className={`nav-link ghost${inMore ? ' active' : ''}`} aria-haspopup="dialog" aria-expanded={more} onClick={() => setMore(true)}>
-        <span className="ico" aria-hidden>☰</span>
+        <Icon name="more" className="ico" />
         More
       </button>
       {more && (

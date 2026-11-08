@@ -43,8 +43,18 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => { void refresh(); }, [refresh]);
 
+  // 'auto' follows the device: Forest by day, Midnight when the phone or computer is in dark mode.
   useEffect(() => {
-    document.documentElement.dataset.theme = me?.user.theme ?? 'forest';
+    const chosen = me?.user.theme ?? 'forest';
+    if (chosen !== 'auto') {
+      document.documentElement.dataset.theme = chosen;
+      return;
+    }
+    const dark = window.matchMedia?.('(prefers-color-scheme: dark)');
+    const apply = () => { document.documentElement.dataset.theme = dark?.matches ? 'midnight' : 'forest'; };
+    apply();
+    dark?.addEventListener?.('change', apply);
+    return () => dark?.removeEventListener?.('change', apply);
   }, [me?.user.theme]);
 
   const setHome = useCallback((id: string) => {

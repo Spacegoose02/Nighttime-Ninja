@@ -9,7 +9,7 @@ import { installAuth, registerAuthRoutes } from './auth.ts';
 import { HttpError } from './util.ts';
 import { installHardening } from './security.ts';
 import { accountRoutes } from './accounts.ts';
-import { updateRoutes } from './updates.ts';
+import { updateRoutes, VERSION } from './updates.ts';
 import { homeRoutes } from './routes/homes.ts';
 import { inventoryRoutes } from './routes/inventory.ts';
 import { recipeRoutes } from './routes/recipes.ts';
@@ -27,6 +27,7 @@ import { liveRoutes } from './live.ts';
 import { sampleRoutes } from './routes/sample.ts';
 import { kitchenAiRoutes } from './routes/kitchenai.ts';
 import { pushRoutes } from './push.ts';
+import { backupRoutes } from './backup.ts';
 
 export async function buildApp(db: DatabaseSync, opts: { logger?: boolean; serveWeb?: boolean } = {}): Promise<FastifyInstance> {
   const app = Fastify({ logger: opts.logger ?? false, bodyLimit: 5 * 1024 * 1024, trustProxy: config.trustProxy, schemaErrorFormatter });
@@ -42,7 +43,10 @@ export async function buildApp(db: DatabaseSync, opts: { logger?: boolean; serve
     return reply.status(500).send({ error: 'Something went wrong in the kitchen' });
   });
 
-  app.get('/api/health', async () => ({ ok: true }));
+  app.get('/api/health', async () => {
+    db.prepare('SELECT 1').get();
+    return { ok: true, version: VERSION };
+  });
 
   liveRoutes(app, db);
   registerAuthRoutes(app, db);
@@ -63,6 +67,7 @@ export async function buildApp(db: DatabaseSync, opts: { logger?: boolean; serve
   kitchenAiRoutes(app, db);
   pushRoutes(app, db);
   chatHistoryRoutes(app, db);
+  backupRoutes(app, db, config.dataDir);
 
   await app.register(fastifyStatic, {
     root: path.join(config.dataDir, 'uploads'),

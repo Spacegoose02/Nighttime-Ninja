@@ -15,6 +15,7 @@ import { DietsAndAllergies } from './settings/Diets.tsx';
 import { Reminders } from './settings/Reminders.tsx';
 
 const THEMES = [
+  { id: 'auto', name: 'Match my device', swatch: 'linear-gradient(135deg, #2f7d4f 50%, #0f1612 50%)' },
   { id: 'forest', name: 'Forest', swatch: '#2f7d4f' },
   { id: 'midnight', name: 'Midnight', swatch: '#0f1612' },
   { id: 'citrus', name: 'Citrus', swatch: '#e07a00' },

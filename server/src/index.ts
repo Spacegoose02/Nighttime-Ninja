@@ -2,6 +2,7 @@ import { config } from './config.ts';
 import { openDb } from './db.ts';
 import { buildApp } from './app.ts';
 import { startReminders } from './push.ts';
+import { startBackups } from './backup.ts';
 
 const db = openDb(config.dataDir);
 const app = await buildApp(db, { logger: true });
@@ -9,6 +10,7 @@ const app = await buildApp(db, { logger: true });
 await app.listen({ port: config.port, host: config.host });
 app.log.info(`Nighttime Ninja is cooking at ${config.publicUrl}`);
 startReminders(db, (err) => app.log.warn({ err }, 'Sending reminders failed'));
+startBackups(db, config.dataDir, (err) => app.log.warn({ err }, 'Nightly backup failed'));
 if (!config.google) app.log.info('Google sign-in is off (set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET to turn it on)');
 
 for (const signal of ['SIGINT', 'SIGTERM'] as const) {

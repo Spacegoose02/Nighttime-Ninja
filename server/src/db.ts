@@ -332,8 +332,25 @@ export function openDb(dataDir: string): DatabaseSync {
   fs.mkdirSync(path.join(dataDir, 'uploads'), { recursive: true });
   const db = new DatabaseSync(path.join(dataDir, 'nighttime-ninja.db'));
   db.exec('PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON; PRAGMA busy_timeout = 5000;');
+  backupBeforeUpgrade(db, dataDir);
   migrate(db);
   return db;
+}
+
+/**
+ * Copies the database into data/backups before a release changes it, so an upgrade can always be undone.
+ * Same naming as backup.ts, which lists, downloads and trims these.
+ */
+function backupBeforeUpgrade(db: DatabaseSync, dataDir: string): void {
+  const version = Number((db.prepare('PRAGMA user_version').get() as Row).user_version);
+  if (version === 0 || version >= MIGRATIONS.length) return;
+  const dir = path.join(dataDir, 'backups');
+  fs.mkdirSync(dir, { recursive: true });
+  const stamp = new Date().toISOString().replace(/[:.]/g, '-').replace(/-\d{3}Z$/, 'Z');
+  const file = path.join(dir, `nighttime-ninja-upgrade-${stamp}.db`);
+  db.exec(`VACUUM INTO '${file.replace(/'/g, "''")}'`);
+  const old = fs.readdirSync(dir).filter((n) => /^nighttime-ninja-upgrade-.*\.db$/.test(n)).sort().reverse().slice(3);
+  for (const n of old) fs.rmSync(path.join(dir, n), { force: true });
 }
 
 export function openMemoryDb(): DatabaseSync {

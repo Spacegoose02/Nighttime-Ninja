@@ -19,6 +19,13 @@ export function amount(qty: number | null | undefined, unit: string | null | und
   return `${n} ${plural}`;
 }
 
+/** Like amount, but says nothing for a plain "1" with no unit, so a list reads "Milk" instead of "1 milk". */
+export function itemAmount(qty: number | null | undefined, unit: string | null | undefined, pref: 'us' | 'metric' | 'original' = 'us'): string {
+  if (qty == null) return unit ?? '';
+  if (qty === 1 && (!unit || unit === 'each')) return '';
+  return amount(qty, unit, pref);
+}
+
 export function minutes(m: number | null | undefined): string {
   if (!m) return '';
   if (m < 60) return `${m} min`;
