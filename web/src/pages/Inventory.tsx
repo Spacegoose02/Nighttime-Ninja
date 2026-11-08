@@ -240,9 +240,11 @@ export function Inventory() {
     }
   }, [base, me?.user.units, reload, toast]);
   const lowOnly = params.get('low') === '1';
+  const outOnly = params.get('out') === '1';
+  const toggle = (key: 'low' | 'out') => { const next = new URLSearchParams(params); if (next.get(key) === '1') next.delete(key); else next.set(key, '1'); setParams(next); };
 
   const shown = useMemo(() => (items ?? []).filter((i) =>
-    (!q || i.name.toLowerCase().includes(q.toLowerCase())) && (loc === 'All' || i.location === loc) && (!lowOnly || i.isLow)), [items, q, loc, lowOnly]);
+    (!q || i.name.toLowerCase().includes(q.toLowerCase())) && (loc === 'All' || i.location === loc) && (!lowOnly || i.isLow) && (!outOnly || i.quantity <= 0)), [items, q, loc, lowOnly, outOnly]);
   const byCategory = useMemo(() => {
     const m = new Map<string, Item[]>();
     for (const i of shown) m.set(i.category, [...(m.get(i.category) ?? []), i]);
@@ -269,7 +271,8 @@ export function Inventory() {
         <>
           <div className="row">
             <input placeholder="Search the pantry" value={q} onChange={(e) => setQ(e.target.value)} style={{ maxWidth: 380 }} />
-            <button className={`chip${lowOnly ? ' on' : ''}`} onClick={() => { const next = new URLSearchParams(params); if (lowOnly) next.delete('low'); else next.set('low', '1'); setParams(next); }}>⚠️ Running low</button>
+            <button className={`chip${lowOnly ? ' on' : ''}`} onClick={() => toggle('low')}>⚠️ Running low</button>
+            <button className={`chip${outOnly ? ' on' : ''}`} onClick={() => toggle('out')}>🚫 Out of stock</button>
             <span className="row small muted" style={{ gap: 10 }}>
               <span><span className="key-dot" style={{ background: "var(--tile)" }} /> In stock</span>
               <span><span className="key-dot" style={{ background: "#c98a00" }} /> Low</span>

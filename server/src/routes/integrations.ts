@@ -36,6 +36,7 @@ export function integrationRoutes(app: FastifyInstance, db: DatabaseSync): void 
     const today = localDate();
     const shopping = db.prepare('SELECT name, quantity, unit FROM shopping_items WHERE home_id = ? AND checked = 0 ORDER BY name').all(ctx.homeId) as Row[];
     const low = db.prepare(`SELECT name, quantity, unit FROM items WHERE home_id = ? AND ${LOW_SQL} ORDER BY name`).all(ctx.homeId) as Row[];
+    const out = db.prepare('SELECT name FROM items WHERE home_id = ? AND quantity <= 0 ORDER BY name').all(ctx.homeId) as Row[];
     const expiring = db.prepare("SELECT name, expires_on FROM items WHERE home_id = ? AND expires_on IS NOT NULL AND expires_on <= ? ORDER BY expires_on").all(ctx.homeId, localDate(3)) as Row[];
     const meals = db.prepare(`SELECT m.slot, m.recipe_id, COALESCE(r.title, m.title) AS title, m.cooked_at, u.name AS cook FROM meal_plan m LEFT JOIN recipes r ON r.id = m.recipe_id
       LEFT JOIN users u ON u.id = m.cook_id
@@ -50,6 +51,8 @@ export function integrationRoutes(app: FastifyInstance, db: DatabaseSync): void 
       shopping: shopping.map((s) => [s.quantity, s.unit, s.name].filter((x) => x != null && x !== '').join(' ')),
       low_stock_count: low.length,
       low_stock: low.map((l) => l.name),
+      out_of_stock_count: out.length,
+      out_of_stock: out.map((o) => o.name),
       expiring_soon: expiring.map((e) => ({ name: e.name, date: e.expires_on })),
       todays_meals: meals.map((m) => ({ slot: m.slot, title: m.title, cooked: !!m.cooked_at, cook: m.cook ?? null })),
       tonight: dinner?.title ?? null,
