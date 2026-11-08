@@ -6,7 +6,20 @@ interface Week { week: string; total: number; items: number }
 interface ItemCost { name: string; times: number; total: number; average: number; low: number; high: number }
 interface Spend { weeks: Week[]; items: ItemCost[]; stores: { store: string; total: number }[] }
 
-export const dollars = (n: number | null | undefined) => (n == null ? '' : `$${n.toFixed(2)}`);
+let currency = 'USD';
+/** Set from the current home, so prices show in the money it pays in. */
+export function setCurrency(code: string | undefined): void {
+  currency = code && /^[A-Z]{3}$/.test(code) ? code : 'USD';
+}
+/** A price in the home's currency ("$4.99", "4,99 €"). Named for history; it isn't only dollars. */
+export const dollars = (n: number | null | undefined): string => {
+  if (n == null) return '';
+  try {
+    return new Intl.NumberFormat(undefined, { style: 'currency', currency }).format(n);
+  } catch {
+    return `${currency} ${n.toFixed(2)}`;
+  }
+};
 
 /** Weekly grocery spending, what things cost, and where the money went. */
 export function Spending() {

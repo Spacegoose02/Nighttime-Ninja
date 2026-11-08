@@ -336,7 +336,7 @@ export function registerAuthRoutes(app: FastifyInstance, db: DatabaseSync): void
   app.get('/api/me', async (req) => {
     const user = requireUser(req);
     const homes = db.prepare(`
-      SELECT h.id, h.name, m.role, COALESCE(s.hidden_pages, '[]') AS hidden_pages FROM home_members m JOIN homes h ON h.id = m.home_id
+      SELECT h.id, h.name, m.role, COALESCE(s.hidden_pages, '[]') AS hidden_pages, COALESCE(s.currency, 'USD') AS currency FROM home_members m JOIN homes h ON h.id = m.home_id
       LEFT JOIN home_settings s ON s.home_id = h.id
       WHERE m.user_id = ? ORDER BY h.name`).all(user.id) as Row[];
     return {
@@ -348,7 +348,7 @@ export function registerAuthRoutes(app: FastifyInstance, db: DatabaseSync): void
   app.patch('/api/me', async (req) => {
     const user = requireUser(req);
     const b = (req.body ?? {}) as Row;
-    const themes = ['auto', 'forest', 'midnight', 'citrus', 'raccoon', 'berry', 'ocean', 'sunset', 'lavender', 'mint', 'arctic', 'espresso', 'neon', 'sweettea', 'peach', 'pistachio', 'blueberry', 'castiron', 'bourbon'];
+    const themes = ['auto', 'forest', 'midnight', 'citrus', 'raccoon', 'berry', 'ocean', 'sunset', 'lavender', 'mint', 'arctic', 'espresso', 'neon', 'sweettea', 'peach', 'pistachio', 'blueberry', 'castiron', 'bourbon', 'contrast'];
     // Drawn raccoons plus any picture avatars shipped in web/src/avatars (ids are derived from file names).
     const isAvatarId = (v: unknown): v is string => typeof v === 'string' && /^[a-z0-9_]{2,40}$/.test(v);
     const name = str(b.name, 60);

@@ -222,3 +222,12 @@
   --danger: #ff8a7a; --warn: #f2c14e; --ok: #9ad1a0;
   --scene-wall: #2a1c12; --scene-grout: #382518; --scene-counter: #5b3a22; --scene-steam: rgba(240, 200, 150, 0.25);
 }
+
+/* High contrast: black on white with strong borders, for low vision or a bright kitchen. */
+[data-theme='contrast'] {
+  color-scheme: light;
+  --bg: #ffffff; --surface: #ffffff; --surface-2: #ececec; --text: #000000; --muted: #2b2b2b; --border: #000000;
+  --primary: #003d99; --primary-strong: #002b6b; --on-primary: #ffffff; --tile: #003d99; --tile-2: #002b6b; --on-tile: #ffffff;
+  --danger: #a30000; --warn: #6b4200; --ok: #005c1f;
+  --scene-wall: #f2f2f2; --scene-grout: #d0d0d0; --scene-counter: #5a3a1f; --scene-steam: rgba(0, 0, 0, 0.35);
+}

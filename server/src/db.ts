@@ -329,6 +329,10 @@ const MIGRATIONS: string[] = [
   `
   ALTER TABLE home_settings ADD COLUMN hidden_pages TEXT NOT NULL DEFAULT '[]';
   `,
+  // The money a home pays in, for prices, spending and recipe costs (ISO 4217, e.g. USD, EUR, GBP).
+  `
+  ALTER TABLE home_settings ADD COLUMN currency TEXT NOT NULL DEFAULT 'USD';
+  `,
 ];
 
 export function openDb(dataDir: string): DatabaseSync {

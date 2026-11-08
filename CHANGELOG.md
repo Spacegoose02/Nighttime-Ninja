@@ -2,6 +2,17 @@
 
 Every release, newest first. The full notes for each one are on its [GitHub release page](https://github.com/Spacegoose02/Nighttime-Ninja/releases).
 
+## 0.13.0 - unreleased
+
+Works for more people: more languages, more countries, bigger text and checked accessibility.
+
+- **Español:** pick a language in Settings → On this device. The main screens are translated, and more languages are easy to add (see CONTRIBUTING).
+- **Set up in three steps:** a new home asks where your kitchen is (which sets its currency and measurements), your language, and how you'd like to start.
+- **Any currency:** prices, spending and recipe costs show in the home's currency. Change it in Settings → Home.
+- **Bigger text and an easy-to-read font** (Atkinson Hyperlegible) in Settings → On this device.
+- **High contrast theme.**
+- Accessibility is now checked automatically on every change, for every page and every theme. Fixed low-contrast status pills, an unlabeled checkbox and the shopping list tabs for screen readers.
+
 ## 0.12.0 - unreleased
 
 Faster everyday use: dinner ideas on Home, one search for everything, and what recipes cost.

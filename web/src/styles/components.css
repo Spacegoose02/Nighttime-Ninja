@@ -113,7 +113,7 @@ button.danger-fill { background: var(--danger); color: #fff; border-color: trans
 /* A row of chips that scrolls sideways instead of wrapping onto more lines. */
 .chips.scroll-x { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; padding-bottom: 2px; }
 .chips.scroll-x::-webkit-scrollbar { display: none; }
-.chips.scroll-x > .chip { flex: none; }
+.chips.scroll-x > .chip, .chips.scroll-x > .chips > .chip { flex: none; }
 .chip .count { margin-left: 6px; padding: 0 7px; border-radius: var(--radius-pill); font-size: 0.75rem; background: color-mix(in srgb, currentColor 16%, transparent); }
 .chip .i { width: 16px; height: 16px; }
 .check .i { width: 22px; height: 22px; stroke-width: 3; }

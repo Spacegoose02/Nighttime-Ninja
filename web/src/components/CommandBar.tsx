@@ -7,6 +7,7 @@ import { useApp, useLoad } from '../state.tsx';
 import { guessItem } from '../../../shared/catalog.ts';
 import { Modal } from './Dialog.tsx';
 import { Icon, type IconName } from './Icon.tsx';
+import { t } from '../i18n.ts';
 
 export interface Command { id: string; label: string; hint?: string; icon?: IconName; emoji?: string; run: () => void | Promise<void> }
 
@@ -45,20 +46,20 @@ export function CommandBar({ pages, onClose }: { pages: { to: string; label: str
   const results = useMemo<Command[]>(() => {
     const text = q.trim();
     const all: (Command & { score: number })[] = [];
-    for (const p of pages) all.push({ id: `p${p.to}`, label: p.label, hint: 'Page', icon: p.ico, run: go(p.to), score: matchScore(p.label, text) && matchScore(p.label, text) + 1 });
-    for (const r of recipes ?? []) all.push({ id: `r${r.id}`, label: r.title, hint: 'Recipe', icon: 'recipes', run: go(`/recipes/${r.id}`), score: Math.max(matchScore(r.title, text), matchScore(r.tags.join(' '), text) - 1) });
-    for (const i of items ?? []) all.push({ id: `i${i.id}`, label: i.name, hint: `Pantry · ${i.location}`, emoji: i.icon ?? guessItem(i.name).icon, run: go(`/inventory?q=${encodeURIComponent(i.name)}`), score: matchScore(i.name, text) });
-    for (const [label, section] of SETTINGS) all.push({ id: `s${label}`, label, hint: 'Settings', icon: 'settings', run: go(`/settings?section=${section}`), score: matchScore(label, text) });
-    const found = text ? all.filter((c) => c.score > 0).sort((a, b) => b.score - a.score || a.label.localeCompare(b.label)).slice(0, 12) : all.filter((c) => c.hint === 'Page');
+    for (const p of pages) all.push({ id: `p${p.to}`, label: t(p.label), hint: t('Page'), icon: p.ico, run: go(p.to), score: matchScore(t(p.label), text) && matchScore(t(p.label), text) + 1 });
+    for (const r of recipes ?? []) all.push({ id: `r${r.id}`, label: r.title, hint: t('Recipe'), icon: 'recipes', run: go(`/recipes/${r.id}`), score: Math.max(matchScore(r.title, text), matchScore(r.tags.join(' '), text) - 1) });
+    for (const i of items ?? []) all.push({ id: `i${i.id}`, label: i.name, hint: `${t('Pantry')} · ${i.location}`, emoji: i.icon ?? guessItem(i.name).icon, run: go(`/inventory?q=${encodeURIComponent(i.name)}`), score: matchScore(i.name, text) });
+    for (const [label, section] of SETTINGS) all.push({ id: `s${label}`, label: t(label), hint: t('Settings'), icon: 'settings', run: go(`/settings?section=${section}`), score: matchScore(t(label), text) });
+    const found = text ? all.filter((c) => c.score > 0).sort((a, b) => b.score - a.score || a.label.localeCompare(b.label)).slice(0, 12) : all.filter((c) => c.hint === t('Page'));
     if (!text) return found;
     const actions: Command[] = [
       {
-        id: 'add', label: `Add “${text}” to the shopping list`, icon: 'shopping', run: async () => {
+        id: 'add', label: t('Add “{text}” to the shopping list', { text }), icon: 'shopping', run: async () => {
           onClose();
-          try { await api(`${base}/shopping`, { body: { text } }); toast(`Added ${text} to the list`); } catch (e) { toast((e as Error).message); }
+          try { await api(`${base}/shopping`, { body: { text } }); toast(t('Added {item} to the list', { item: text })); } catch (e) { toast((e as Error).message); }
         },
       },
-      { id: 'gordy', label: `Ask Gordy: “${text}”`, icon: 'chef', run: go(`/chef?ask=${encodeURIComponent(text)}`) },
+      { id: 'gordy', label: t('Ask Gordy: “{text}”', { text }), icon: 'chef', run: go(`/chef?ask=${encodeURIComponent(text)}`) },
     ];
     return [...found, ...actions];
   // biome-ignore lint/correctness/useExhaustiveDependencies: go and onClose are stable enough for one open dialog.
@@ -66,10 +67,10 @@ export function CommandBar({ pages, onClose }: { pages: { to: string; label: str
   useEffect(() => setAt(0), [q]);
 
   return (
-    <Modal label="Search" className="command-bar" onClose={onClose}>
+    <Modal label={t('Search')} className="command-bar" onClose={onClose}>
       <input
-        ref={input} type="search" value={q} placeholder="Search recipes, pantry, settings… or type something to add"
-        aria-label="Search everything" aria-controls="command-results" aria-activedescendant={results[at] ? `cmd-${at}` : undefined}
+        ref={input} type="search" value={q} placeholder={t('Search recipes, pantry, settings… or type something to add')}
+        aria-label={t('Search everything')} aria-controls="command-results" aria-activedescendant={results[at] ? `cmd-${at}` : undefined}
         onChange={(e) => setQ(e.target.value)}
         onKeyDown={(e) => {
           if (e.key === 'ArrowDown') { e.preventDefault(); setAt((n) => Math.min(results.length - 1, n + 1)); }
@@ -77,7 +78,7 @@ export function CommandBar({ pages, onClose }: { pages: { to: string; label: str
           if (e.key === 'Enter' && results[at]) { e.preventDefault(); void results[at].run(); }
         }}
       />
-      <div id="command-results" className="command-results" role="listbox" aria-label="Results">
+      <div id="command-results" className="command-results" role="listbox" aria-label={t('Results')}>
         {results.map((c, n) => (
           // biome-ignore lint/a11y/useKeyWithClickEvents: the search box above handles the arrow keys and Enter for the list.
           <div
@@ -90,7 +91,7 @@ export function CommandBar({ pages, onClose }: { pages: { to: string; label: str
           </div>
         ))}
       </div>
-      <p className="small muted" style={{ margin: 0 }}>Tip: press Ctrl+K (or ⌘K) anywhere to open this.</p>
+      <p className="small muted" style={{ margin: 0 }}>{t('Tip: press Ctrl+K (or ⌘K) anywhere to open this.')}</p>
     </Modal>
   );
 }

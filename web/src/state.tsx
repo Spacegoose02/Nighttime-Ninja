@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react';
 import { api, ApiError, CLIENT_ID, type Me } from './api.ts';
 import { flushOutbox, pendingCount, takeDropped } from './offline.ts';
+import { setCurrency } from './components/Spending.tsx';
 
 interface AppState {
   me: Me | null;
@@ -135,6 +136,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, [homeId, refresh]);
 
   const home = me?.homes.find((h) => h.id === homeId) ?? null;
+  setCurrency(home?.currency);
   return (
     <Ctx.Provider value={{ me, loading, homeId, home, refresh, setHome, toast, base: `/api/homes/${homeId}` }}>
       {children}

@@ -77,7 +77,7 @@ function safeJson(t: string): unknown {
 
 export interface Me {
   user: { id: string; name: string; email: string | null; avatar: string; theme: string; units: 'us' | 'metric' | 'original'; isAdmin: boolean; lastHomeId: string | null };
-  homes: { id: string; name: string; role: 'manager' | 'member'; hiddenPages?: string[] }[];
+  homes: { id: string; name: string; role: 'manager' | 'member'; hiddenPages?: string[]; currency?: string }[];
 }
 
 export interface Item {
@@ -138,7 +138,7 @@ export interface Meal {
 export interface HomeDetail {
   id: string; name: string; role: 'manager' | 'member'; joinCode: string; calendarUrl: string | null;
   members: { id: string; name: string; avatar: string; role: string; joined_at: string; diets: string[]; allergies: string[] }[];
-  settings: { zipCode: string | null; stores: string[]; krogerLocationId: string | null; locations: string[]; categories: string[]; equipment: string[]; hiddenPages?: string[] };
+  settings: { zipCode: string | null; stores: string[]; krogerLocationId: string | null; locations: string[]; categories: string[]; equipment: string[]; hiddenPages?: string[]; currency?: string };
 }
 
 /** Reads an image file into a data URL, shrinking big photos so uploads stay small. */
