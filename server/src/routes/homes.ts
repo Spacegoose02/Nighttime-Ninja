@@ -116,11 +116,12 @@ export function homeRoutes(app: FastifyInstance, db: DatabaseSync): void {
         ...homeLabels(db, ctx.homeId),
         equipment: homeTools(db, ctx.homeId),
         hiddenPages: JSON.parse(String((db.prepare('SELECT hidden_pages FROM home_settings WHERE home_id = ?').get(ctx.homeId) as Row | undefined)?.hidden_pages ?? '[]')),
+        currency: String((db.prepare('SELECT currency FROM home_settings WHERE home_id = ?').get(ctx.homeId) as Row | undefined)?.currency ?? 'USD'),
       },
     };
   });
 
-  app.patch('/api/homes/:homeId', { schema: body({ name: text, zipCode: text, stores: list(text, 20), krogerLocationId: text, hiddenPages: list(text, 20) }) }, async (req) => {
+  app.patch('/api/homes/:homeId', { schema: body({ name: text, zipCode: text, stores: list(text, 20), krogerLocationId: text, hiddenPages: list(text, 20), currency: text }) }, async (req) => {
     const ctx = homeCtx(db, req, 'manager');
     const b = (req.body ?? {}) as Row;
     const name = str(b.name, 80);
@@ -129,6 +130,11 @@ export function homeRoutes(app: FastifyInstance, db: DatabaseSync): void {
     if ('zipCode' in b) db.prepare('UPDATE home_settings SET zip_code = ? WHERE home_id = ?').run(str(b.zipCode, 10), ctx.homeId);
     if (Array.isArray(b.stores)) db.prepare('UPDATE home_settings SET stores = ? WHERE home_id = ?').run(JSON.stringify(b.stores.map(String).slice(0, 20)), ctx.homeId);
     if ('krogerLocationId' in b) db.prepare('UPDATE home_settings SET kroger_location_id = ? WHERE home_id = ?').run(str(b.krogerLocationId, 20), ctx.homeId);
+    if (typeof b.currency === 'string') {
+      const currency = b.currency.toUpperCase();
+      if (!/^[A-Z]{3}$/.test(currency)) throw new HttpError(400, 'Currency should be a 3-letter code such as USD, EUR or GBP');
+      db.prepare('UPDATE home_settings SET currency = ? WHERE home_id = ?').run(currency, ctx.homeId);
+    }
     if (Array.isArray(b.hiddenPages)) {
       const pages = (b.hiddenPages as unknown[]).map(String).filter((p) => HIDEABLE_PAGES.includes(p));
       db.prepare('UPDATE home_settings SET hidden_pages = ? WHERE home_id = ?').run(JSON.stringify([...new Set(pages)]), ctx.homeId);

@@ -15,6 +15,7 @@ import { Modal } from './components/Dialog.tsx';
 import { TimerBar } from './components/Timers.tsx';
 import { Icon, type IconName } from './components/Icon.tsx';
 import { CommandBar } from './components/CommandBar.tsx';
+import { t } from './i18n.ts';
 
 // The bigger, less-visited pages load the first time they're opened, so the app starts faster on tablets.
 const RecipeEdit = lazy(() => import('./pages/RecipeEdit.tsx').then((m) => ({ default: m.RecipeEdit })));
@@ -67,7 +68,7 @@ function NavItem({ n, onClick }: { n: (typeof NAV)[number]; onClick?: () => void
   return (
     <NavLink to={n.to} end={n.end} onClick={onClick} className={({ isActive }) => `nav-link${isActive ? ' active' : ''}`}>
       <Icon name={n.ico} className="ico" />
-      {n.label}
+      {t(n.label)}
     </NavLink>
   );
 }
@@ -80,9 +81,9 @@ function Rail({ onSearch }: { onSearch: () => void }) {
       <div className="brand" title="Nighttime Ninja">
         <RaccoonAvatar variant={me?.user.avatar} size={56} />
       </div>
-      <button className="nav-link ghost" onClick={onSearch} aria-keyshortcuts="Control+K" title="Search (Ctrl+K)">
+      <button className="nav-link ghost" onClick={onSearch} aria-keyshortcuts="Control+K" title={t('Search (Ctrl+K)')}>
         <Icon name="search" className="ico" />
-        Search
+        {t('Search')}
       </button>
       {nav.map((n, i) => (
         <span key={n.to} className="nav-group-item">
@@ -106,12 +107,12 @@ function BottomBar({ onSearch }: { onSearch: () => void }) {
       {nav.filter((n) => PHONE_TABS.has(n.to)).map((n) => <NavItem key={n.to} n={n} />)}
       <button className={`nav-link ghost${inMore ? ' active' : ''}`} aria-haspopup="dialog" aria-expanded={more} onClick={() => setMore(true)}>
         <Icon name="more" className="ico" />
-        More
+        {t('More')}
       </button>
       {more && (
-        <Modal label="More" className="sheet" onClose={() => setMore(false)}>
+        <Modal label={t('More')} className="sheet" onClose={() => setMore(false)}>
           <div className="sheet-grid">
-            <button className="nav-link" onClick={() => { setMore(false); onSearch(); }}><Icon name="search" className="ico" />Search</button>
+            <button className="nav-link" onClick={() => { setMore(false); onSearch(); }}><Icon name="search" className="ico" />{t('Search')}</button>
             {extra.map((n) => <NavItem key={n.to} n={n} onClick={() => setMore(false)} />)}
           </div>
         </Modal>
@@ -164,7 +165,7 @@ export function App() {
             <Route path="/feed" element={<Feed />} />
             <Route path="/settings" element={<Settings />} />
             <Route path="/home/new" element={<HomeSetup inline />} />
-            <Route path="*" element={<div className="card">That page wandered off. <NavLink to="/">Go home</NavLink></div>} />
+            <Route path="*" element={<div className="card">{t('That page wandered off.')} <NavLink to="/">{t('Go home')}</NavLink></div>} />
           </Routes>
         </Suspense>
       </main>

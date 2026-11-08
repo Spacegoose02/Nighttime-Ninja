@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { signUp } from './helpers.ts';
 
 // A camera that shows one EAN-13 barcode, drawn on a canvas. Chromium on Linux has no built-in barcode reader,
 // so this exercises the bundled one (WebAssembly) through the server's real security headers.
@@ -33,15 +34,7 @@ test('sign in, set up a home, shop for something into the pantry, and scan a bar
     };
   }, CODE);
 
-  await page.goto('/');
-  // A fresh install starts by creating its first (admin) account.
-  await page.getByPlaceholder('Your name').fill('Smoke Tester');
-  await page.getByPlaceholder('Username').fill('smoke');
-  await page.getByPlaceholder(/^Password/).fill('correct horse battery');
-  await page.getByRole('button', { name: 'Create account' }).click();
-
-  await page.getByPlaceholder('Home name').fill('Test Kitchen');
-  await page.getByRole('button', { name: 'Create', exact: true }).click();
+  await signUp(page, 'Smoke Tester', 'smoke', 'Test Kitchen');
 
   // Phone layout: four tabs and More.
   const tabs = page.getByRole('navigation', { name: 'Main' }).last();
