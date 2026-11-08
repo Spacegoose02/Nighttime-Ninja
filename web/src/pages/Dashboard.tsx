@@ -14,6 +14,8 @@ interface Summary {
   shopping_count: number;
   low_stock_count: number;
   low_stock: string[];
+  out_of_stock_count?: number;
+  out_of_stock?: string[];
   expiring_soon: { name: string; date: string }[];
   todays_meals: { slot: string; title: string; cooked: boolean; cook: string | null }[];
   tonight: string | null;
@@ -26,6 +28,14 @@ interface Summary {
   item_count: number;
 }
 
+const DRINK_TAGS = new Set(['drink', 'drinks', 'cocktail', 'cocktails', 'mocktail', 'mocktails', 'beverage', 'beverages', 'smoothie', 'smoothies', 'shake', 'shakes']);
+const DRINK_TITLE = /\b(cocktail|mocktail|martini|margarita|mojito|daiquiri|colada|negroni|spritz|sangria|punch|cooler|highball|julep|smoothie|milkshake|lemonade|iced tea|frappe)s?\b/i;
+
+/** Drinks and cocktails aren't dinner: anything tagged as a drink, or named like one. */
+export function isDrink(r: Pick<RecipeSummary, 'title' | 'tags'>): boolean {
+  return r.tags.some((tag) => DRINK_TAGS.has(tag.toLowerCase())) || DRINK_TITLE.test(r.title);
+}
+
 /**
  * Three dinner ideas for tonight: recipes you can make (or nearly), ranked so food about to expire gets used first,
  * then favourites and high ratings. Exported for tests.
@@ -34,7 +44,7 @@ export function tonightIdeas(recipes: RecipeSummary[], n = 3): RecipeSummary[] {
   const score = (r: RecipeSummary) => (r.ready === 'ready' ? 3 : 1) + (r.favorite ? 2 : 0) + (r.rating ?? 0) / 2
     - (r.dietWarnings ? 3 : 0) - r.missingTools.length * 2;
   return recipes
-    .filter((r) => r.ready !== 'missing' && !r.tags.includes('drinks'))
+    .filter((r) => r.ready !== 'missing' && !isDrink(r))
     .sort((a, b) => b.usesExpiring.length - a.usesExpiring.length || score(b) - score(a) || a.title.localeCompare(b.title))
     .slice(0, n);
 }
@@ -105,6 +115,9 @@ function greeting(): string {
 export function Dashboard() {
   const { me, home, base, homeId } = useApp();
   const [s, reload] = useLoad<Summary>(`${base}/ha/summary`);
+  // Out-of-stock items get their own card, so "running low" lists only what's left but getting low.
+  const out = s ? (s.out_of_stock ?? []) : null;
+  const lowOnly = s ? s.low_stock.filter((name) => !out?.includes(name)) : null;
   const welcomeKey = `nn-welcomed-${homeId}`;
   const [welcomed, setWelcomed] = useState(() => { try { return !!localStorage.getItem(welcomeKey); } catch { return false; } });
   const dismiss = () => {
@@ -137,9 +150,14 @@ export function Dashboard() {
           {!!s?.ready_to_cook.length && <span className="muted small">{s.ready_to_cook.slice(0, 4).join(', ')}</span>}
         </Link>
         <Link to="/inventory?low=1" className="card stat" style={{ textDecoration: 'none', color: 'inherit' }}>
-          <span className="num" style={{ color: s?.low_stock_count ? 'var(--warn)' : undefined }}>{s?.low_stock_count ?? '–'}</span>
+          <span className="num" style={{ color: lowOnly?.length ? 'var(--warn)' : undefined }}>{lowOnly?.length ?? '–'}</span>
           <span>{t('running low')}</span>
-          {!!s?.low_stock.length && <span className="muted small">{s.low_stock.slice(0, 5).join(', ')}</span>}
+          {!!lowOnly?.length && <span className="muted small">{lowOnly.slice(0, 5).join(', ')}</span>}
+        </Link>
+        <Link to="/inventory?out=1" className="card stat" style={{ textDecoration: 'none', color: 'inherit' }}>
+          <span className="num" style={{ color: out?.length ? 'var(--danger)' : undefined }}>{out?.length ?? '–'}</span>
+          <span>{t('out of stock')}</span>
+          {!!out?.length && <span className="muted small">{out.slice(0, 5).join(', ')}</span>}
         </Link>
         <div className="card stat">
           <span className="num" style={{ color: s?.expiring_soon.length ? 'var(--danger)' : undefined }}>{s?.expiring_soon.length ?? '–'}</span>

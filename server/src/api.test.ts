@@ -265,6 +265,10 @@ test('custom places and categories, and the running-low marker', async () => {
   assert.equal(items.length, 1);
   assert.equal(items[0].isLow, true);
   assert.equal((await call(a, 'GET', `${base}/ha/summary`)).body.low_stock_count, 1);
+  await call(a, 'POST', `${base}/items/${item.id}/adjust`, { delta: -item.quantity });
+  const summary = (await call(a, 'GET', `${base}/ha/summary`)).body;
+  assert.equal(summary.out_of_stock_count, 1, 'an item at zero is out of stock');
+  assert.deepEqual(summary.out_of_stock, [item.name]);
   await call(a, 'POST', `${base}/items/${item.id}/adjust`, { delta: 3 });
   items = (await call(a, 'GET', `${base}/items`)).body;
   assert.equal(items[0].markedLow, false, 'restocking clears the mark');

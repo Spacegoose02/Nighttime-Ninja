@@ -18,4 +18,14 @@ describe("tonight's ideas", () => {
     ]);
     expect(ideas.map((i) => i.title)).toEqual(['Spinach omelette', 'Favourite tacos', 'Plain pasta']);
   });
+
+  it('suggests food, never drinks or cocktails', () => {
+    const ideas = tonightIdeas([
+      r('Strawberry Colada Cooler', { tags: ['cocktail'], favorite: true, rating: 5 }),
+      r('Berry Tequila Cooler', { favorite: true }),
+      r('Blue Island Punch', { tags: ['Cocktail', 'tropical'] }),
+      r('Chicken Tenders'),
+    ]);
+    expect(ideas.map((i) => i.title)).toEqual(['Chicken Tenders']);
+  });
 });
