@@ -159,5 +159,20 @@
   "Synced": "Sincronizado",
   "Syncing both ways with Google Calendar": "Sincronizando en ambos sentidos con Google Calendar",
   "Syncing…": "Sincronizando…",
-  "That took too long. Try connecting again.": "Tardó demasiado. Intenta conectar de nuevo."
+  "That took too long. Try connecting again.": "Tardó demasiado. Intenta conectar de nuevo.",
+  "just now": "ahora mismo",
+  "{n} min ago": "hace {n} min",
+  "{n} h ago": "hace {n} h",
+  "{n} days ago": "hace {n} días",
+  "{item} is on {list}": "{item} está en {list}",
+  "Said no to {item}": "Dijiste que no a {item}",
+  "Things the kids asked for in Den Duty. Say yes and it goes on the list you pick.": "Lo que los niños pidieron en Den Duty. Di que sí y va a la lista que elijas.",
+  "Yes adds to": "Sí lo añade a",
+  "No requests waiting.": "No hay solicitudes pendientes.",
+  "{name} asked": "{name} lo pidió",
+  "No": "No",
+  "Yes": "Sí",
+  "Answered this week": "Respondidas esta semana",
+  "Yes, on {list}": "Sí, en {list}",
+  "Requests": "Solicitudes"
 }

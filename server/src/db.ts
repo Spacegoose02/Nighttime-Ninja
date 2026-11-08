@@ -371,6 +371,28 @@ const MIGRATIONS: string[] = [
     UNIQUE (home_id, event_id)
   );
   `,
+  // Requests: things kids ask for from another app (Den Duty's grocery list), waiting for a grown-up to say yes
+  // (onto the list they pick) or no. external_id is the other app's id for the ask, so sending it twice is harmless.
+  `
+  CREATE TABLE shopping_requests (
+    id TEXT PRIMARY KEY,
+    home_id TEXT NOT NULL REFERENCES homes(id) ON DELETE CASCADE,
+    name TEXT NOT NULL,
+    note TEXT,
+    requested_by TEXT,
+    source TEXT NOT NULL DEFAULT 'app',
+    external_id TEXT,
+    status TEXT NOT NULL DEFAULT 'waiting' CHECK (status IN ('waiting', 'approved', 'declined')),
+    list_id TEXT REFERENCES shopping_lists(id) ON DELETE SET NULL,
+    list_name TEXT,
+    item_id TEXT,
+    decided_by TEXT REFERENCES users(id) ON DELETE SET NULL,
+    decided_at TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+  CREATE INDEX shopping_requests_home ON shopping_requests(home_id, status, created_at);
+  CREATE UNIQUE INDEX shopping_requests_external ON shopping_requests(home_id, source, external_id);
+  `,
 ];
 
 export function openDb(dataDir: string): DatabaseSync {

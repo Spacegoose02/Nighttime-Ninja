@@ -138,6 +138,22 @@ export async function listAdded(db: DatabaseSync, homeId: string, byUserId: stri
   }
 }
 
+/** Tells the home's grown-ups a kid asked for something (Den Duty's grocery requests), at most once every few minutes. */
+export async function requestAdded(db: DatabaseSync, homeId: string, by: string | null, names: string[]): Promise<void> {
+  if (!names.length) return;
+  const people = db.prepare(`SELECT DISTINCT m.user_id FROM home_members m JOIN push_subscriptions p ON p.user_id = m.user_id
+    WHERE m.home_id = ?`).all(homeId) as Row[];
+  for (const o of people) {
+    const userId = o.user_id as string;
+    if (!reminderPrefs(db, userId).list) continue;
+    const key = `request:${userId}:${homeId}`;
+    const last = db.prepare('SELECT sent_at FROM reminders_sent WHERE key = ?').get(key) as Row | undefined;
+    if (last && Date.parse(`${last.sent_at}Z`) > Date.now() - LIST_QUIET_MINUTES * 60_000) continue;
+    db.prepare("INSERT INTO reminders_sent (key, sent_at) VALUES (?, datetime('now')) ON CONFLICT(key) DO UPDATE SET sent_at = excluded.sent_at").run(key);
+    await sendTo(db, userId, { title: `${by ?? 'Someone'} asked for something`, body: list(names), url: '/shopping?tab=requests' });
+  }
+}
+
 /** Checks for due reminders every 15 minutes while the server runs. */
 export function startReminders(db: DatabaseSync, log: (err: unknown) => void): () => void {
   const tick = () => { sendDue(db).catch(log); };

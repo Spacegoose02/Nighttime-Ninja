@@ -138,3 +138,8 @@ button.danger-fill { background: var(--danger); color: #fff; border-color: trans
 .command-item.on { background: var(--surface-2); }
 .command-item > span[aria-hidden] { width: 20px; text-align: center; }
 .command-label { flex: 1; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Requests tab: what the kids asked for, one card each. */
+.request { align-items: center; flex-wrap: nowrap; }
+.request-icon { font-size: 2rem; line-height: 1; width: 44px; text-align: center; flex: none; }
+@media (max-width: 480px) { .request { flex-wrap: wrap; } .request > div { flex-basis: calc(100% - 60px); } }
