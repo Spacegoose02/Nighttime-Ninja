@@ -14,6 +14,7 @@ import { homeRoutes } from './routes/homes.ts';
 import { inventoryRoutes } from './routes/inventory.ts';
 import { recipeRoutes } from './routes/recipes.ts';
 import { shoppingRoutes } from './routes/shopping.ts';
+import { requestRoutes } from './routes/requests.ts';
 import { mealPlanRoutes } from './routes/mealplan.ts';
 import { feedRoutes } from './routes/feeds.ts';
 import { dealRoutes } from './routes/deals.ts';
@@ -59,6 +60,7 @@ export async function buildApp(db: DatabaseSync, opts: { logger?: boolean; serve
   inventoryRoutes(app, db);
   recipeRoutes(app, db);
   shoppingRoutes(app, db);
+  requestRoutes(app, db);
   mealPlanRoutes(app, db);
   feedRoutes(app, db);
   dealRoutes(app, db);

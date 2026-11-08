@@ -11,6 +11,7 @@ import { dollars, ReceiptScan, Spending } from '../components/Spending.tsx';
 import { Icon } from '../components/Icon.tsx';
 import { SwipeRow } from '../components/SwipeRow.tsx';
 import { t } from '../i18n.ts';
+import { Requests, useWaitingRequests } from '../components/Requests.tsx';
 
 interface Suggestion { name: string; category: string; timesBought: number }
 interface Layout { name: string; categories: string[] }
@@ -119,7 +120,8 @@ export function Shopping() {
   }
   const [suggestions, reloadSugg] = useLoad<Suggestion[]>(listId ? `${base}/shopping/suggestions?list=${listId}` : null);
   const [tabParam, setTab] = useUrlState('tab', 'list');
-  const tab = (['history', 'spending'].includes(tabParam) ? tabParam : 'list') as 'list' | 'history' | 'spending';
+  const tab = (['history', 'spending', 'requests'].includes(tabParam) ? tabParam : 'list') as 'list' | 'history' | 'spending' | 'requests';
+  const [waitingRequests, recountRequests] = useWaitingRequests();
   const [history] = useLoad<ShoppingItem[]>(tab === 'history' ? `${base}/shopping/history` : null, [tab]);
   const [text, setText] = useState('');
   const stockKey = `nn-stock-${homeId}`;
@@ -258,6 +260,9 @@ export function Shopping() {
         <h1>{t('Shopping')}</h1>
         <div className="chips" role="tablist" aria-label={t('Shopping views')}>
           <button role="tab" aria-selected={tab === 'list'} className={`chip${tab === 'list' ? ' on' : ''}`} onClick={() => setTab('list')}>{t('List')}</button>
+          <button role="tab" aria-selected={tab === 'requests'} className={`chip${tab === 'requests' ? ' on' : ''}`} onClick={() => setTab('requests')}>
+            {t('Requests')}{waitingRequests ? <span className="count">{waitingRequests}</span> : null}
+          </button>
           <button role="tab" aria-selected={tab === 'history'} className={`chip${tab === 'history' ? ' on' : ''}`} onClick={() => setTab('history')}>{t('History')}</button>
           <button role="tab" aria-selected={tab === 'spending'} className={`chip${tab === 'spending' ? ' on' : ''}`} onClick={() => setTab('spending')}>{t('Spending')}</button>
         </div>
@@ -380,7 +385,7 @@ export function Shopping() {
           )}
           {ai?.available && <ReceiptScan onDone={() => void reload()} />}
         </>
-      ) : tab === 'spending' ? <Spending /> : (
+      ) : tab === 'spending' ? <Spending /> : tab === 'requests' ? <Requests onAnswered={() => { void reloadLists(); void recountRequests(); }} /> : (
         <div className="card">
           <table>
             <thead><tr><th>{t('Bought')}</th><th>{t('Item')}</th><th>{t('Amount')}</th></tr></thead>
