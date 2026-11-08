@@ -2,6 +2,8 @@ import { useCallback, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Modal } from '../components/Dialog.tsx';
 import { BarcodeScanner } from '../components/BarcodeScanner.tsx';
+import { StockTake } from '../components/StockTake.tsx';
+import { dollars } from '../components/Spending.tsx';
 import { api, fileToDataUrl, freezerMonths, tileState, type Item } from '../api.ts';
 import { useApp, useLoad } from '../state.tsx';
 import { useListPicker } from '../components/ListPicker.tsx';
@@ -19,6 +21,34 @@ const byList = (list: string[]) => (a: string, b: string) => {
   const ib = list.findIndex((x) => x.toLowerCase() === b.toLowerCase());
   return (ia < 0 ? 999 : ia) - (ib < 0 ? 999 : ib) || a.localeCompare(b);
 };
+
+interface Waste { days: number; count: number; value: number; items: { name: string; times: number; amount: number; unit: string | null; value: number | null }[] }
+
+/** What got thrown out lately, so the household can buy less of it. */
+function WasteSummary() {
+  const { base, me } = useApp();
+  const [waste] = useLoad<Waste>(`${base}/waste?days=30`);
+  if (!waste) return null;
+  return (
+    <div className="card stack" style={{ marginBottom: 12 }}>
+      <h2 style={{ margin: 0 }}>🗑️ Thrown out in the last 30 days</h2>
+      {waste.count === 0 ? (
+        <p className="muted" style={{ margin: 0 }}>Nothing. Nice work. When something goes off, open it and tap "Thrown out" so it shows up here.</p>
+      ) : (
+        <>
+          <p style={{ margin: 0 }}>
+            {waste.count} time{waste.count === 1 ? '' : 's'}{waste.value > 0 ? `, about ${dollars(waste.value)} of food` : ''}. Most often:
+          </p>
+          <div className="chips">
+            {waste.items.slice(0, 8).map((w) => (
+              <span key={w.name} className="chip">{w.name} · {amount(w.amount, w.unit, me?.user.units)}{w.times > 1 ? ` (${w.times}×)` : ''}</span>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
 
 interface HistoryRow { id: number; itemName: string; delta: number; unit: string | null; quantityAfter: number | null; reason: string; createdAt: string; userName: string | null }
 
@@ -155,6 +185,11 @@ export function ItemEditor({ item, draft, labels, canAdd, onClose }: {
           toast(`Deleted ${item.name}`, () => api(`${base}/items`, { body: rest }));
           onClose(true);
         }}>Delete</button>}
+        {item && item.quantity > 0 && <button onClick={async () => {
+          const updated = await api<Item & { historyId: number }>(`${base}/items/${item.id}/adjust`, { body: { delta: -item.quantity, reason: 'wasted' } });
+          toast(`${item.name} thrown out`, () => api(`${base}/history/undo`, { body: { ids: [updated.historyId] } }));
+          onClose(true);
+        }}>🗑️ Thrown out</button>}
         {item && <button onClick={async () => {
           const list = await pick();
           if (!list) return;
@@ -183,6 +218,8 @@ export function Inventory() {
   const [loc, setLoc] = useUrlState('loc', 'All');
   const [editing, setEditing] = useState<Item | null | 'new' | { draft: ItemDraft }>(null);
   const [scanning, setScanning] = useState(false);
+  const [stockTake, setStockTake] = useState(false);
+  const [ai] = useLoad<{ available: boolean }>('/api/mixologist/status');
 
   // Something already in the pantry gets one more; anything else opens the form, filled in from Open Food Facts.
   const scanned = useCallback(async (code: string) => {
@@ -223,6 +260,7 @@ export function Inventory() {
           <button className={`chip${tab === 'history' ? ' on' : ''}`} onClick={() => { setTab('history'); void reloadHistory(); }}>History</button>
         </div>
         <button onClick={() => setScanning(true)}>📷 Scan</button>
+        {ai?.available && <button onClick={() => setStockTake(true)} title="Photograph the fridge or a cupboard and update the pantry">📸 Stock-take</button>}
         <button className="primary" onClick={() => setEditing('new')}>＋ Add item</button>
       </div>
       {scanning && <BarcodeScanner onCode={scanned} onClose={() => setScanning(false)} />}
@@ -260,6 +298,8 @@ export function Inventory() {
           ))}
         </>
       ) : (
+        <>
+        <WasteSummary />
         <div className="card">
           <table>
             <thead><tr><th>When</th><th>Item</th><th>Change</th><th>Why</th><th>Who</th></tr></thead>
@@ -277,7 +317,9 @@ export function Inventory() {
           </table>
           {history && !history.length && <p className="muted">No changes yet.</p>}
         </div>
+        </>
       )}
+      {stockTake && <StockTake onClose={(changed) => { setStockTake(false); if (changed) void reload(); }} />}
 
       {editing && <ItemEditor item={editing === 'new' || 'draft' in editing ? null : editing} draft={editing !== 'new' && 'draft' in editing ? editing.draft : undefined} labels={labels} canAdd={home?.role === 'manager'} onClose={(changed) => { setEditing(null); if (changed) void reload(); }} />}
     </div>

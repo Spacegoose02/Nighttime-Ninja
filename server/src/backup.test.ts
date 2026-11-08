@@ -62,3 +62,16 @@ test('only admins can list, make and download backups', async () => {
   assert.equal(health.json().ok, true);
   assert.match(health.json().version, /^\d+\.\d+\.\d+/);
 });
+
+test('a home can hide pages it does not use', async () => {
+  clearRateLimit('local:ip:127.0.0.1');
+  const app = await buildApp(openMemoryDb(), { serveWeb: false });
+  const res = await app.inject({ method: 'POST', url: '/api/auth/local', payload: { name: 'Cook' } });
+  const headers = { cookie: `nn_session=${res.cookies.find((c) => c.name === 'nn_session')!.value}` };
+  const home = (await app.inject({ method: 'POST', url: '/api/homes', headers, payload: { name: 'Den' } })).json();
+  const patch = await app.inject({ method: 'PATCH', url: `/api/homes/${home.id}`, headers, payload: { hiddenPages: ['/mixologist', '/deals', '/inventory'] } });
+  assert.equal(patch.statusCode, 200, patch.body);
+  const me = (await app.inject({ method: 'GET', url: '/api/me', headers })).json();
+  // Pantry can't be hidden; the rest can.
+  assert.deepEqual(me.homes.find((h: { id: string }) => h.id === home.id).hiddenPages, ['/mixologist', '/deals']);
+});

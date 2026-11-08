@@ -6,7 +6,7 @@ import type { DatabaseSync } from 'node:sqlite';
 import { homeCtx, type HomeCtx } from '../auth.ts';
 import type { Row } from '../db.ts';
 import { HttpError, newId, str } from '../util.ts';
-import { ask, canForceTool, claude, keepAlive, limitAi, sourcesOf, textOf, webTools, type WebSource } from '../claude.ts';
+import { ask, canForceTool, keepAlive, limitAi, sourcesOf, textOf, webTools, type WebSource, requireAi } from '../claude.ts';
 
 export type ChatKind = 'mixologist' | 'chef';
 export interface ChatAction { type: 'shopping' | 'saved'; label: string; recipeId?: string }
@@ -115,7 +115,7 @@ export async function runChat(db: DatabaseSync, req: FastifyRequest, reply: Fast
   const b = (req.body ?? {}) as Row;
   const history = readHistory(b);
   if (!history.length || history[history.length - 1].role !== 'user') throw new HttpError(400, 'Say something first');
-  const { model } = claude(db);
+  const model = requireAi(db);
   limitAi(ctx);
   const chatId = str(b.chatId, 60);
   const wantsSave = saveApproved(history);

@@ -113,9 +113,28 @@ button.danger-fill { background: var(--danger); color: #fff; border-color: trans
 /* A row of chips that scrolls sideways instead of wrapping onto more lines. */
 .chips.scroll-x { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; padding-bottom: 2px; }
 .chips.scroll-x::-webkit-scrollbar { display: none; }
-.chips.scroll-x > .chip { flex: none; }
+.chips.scroll-x > .chip, .chips.scroll-x > .chips > .chip { flex: none; }
 .chip .count { margin-left: 6px; padding: 0 7px; border-radius: var(--radius-pill); font-size: 0.75rem; background: color-mix(in srgb, currentColor 16%, transparent); }
 .chip .i { width: 16px; height: 16px; }
 .check .i { width: 22px; height: 22px; stroke-width: 3; }
 /* The quick-add box stays at the top while you scroll a long list. */
 .quick-add { position: sticky; top: 0; z-index: 5; background: var(--bg); padding: var(--space-2) 0; margin: calc(-1 * var(--space-2)) 0; }
+
+/* Swipeable rows: the action shows underneath as the row slides. */
+.swipe-row { position: relative; touch-action: pan-y; overflow: hidden; }
+.swipe-front { background: var(--surface); position: relative; transition: transform 0.15s ease-out; }
+.swipe-row:active .swipe-front { transition: none; }
+.swipe-behind { position: absolute; inset: 0; display: flex; align-items: center; padding: 0 var(--space-5); font-weight: 700; color: var(--on-primary); }
+.swipe-behind.right { background: color-mix(in srgb, var(--ok) 70%, var(--surface)); justify-content: flex-start; }
+.swipe-behind.left { background: color-mix(in srgb, var(--danger) 70%, var(--surface)); justify-content: flex-end; }
+.swipe-behind.armed.right { background: var(--ok); }
+.swipe-behind.armed.left { background: var(--danger); }
+.swipe-row:last-child .list-item { border-bottom: none; }
+
+/* The app-wide search (Ctrl+K). */
+.modal.command-bar { margin-top: 8vh; width: min(640px, calc(100% - 24px)); }
+.command-results { max-height: 55vh; overflow-y: auto; display: flex; flex-direction: column; gap: 2px; }
+.command-item { display: flex; align-items: center; gap: var(--space-2); width: 100%; min-height: 44px; padding: 0 var(--space-3); border-radius: var(--radius-s); cursor: pointer; }
+.command-item.on { background: var(--surface-2); }
+.command-item > span[aria-hidden] { width: 20px; text-align: center; }
+.command-label { flex: 1; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

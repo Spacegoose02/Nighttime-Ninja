@@ -77,7 +77,7 @@ function safeJson(t: string): unknown {
 
 export interface Me {
   user: { id: string; name: string; email: string | null; avatar: string; theme: string; units: 'us' | 'metric' | 'original'; isAdmin: boolean; lastHomeId: string | null };
-  homes: { id: string; name: string; role: 'manager' | 'member' }[];
+  homes: { id: string; name: string; role: 'manager' | 'member'; hiddenPages?: string[]; currency?: string }[];
 }
 
 export interface Item {
@@ -112,6 +112,8 @@ export interface RecipeSummary {
   dietWarnings: number;
   /** Gear the recipe needs that the home doesn't have (empty until the home lists its kitchen tools). */
   missingTools: string[];
+  /** Dollars per serving from what the home last paid, when every ingredient has a price. */
+  costPerServing?: number | null;
 }
 
 export interface RecipeFull extends Recipe {
@@ -121,6 +123,11 @@ export interface RecipeFull extends Recipe {
   dietClashes: { ingredient: string; person: string; reason: string }[];
   missingTools: string[];
   nutrition: Nutrition | null;
+  /** The recipe this one is a variation of, and the variations made from this one. */
+  parent?: { id: string; title: string } | null;
+  variations?: { id: string; title: string }[];
+  /** Estimated from what the home last paid for each ingredient. */
+  cost?: { total: number; perServing: number | null; priced: number; of: number; unpriced: string[] };
 }
 
 /** Per serving, estimated by AI. */
@@ -134,11 +141,15 @@ export interface Meal {
 export interface HomeDetail {
   id: string; name: string; role: 'manager' | 'member'; joinCode: string; calendarUrl: string | null;
   members: { id: string; name: string; avatar: string; role: string; joined_at: string; diets: string[]; allergies: string[] }[];
-  settings: { zipCode: string | null; stores: string[]; krogerLocationId: string | null; locations: string[]; categories: string[]; equipment: string[] };
+  settings: { zipCode: string | null; stores: string[]; krogerLocationId: string | null; locations: string[]; categories: string[]; equipment: string[]; hiddenPages?: string[]; currency?: string };
 }
 
 /** Reads an image file into a data URL, shrinking big photos so uploads stay small. */
-export async function fileToDataUrl(file: File, maxSize = 1200): Promise<string> {
+/**
+ * A photo shrunk to fit maxSize pixels, as a data: URL. Photos the app keeps (recipe pictures) are saved as WebP,
+ * which is about a third smaller than JPEG at the same quality; photos only sent to the AI stay JPEG.
+ */
+export async function fileToDataUrl(file: File, maxSize = 1200, keep = false): Promise<string> {
   const url = URL.createObjectURL(file);
   try {
     const img = await new Promise<HTMLImageElement>((resolve, reject) => {
@@ -152,6 +163,10 @@ export async function fileToDataUrl(file: File, maxSize = 1200): Promise<string>
     canvas.width = Math.round(img.width * scale);
     canvas.height = Math.round(img.height * scale);
     canvas.getContext('2d')!.drawImage(img, 0, 0, canvas.width, canvas.height);
+    if (keep) {
+      const webp = canvas.toDataURL('image/webp', 0.82);
+      if (webp.startsWith('data:image/webp')) return webp;
+    }
     return canvas.toDataURL('image/jpeg', 0.85);
   } finally {
     URL.revokeObjectURL(url);

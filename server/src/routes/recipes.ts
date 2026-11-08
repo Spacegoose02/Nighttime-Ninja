@@ -12,6 +12,7 @@ import { dietClashes } from '../../../shared/diets.ts';
 import { missingTools } from '../../../shared/equipment.ts';
 import { body, flag, list, number, text } from '../schemas.ts';
 import { addShoppingItem } from './shopping.ts';
+import { latestPurchases, recipeCost } from '../cost.ts';
 
 /** Things nobody tracks in inventory. */
 const ALWAYS_HAVE = new Set(['water', 'ice', 'hot water', 'cold water', 'warm water', 'ice water']);
@@ -166,10 +167,13 @@ export function recipeRoutes(app: FastifyInstance, db: DatabaseSync): void {
     const expiring = expiringIds(db, ctx.homeId);
     const eaters = homeEaters(db, ctx.homeId);
     const tools = homeTools(db, ctx.homeId);
+    const purchases = latestPurchases(db, ctx.homeId);
     const list = rows.map((r) => {
       const full = loadRecipe(db, r);
       const { status, missing } = readiness(checkIngredients(index, full.ingredients));
+      const cost = purchases.length ? recipeCost(full.ingredients, full.servings, purchases) : null;
       return {
+        costPerServing: cost && cost.priced === cost.of ? cost.perServing : null,
         usesExpiring: usesExpiring(index, full.ingredients, expiring),
         dietWarnings: dietClashes(full.ingredients.filter((i) => !i.optional), eaters).length,
         missingTools: missingTools(full, tools),
@@ -191,14 +195,31 @@ export function recipeRoutes(app: FastifyInstance, db: DatabaseSync): void {
     const factor = servings && full.servings ? servings / full.servings : 1;
     const checked = checkIngredients(stockIndex(db, ctx.homeId), full.ingredients, factor);
     const cooks = db.prepare('SELECT COUNT(*) AS n, MAX(cooked_at) AS last FROM recipe_cooks WHERE recipe_id = ?').get(full.id) as Row;
+    const scaled = full.ingredients.map((i) => ({ ...i, quantity: i.quantity == null ? null : i.quantity * factor }));
     return {
       ...full, ingredients: checked, ...readiness(checked),
+      cost: recipeCost(scaled, servings ?? full.servings, latestPurchases(db, ctx.homeId)),
       favorite: !!row.favorite, rating: row.rating as number | null, notes: row.notes as string, collections: parseJson<string[]>(row.collections, []),
       cookCount: Number(cooks.n), lastCooked: cooks.last as string | null,
       dietClashes: dietClashes(full.ingredients, homeEaters(db, ctx.homeId)),
       missingTools: missingTools(full, homeTools(db, ctx.homeId)),
       nutrition: parseJson<Record<string, number> | null>(row.nutrition, null),
+      parent: row.parent_id ? (db.prepare('SELECT id, title FROM recipes WHERE id = ? AND home_id = ?').get(row.parent_id as string, ctx.homeId) as { id: string; title: string } | undefined) ?? null : null,
+      variations: db.prepare('SELECT id, title FROM recipes WHERE parent_id = ? AND home_id = ? ORDER BY created_at').all(full.id, ctx.homeId) as { id: string; title: string }[],
     };
+  });
+
+  // "Make it my way": a copy to change freely, kept linked to the original so both show the other.
+  app.post('/api/homes/:homeId/recipes/:id/variation', async (req) => {
+    const ctx = homeCtx(db, req);
+    const row = db.prepare('SELECT * FROM recipes WHERE id = ? AND home_id = ?').get((req.params as { id: string }).id, ctx.homeId) as Row | undefined;
+    if (!row) throw new HttpError(404, 'Recipe not found');
+    const { id: _id, isPublic: _p, shareSlug: _s, createdAt: _c, updatedAt: _u, ...recipe } = loadRecipe(db, row);
+    const title = str((req.body as Row | undefined)?.title, 200) ?? `${recipe.title} (my way)`;
+    const id = saveRecipe(db, ctx.homeId, { ...recipe, title }, ctx.user?.id ?? null);
+    // A variation of a variation still points at the first recipe, so they all sit together.
+    db.prepare('UPDATE recipes SET parent_id = ? WHERE id = ?').run((row.parent_id as string | null) ?? row.id as string, id);
+    return { id };
   });
 
   app.post('/api/homes/:homeId/recipes', async (req) => {

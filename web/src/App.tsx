@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useState } from 'react';
 import { NavLink, Route, Routes, useLocation } from 'react-router-dom';
 import { useApp } from './state.tsx';
 import { RaccoonAvatar } from './components/Raccoon.tsx';
@@ -14,6 +14,8 @@ import { PublicRecipe, Community } from './pages/Public.tsx';
 import { Modal } from './components/Dialog.tsx';
 import { TimerBar } from './components/Timers.tsx';
 import { Icon, type IconName } from './components/Icon.tsx';
+import { CommandBar } from './components/CommandBar.tsx';
+import { t } from './i18n.ts';
 
 // The bigger, less-visited pages load the first time they're opened, so the app starts faster on tablets.
 const RecipeEdit = lazy(() => import('./pages/RecipeEdit.tsx').then((m) => ({ default: m.RecipeEdit })));
@@ -40,25 +42,52 @@ const NAV: { to: string; ico: IconName; label: string; end?: boolean; group: 'ki
 /** The phone tab bar keeps these; everything else lives under More. */
 const PHONE_TABS = new Set(['/', '/inventory', '/recipes', '/shopping']);
 
+/** The pages this home uses: managers can hide Meal Plan, Gordy, the Mixologist, Deals or Feed. */
+function useNav() {
+  const { home } = useApp();
+  const hidden = new Set(home?.hiddenPages ?? []);
+  return NAV.filter((n) => !hidden.has(n.to));
+}
+
+/** Opens the app-wide search with Ctrl+K / Cmd+K, or "/" when not typing. */
+function useSearchShortcut(open: () => void) {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const typing = e.target instanceof HTMLElement && (e.target.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName));
+      if (((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') || (e.key === '/' && !typing && !e.ctrlKey && !e.metaKey)) {
+        e.preventDefault();
+        open();
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [open]);
+}
+
 function NavItem({ n, onClick }: { n: (typeof NAV)[number]; onClick?: () => void }) {
   return (
     <NavLink to={n.to} end={n.end} onClick={onClick} className={({ isActive }) => `nav-link${isActive ? ' active' : ''}`}>
       <Icon name={n.ico} className="ico" />
-      {n.label}
+      {t(n.label)}
     </NavLink>
   );
 }
 
-function Rail() {
+function Rail({ onSearch }: { onSearch: () => void }) {
   const { me } = useApp();
+  const nav = useNav();
   return (
     <nav className="rail" aria-label="Main">
       <div className="brand" title="Nighttime Ninja">
         <RaccoonAvatar variant={me?.user.avatar} size={56} />
       </div>
-      {NAV.map((n, i) => (
+      <button className="nav-link ghost" onClick={onSearch} aria-keyshortcuts="Control+K" title={t('Search (Ctrl+K)')}>
+        <Icon name="search" className="ico" />
+        {t('Search')}
+      </button>
+      {nav.map((n, i) => (
         <span key={n.to} className="nav-group-item">
-          {i > 0 && NAV[i - 1].group !== n.group && <hr className="nav-sep" />}
+          {i > 0 && nav[i - 1].group !== n.group && <hr className="nav-sep" />}
           <NavItem n={n} />
         </span>
       ))}
@@ -66,22 +95,26 @@ function Rail() {
   );
 }
 
-function BottomBar() {
+function BottomBar({ onSearch }: { onSearch: () => void }) {
   const loc = useLocation();
   const [more, setMore] = useState(false);
-  const extra = NAV.filter((n) => !PHONE_TABS.has(n.to));
+  const nav = useNav();
+  const extra = nav.filter((n) => !PHONE_TABS.has(n.to));
   const inMore = extra.some((n) => loc.pathname.startsWith(n.to));
   useEffect(() => setMore(false), [loc.pathname]);
   return (
     <nav className="bottom-bar" aria-label="Main">
-      {NAV.filter((n) => PHONE_TABS.has(n.to)).map((n) => <NavItem key={n.to} n={n} />)}
+      {nav.filter((n) => PHONE_TABS.has(n.to)).map((n) => <NavItem key={n.to} n={n} />)}
       <button className={`nav-link ghost${inMore ? ' active' : ''}`} aria-haspopup="dialog" aria-expanded={more} onClick={() => setMore(true)}>
         <Icon name="more" className="ico" />
-        More
+        {t('More')}
       </button>
       {more && (
-        <Modal label="More" className="sheet" onClose={() => setMore(false)}>
-          <div className="sheet-grid">{extra.map((n) => <NavItem key={n.to} n={n} onClick={() => setMore(false)} />)}</div>
+        <Modal label={t('More')} className="sheet" onClose={() => setMore(false)}>
+          <div className="sheet-grid">
+            <button className="nav-link" onClick={() => { setMore(false); onSearch(); }}><Icon name="search" className="ico" />{t('Search')}</button>
+            {extra.map((n) => <NavItem key={n.to} n={n} onClick={() => setMore(false)} />)}
+          </div>
         </Modal>
       )}
     </nav>
@@ -91,6 +124,10 @@ function BottomBar() {
 export function App() {
   const { me, loading, home } = useApp();
   const loc = useLocation();
+  const [search, setSearch] = useState(false);
+  const openSearch = useCallback(() => setSearch(true), []);
+  useSearchShortcut(openSearch);
+  const nav = NAV.filter((n) => !(home?.hiddenPages ?? []).includes(n.to));
 
   // Shared recipes are readable without signing in.
   if (loc.pathname.startsWith('/r/')) {
@@ -108,7 +145,7 @@ export function App() {
 
   return (
     <div className="layout">
-      <Rail />
+      <Rail onSearch={openSearch} />
       <main className="main">
         <Suspense fallback={<div className="center-screen"><RaccoonAvatar variant="chef" size={72} title="Loading" /></div>}>
           <Routes>
@@ -128,12 +165,13 @@ export function App() {
             <Route path="/feed" element={<Feed />} />
             <Route path="/settings" element={<Settings />} />
             <Route path="/home/new" element={<HomeSetup inline />} />
-            <Route path="*" element={<div className="card">That page wandered off. <NavLink to="/">Go home</NavLink></div>} />
+            <Route path="*" element={<div className="card">{t('That page wandered off.')} <NavLink to="/">{t('Go home')}</NavLink></div>} />
           </Routes>
         </Suspense>
       </main>
       <TimerBar />
-      <BottomBar />
+      <BottomBar onSearch={openSearch} />
+      {search && <CommandBar pages={nav} onClose={() => setSearch(false)} />}
     </div>
   );
 }

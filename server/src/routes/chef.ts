@@ -8,7 +8,7 @@ import { HttpError, num, str } from '../util.ts';
 import type { Ingredient } from '../../../shared/recipe.ts';
 import { checkIngredients, loadRecipe, saveRecipe, stockIndex } from './recipes.ts';
 import { addShoppingItem } from './shopping.ts';
-import { ask, claude, keepAlive, limitAi, textOf } from '../claude.ts';
+import { ask, keepAlive, limitAi, textOf, requireAi } from '../claude.ts';
 import { stockForPrompt } from './mixologist.ts';
 import { existingRecipeId, runChat, TOOL_RULES } from './aichat.ts';
 
@@ -199,7 +199,7 @@ export function chefRoutes(app: FastifyInstance, db: DatabaseSync): void {
     const recipe = recipeText(db, ctx.homeId, b);
     const notes = str(b.notes, 1000);
     const ideas = Math.min(5, Math.max(1, num(b.ideas) ?? 3));
-    claude(db);
+    requireAi(db);
     limitAi(ctx);
     await keepAlive(reply, async () => {
       const res = await ask(db, {

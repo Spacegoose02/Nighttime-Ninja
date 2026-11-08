@@ -4,6 +4,54 @@ import { api, fileToDataUrl } from '../api.ts';
 import { useApp, useLoad } from '../state.tsx';
 import type { Recipe } from '../../../shared/recipe.ts';
 
+interface ArchiveResult { format: 'mealie' | 'tandoor' | 'paprika'; recipes: number; recipesSkipped: number; photos: number }
+const APP_NAMES = { mealie: 'Mealie', tandoor: 'Tandoor', paprika: 'Paprika' } as const;
+
+/** base64 of a file, without the data: prefix. */
+function fileToBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => resolve(String(r.result).split(',')[1] ?? '');
+    r.onerror = () => reject(new Error("Couldn't read that file"));
+    r.readAsDataURL(file);
+  });
+}
+
+/** Mealie, Tandoor and Paprika exports, photos included. */
+function OtherAppImport() {
+  const { base } = useApp();
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [result, setResult] = useState<ArchiveResult | null>(null);
+  async function fromFile(file: File | undefined) {
+    if (!file) return;
+    setBusy(true); setError(null); setResult(null);
+    try {
+      setResult(await api<ArchiveResult>(`${base}/import/archive`, { body: { file: await fileToBase64(file), filename: file.name } }));
+    } catch (e) { setError((e as Error).message); } finally { setBusy(false); }
+  }
+  return (
+    <div className="card stack">
+      <h2>📦 Move over from Mealie, Tandoor or Paprika</h2>
+      <ul className="small muted" style={{ margin: 0, paddingLeft: 18 }}>
+        <li><strong>Mealie:</strong> Settings → Data Management → Export, then pick the .zip.</li>
+        <li><strong>Tandoor:</strong> Export → Default format → all recipes, then pick the .zip.</li>
+        <li><strong>Paprika:</strong> select your recipes → Export → Paprika Recipe Format, then pick the .paprikarecipes file.</li>
+      </ul>
+      <input type="file" accept=".zip,.paprikarecipes,application/zip" aria-label="Export file from another recipe app" onChange={(e) => void fromFile(e.target.files?.[0])} disabled={busy} />
+      {busy && <p>Importing… big collections can take a minute.</p>}
+      {error && <p style={{ color: 'var(--danger)' }}>{error}</p>}
+      {result && (
+        <p className="pill ok" style={{ fontSize: '1rem', padding: '8px 14px' }}>
+          Imported {result.recipes} recipes from {APP_NAMES[result.format]}{result.photos ? ` with ${result.photos} photos` : ''}
+          {result.recipesSkipped ? `. Skipped ${result.recipesSkipped} you already had.` : '.'}
+        </p>
+      )}
+      <p className="small muted" style={{ margin: 0 }}>Going the other way? Settings → Home → Backup has a Paprika file that all three apps can open.</p>
+    </div>
+  );
+}
+
 interface KoResult { recipes: number; recipesSkipped: number; items: number; shopping: number; photos: number }
 
 function KitchenOwlImport() {
@@ -97,7 +145,7 @@ export function ImportPage() {
         <h1>Import recipes</h1>
       </div>
       <p className="muted" style={{ margin: 0 }}>
-        Everything is turned into one standard format: recipe-site links (schema.org), pasted text, web pages, Nighttime Ninja or KitchenOwl JSON.
+        Everything is turned into one standard format: recipe-site links (schema.org), pasted text, web pages, Nighttime Ninja or KitchenOwl JSON, and Mealie, Tandoor or Paprika exports.
         Metric amounts and °C are shown in US units when you've chosen US in Settings.
       </p>
       <div className="grid-2">
@@ -151,6 +199,7 @@ export function ImportPage() {
           ))}
         </div>
       )}
+      <OtherAppImport />
       <KitchenOwlImport />
     </div>
   );

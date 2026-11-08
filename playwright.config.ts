@@ -9,12 +9,15 @@ const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'nn-e2e-'));
 
 export default defineConfig({
   testDir: 'e2e',
-  timeout: 30_000,
+  timeout: 60_000,
+  // The tests share one server and database, so they run one after another.
+  workers: 1,
   use: { baseURL: 'http://127.0.0.1:8098', ...devices['Pixel 7'] },
   webServer: {
     command: 'node server/src/index.ts',
     url: 'http://127.0.0.1:8098/api/health',
-    env: { PORT: '8098', HOST: '127.0.0.1', DATA_DIR: dataDir },
+    // Open sign-up so every test can make its own account and home.
+    env: { PORT: '8098', HOST: '127.0.0.1', DATA_DIR: dataDir, SIGNUP_MODE: 'open' },
     reuseExistingServer: false,
   },
 });

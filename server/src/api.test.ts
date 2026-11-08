@@ -818,3 +818,86 @@ test('shopping and cooking keep the pantry right', async () => {
   const open = (await call(a, 'GET', `${base}/shopping`)).body.filter((s: { checked: boolean }) => !s.checked);
   assert.deepEqual(open.map((s: { name: string; quantity: number }) => [s.name, s.quantity]).sort(), [['ground beef', 2], ['tomatoes', 2]]);
 });
+
+test('recipes move in from Mealie and out as a Paprika file', async () => {
+  const { app, login, call } = await setup();
+  const { zip, unzip } = await import('./zip.ts');
+  const alice = await login('Alice');
+  const { body: home } = await call(alice, 'POST', '/api/homes', { name: 'Den' });
+  const file = zip([{ name: 'recipes/tacos/tacos.json', data: Buffer.from(JSON.stringify({
+    name: 'Tacos', recipeIngredient: ['1 lb ground beef', '8 tortillas'], recipeInstructions: [{ text: 'Cook.' }],
+  })) }]).toString('base64');
+  const first = await call(alice, 'POST', `/api/homes/${home.id}/import/archive`, { file, filename: 'mealie.zip' });
+  assert.equal(first.status, 200, JSON.stringify(first.body));
+  assert.deepEqual(first.body, { format: 'mealie', recipes: 1, recipesSkipped: 0, photos: 0 });
+  // Importing again skips what's already there.
+  assert.equal((await call(alice, 'POST', `/api/homes/${home.id}/import/archive`, { file })).body.recipesSkipped, 1);
+  assert.equal((await call(alice, 'POST', `/api/homes/${home.id}/import/archive`, { file: Buffer.from('nope').toString('base64') })).status, 422);
+
+  const out = await app.inject({ method: 'GET', url: `/api/homes/${home.id}/export/paprika`, headers: alice });
+  assert.equal(out.statusCode, 200);
+  assert.match(String(out.headers['content-disposition']), /den\.paprikarecipes/);
+  assert.deepEqual(unzip(out.rawPayload).map((e) => e.name), ['Tacos.paprikarecipe']);
+});
+
+test('MCP server: an assistant can read the kitchen and add to the list with a home token', async () => {
+  const { app, login, call } = await setup();
+  const alice = await login('Alice');
+  const { body: home } = await call(alice, 'POST', '/api/homes', { name: 'Den' });
+  await call(alice, 'POST', `/api/homes/${home.id}/items`, { name: 'Eggs', quantity: 12 });
+  await call(alice, 'POST', `/api/homes/${home.id}/recipes`, { title: 'Omelette', ingredients: [{ name: 'eggs', quantity: 3, unit: null, note: null, optional: false }], instructions: ['Whisk.', 'Cook.'], tags: ['breakfast'] });
+  const { body: tok } = await call(alice, 'POST', `/api/homes/${home.id}/tokens`, { name: 'Claude' });
+  const bearer = { authorization: `Bearer ${tok.token}` };
+  const rpc = async (method: string, params?: object, id: number | null = 1) => {
+    const res = await app.inject({ method: 'POST', url: '/api/mcp', headers: bearer, payload: { jsonrpc: '2.0', ...(id === null ? {} : { id }), method, params } });
+    return { status: res.statusCode, body: res.body ? JSON.parse(res.body) : null };
+  };
+
+  assert.equal((await app.inject({ method: 'POST', url: '/api/mcp', payload: { jsonrpc: '2.0', id: 1, method: 'ping' } })).statusCode, 401);
+  const init = await rpc('initialize', { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'test', version: '1' } });
+  assert.equal(init.body.result.protocolVersion, '2025-06-18');
+  assert.equal((await rpc('notifications/initialized', undefined, null)).status, 202);
+  const tools = (await rpc('tools/list')).body.result.tools.map((t: { name: string }) => t.name);
+  assert.ok(tools.includes('add_to_shopping_list') && tools.includes('list_pantry'));
+
+  const pantry = await rpc('tools/call', { name: 'list_pantry', arguments: { search: 'egg' } });
+  assert.equal(pantry.body.result.structuredContent.results[0].name, 'Eggs');
+  const found = await rpc('tools/call', { name: 'search_recipes', arguments: { query: 'omel' } });
+  const recipeId = found.body.result.structuredContent.results[0].id;
+  const recipe = await rpc('tools/call', { name: 'get_recipe', arguments: { id: recipeId } });
+  assert.deepEqual(recipe.body.result.structuredContent.instructions, ['Whisk.', 'Cook.']);
+  await rpc('tools/call', { name: 'add_to_shopping_list', arguments: { items: ['2 lb chicken thighs', 'milk'] } });
+  const list = await rpc('tools/call', { name: 'get_shopping_list', arguments: {} });
+  assert.deepEqual(list.body.result.structuredContent.results.map((i: { name: string }) => i.name).sort(), ['chicken thighs', 'milk']);
+  const bad = await rpc('tools/call', { name: 'get_recipe', arguments: { id: 'nope' } });
+  assert.equal(bad.body.result.isError, true);
+  assert.equal((await rpc('nope/nope')).body.error.code, -32601);
+});
+
+test('food waste log, recipe variations and fridge stock-take', async () => {
+  const { login, call } = await setup();
+  const alice = await login('Alice');
+  const { body: home } = await call(alice, 'POST', `/api/homes`, { name: 'Den' });
+  const base = `/api/homes/${home.id}`;
+  const { body: spinach } = await call(alice, 'POST', `${base}/items`, { name: 'Spinach', quantity: 2, unit: 'bag' });
+  await call(alice, 'POST', `${base}/items/${spinach.id}/adjust`, { delta: -1, reason: 'wasted' });
+  const waste = await call(alice, 'GET', `${base}/waste?days=30`);
+  assert.equal(waste.body.count, 1);
+  assert.deepEqual([waste.body.items[0].name, waste.body.items[0].amount], ['Spinach', 1]);
+
+  const { body: r } = await call(alice, 'POST', `${base}/recipes`, { title: 'Chili', ingredients: [], instructions: ['Simmer.'], tags: [] });
+  const { body: v } = await call(alice, 'POST', `${base}/recipes/${r.id}/variation`, {});
+  const { body: v2 } = await call(alice, 'POST', `${base}/recipes/${v.id}/variation`, { title: 'Chili, extra hot' });
+  const original = await call(alice, 'GET', `${base}/recipes/${r.id}`);
+  assert.deepEqual(original.body.variations.map((x: { title: string }) => x.title), ['Chili (my way)', 'Chili, extra hot']);
+  assert.equal((await call(alice, 'GET', `${base}/recipes/${v2.id}`)).body.parent.title, 'Chili');
+
+  const applied = await call(alice, 'POST', `${base}/pantry/photo/apply`, { items: [
+    { name: 'Spinach', quantity: 3, itemId: spinach.id },
+    { name: 'Frozen peas', quantity: 2, unit: 'bag', location: 'Freezer' },
+  ] });
+  assert.deepEqual(applied.body, { added: 1, updated: 1 });
+  const items = (await call(alice, 'GET', `${base}/items`)).body as { name: string; quantity: number; location: string }[];
+  assert.equal(items.find((i) => i.name === 'Spinach')?.quantity, 3);
+  assert.equal(items.find((i) => i.name === 'Frozen peas')?.location, 'Freezer');
+});

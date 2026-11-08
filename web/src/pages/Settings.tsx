@@ -1,4 +1,8 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { useUrlState } from '../urlState.ts';
+import { LANGUAGES, language, setLanguage, t } from '../i18n.ts';
+import { fontChoice, setFontChoice, setTextSize, textSize } from '../devicePrefs.ts';
+import { REGIONS } from '../regions.ts';
 import { Link } from 'react-router-dom';
 import { useDialogs } from '../components/Dialog.tsx';
 import { forgetDevice } from '../offline.ts';
@@ -34,6 +38,7 @@ const THEMES = [
   { id: 'blueberry', name: 'Blueberry', swatch: '#4c4fc4' },
   { id: 'castiron', name: 'Cast Iron', swatch: '#2a2a2a' },
   { id: 'bourbon', name: 'Bourbon', swatch: '#8a5a2b' },
+  { id: 'contrast', name: 'High contrast', swatch: 'linear-gradient(135deg, #000 50%, #fff 50%)' },
 ];
 
 function Profile() {
@@ -44,13 +49,13 @@ function Profile() {
 
   return (
     <div className="card stack">
-      <h2>You</h2>
+      <h2>{t('You')}</h2>
       <form className="row" onSubmit={async (e) => { e.preventDefault(); await update({ name }); toast('Saved'); }}>
         <input aria-label="Your name" value={name} onChange={(e) => setName(e.target.value)} style={{ flex: 1 }} />
         <button>Save name</button>
       </form>
       {me!.user.email && <p className="small muted" style={{ margin: 0 }}>Signed in with Google as {me!.user.email}</p>}
-      <h3>Avatar</h3>
+      <h3>{t('Avatar')}</h3>
       <div className="avatar-grid">
         {[...PICTURE_AVATARS.map((p) => ({ id: p.id, label: p.label })), ...AVATARS.map((a) => ({ id: a, label: AVATAR_LABELS[a] }))].map((a) => (
           <button key={a.id} className={`avatar-pick${me!.user.avatar === a.id ? ' on' : ''}`} onClick={() => update({ avatar: a.id })}>
@@ -59,7 +64,7 @@ function Profile() {
           </button>
         ))}
       </div>
-      <h3>Theme</h3>
+      <h3>{t('Theme')}</h3>
       <div className="chips">
         {THEMES.map((t) => (
           <button key={t.id} className={`chip${me!.user.theme === t.id ? ' on' : ''}`} onClick={() => update({ theme: t.id })}>
@@ -67,12 +72,13 @@ function Profile() {
           </button>
         ))}
       </div>
-      <h3>Measurements</h3>
+      <h3>{t('Measurements')}</h3>
       <div className="chips">
         {[['us', 'US (cups, oz, °F)'], ['metric', 'Metric (g, ml)'], ['original', 'As written']].map(([v, l]) => (
           <button key={v} className={`chip${me!.user.units === v ? ' on' : ''}`} onClick={() => update({ units: v })}>{l}</button>
         ))}
       </div>
+      <DeviceComfort />
       <h3>Tablets and phones</h3>
       <p className="small muted" style={{ margin: 0 }}>Sign in on a kitchen tablet or the app without typing your Google password: get a code here, then choose “I have a pairing code” on the other device.</p>
       <div className="row">
@@ -119,6 +125,20 @@ function HomeSettings() {
           <button>Rename</button>
         </form>
       ) : <p style={{ margin: 0 }}><strong>{home.name}</strong> <span className="muted">(you're a member)</span></p>}
+
+      <CurrencyPicker value={home.settings.currency ?? 'USD'} disabled={!isManager} onPick={async (currency) => { await patch({ currency }); await refresh(); toast(t('Saved')); }} />
+      <h3>{t('Pages')}</h3>
+      <p className="small muted" style={{ margin: 0 }}>{t("Hide what this home doesn't use. They come back here any time.")}</p>
+      <div className="chips">
+        {OPTIONAL_PAGES.map((p) => {
+          const on = !(home.settings.hiddenPages ?? []).includes(p.to);
+          const hidden = home.settings.hiddenPages ?? [];
+          return (
+            <button key={p.to} disabled={!isManager} aria-pressed={on} className={`chip${on ? ' on' : ''}`}
+              onClick={async () => { await patch({ hiddenPages: on ? [...hidden, p.to] : hidden.filter((x) => x !== p.to) }); await refresh(); }}>{t(p.label)}</button>
+          );
+        })}
+      </div>
 
       <h3>Invite people</h3>
       <div className="row">
@@ -192,9 +212,13 @@ function HomeSettings() {
 
       {isManager && (
         <>
-          <h3>Home Assistant and automations</h3>
-          <p className="small muted" style={{ margin: 0 }}>Create a token, then follow docs/home-assistant.md in the project to add sensors and a shopping-list service.</p>
+          <h3>Home Assistant, AI assistants and automations</h3>
+          <p className="small muted" style={{ margin: 0 }}>
+            Create a token, then see the project docs for <a href="https://spacegoose02.github.io/Nighttime-Ninja/home-assistant.html" target="_blank" rel="noreferrer">Home Assistant</a> or
+            {' '}<a href="https://spacegoose02.github.io/Nighttime-Ninja/mcp.html" target="_blank" rel="noreferrer">AI assistants such as Claude (MCP)</a>.
+          </p>
           <p className="small" style={{ margin: 0 }}>API address for this home: <code style={{ wordBreak: 'break-all' }}>{location.origin}{base}</code></p>
+          <p className="small" style={{ margin: 0 }}>MCP address for AI assistants: <code style={{ wordBreak: 'break-all' }}>{location.origin}/api/mcp</code></p>
           <form className="row" onSubmit={async (e) => {
             e.preventDefault();
             const el = e.currentTarget.elements.namedItem('tn') as HTMLInputElement;
@@ -215,6 +239,7 @@ function HomeSettings() {
           <h3>Backup</h3>
           <div className="row">
             <a className="btn" href={`${base}/export`}>⬇️ Download everything (JSON)</a>
+            <a className="btn" href={`${base}/export/paprika`} title="Opens in Paprika, Mealie and Tandoor">⬇️ Recipes for another app (Paprika file)</a>
             <button className="danger" onClick={async () => {
               if (await dialogs.prompt(`Type the home name to delete it forever: ${home.name}`, '', { okLabel: 'Delete forever', danger: true, mustType: home.name }) !== home.name) return;
               await api(base, { method: 'DELETE' });
@@ -227,19 +252,123 @@ function HomeSettings() {
   );
 }
 
+/** Language, text size and font: saved on this device only. */
+function DeviceComfort() {
+  const [size, setSize] = useState(textSize());
+  const [font, setFont] = useState(fontChoice());
+  return (
+    <>
+      <h3>{t('On this device')}</h3>
+      <div className="row">
+        <span className="small muted" style={{ minWidth: 90 }}>{t('Language')}</span>
+        <div className="chips">
+          {LANGUAGES.map((l) => <button key={l.id} className={`chip${language() === l.id ? ' on' : ''}`} aria-pressed={language() === l.id} onClick={() => setLanguage(l.id)}>{l.name}</button>)}
+        </div>
+      </div>
+      <div className="row">
+        <span className="small muted" style={{ minWidth: 90 }}>{t('Text size')}</span>
+        <div className="chips">
+          {([['normal', t('Normal')], ['large', t('Large')], ['xl', t('Extra large')]] as const).map(([v, l]) => (
+            <button key={v} className={`chip${size === v ? ' on' : ''}`} aria-pressed={size === v} onClick={() => { setTextSize(v); setSize(v); }}>{l}</button>
+          ))}
+        </div>
+      </div>
+      <div className="row">
+        <span className="small muted" style={{ minWidth: 90 }}>{t('Font')}</span>
+        <div className="chips">
+          {([['standard', t('Standard')], ['readable', t('Easy to read')]] as const).map(([v, l]) => (
+            <button key={v} className={`chip${font === v ? ' on' : ''}`} aria-pressed={font === v} onClick={() => { setFontChoice(v); setFont(v); }}>{l}</button>
+          ))}
+        </div>
+      </div>
+    </>
+  );
+}
+
+/** Settings → Home: the money this home pays in. */
+function CurrencyPicker({ value, disabled, onPick }: { value: string; disabled: boolean; onPick: (c: string) => void }) {
+  const codes = [...new Set(REGIONS.map((r) => r.currency))].sort();
+  if (!codes.includes(value)) codes.unshift(value);
+  return (
+    <label className="row">
+      <span style={{ fontWeight: 600 }}>{t('Currency')}</span>
+      <select value={value} disabled={disabled} onChange={(e) => onPick(e.target.value)} style={{ width: 'auto' }}>
+        {codes.map((c) => <option key={c} value={c}>{c}</option>)}
+      </select>
+    </label>
+  );
+}
+
+const OPTIONAL_PAGES = [
+  { to: '/plan', label: 'Meal Plan' }, { to: '/chef', label: 'Chef Gordy' }, { to: '/mixologist', label: 'Mixologist' },
+  { to: '/deals', label: 'Deals' }, { to: '/feed', label: 'Feed' },
+];
+
+const SECTIONS = [
+  { key: 'you', label: 'You' },
+  { key: 'home', label: 'Home' },
+  { key: 'kitchen', label: 'Kitchen' },
+  { key: 'server', label: 'Server admin', admin: true },
+] as const;
+
 export function Settings() {
   const { me } = useApp();
+  const [tab, setTab] = useUrlState('section', 'all');
+  const [q, setQ] = useUrlState('q', '');
+  const box = useRef<HTMLDivElement>(null);
+  const [none, setNone] = useState(false);
+  // Search hides every card that doesn't mention the words, across all sections.
+  useEffect(() => {
+    const filter = () => {
+      const cards = [...(box.current?.querySelectorAll<HTMLElement>('[data-section] > *') ?? [])];
+      const words = q.trim().toLowerCase().split(/\s+/).filter(Boolean);
+      let shown = 0;
+      for (const c of cards) {
+        const hit = words.every((w) => (c.textContent ?? '').toLowerCase().includes(w));
+        if (c.hidden === hit) c.hidden = !hit;
+        if (hit) shown++;
+      }
+      setNone(!!words.length && !shown);
+    };
+    filter();
+    // Cards fill in as their data loads; filter those too.
+    const watch = new MutationObserver(filter);
+    if (box.current) watch.observe(box.current, { childList: true, subtree: true, characterData: true });
+    return () => watch.disconnect();
+  }, [q, tab]);
+  const show = (key: string) => !!q || tab === 'all' || tab === key;
+  const sections = SECTIONS.filter((x) => !('admin' in x) || me?.user.isAdmin);
   return (
-    <div className="stack" style={{ maxWidth: 960 }}>
-      <div className="topbar"><h1>Settings</h1></div>
-      <Profile />
-      <Reminders />
-      <SecurityCard />
-      <HomeSettings />
-      <KitchenTools />
-      <PlacesAndCategories />
-      <VersionCard />
-      {me?.user.isAdmin && <Admin />}
+    <div className="stack" style={{ maxWidth: 960 }} ref={box}>
+      <div className="topbar"><h1>{t('Settings')}</h1></div>
+      <div className="settings-nav">
+        <input type="search" value={q} onChange={(e) => setQ(e.target.value)} placeholder={t('Search settings')} aria-label={t('Search settings')} />
+        <div className="chips scroll-x" role="tablist" aria-label="Settings sections">
+          <button role="tab" aria-selected={tab === 'all'} className={`chip${tab === 'all' && !q ? ' on' : ''}`} onClick={() => { setQ(''); setTab('all'); }}>{t('All')}</button>
+          {sections.map((x) => (
+            <button key={x.key} role="tab" aria-selected={tab === x.key} className={`chip${tab === x.key && !q ? ' on' : ''}`} onClick={() => { setQ(''); setTab(x.key); }}>{t(x.label)}</button>
+          ))}
+        </div>
+      </div>
+      {none && <div className="card muted">{t('No setting mentions “{q}”.', { q })}</div>}
+      <section data-section="you" className="stack" hidden={!show('you')}>
+        <Profile />
+        <Reminders />
+        <SecurityCard />
+      </section>
+      <section data-section="home" className="stack" hidden={!show('home')}>
+        <HomeSettings />
+        <PlacesAndCategories />
+      </section>
+      <section data-section="kitchen" className="stack" hidden={!show('kitchen')}>
+        <KitchenTools />
+        <VersionCard />
+      </section>
+      {me?.user.isAdmin && (
+        <section data-section="server" className="stack" hidden={!show('server')}>
+          <Admin />
+        </section>
+      )}
       <p className="small muted">Nighttime Ninja is open source under the MIT license.</p>
     </div>
   );

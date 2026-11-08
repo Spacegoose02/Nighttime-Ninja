@@ -13,6 +13,7 @@ import { ingredientMatches } from '../../../shared/recipe.ts';
 import { READY_LABEL } from './Recipes.tsx';
 import { Icon } from '../components/Icon.tsx';
 import { recipeEmoji, recipeTint } from '../recipeArt.ts';
+import { dollars } from '../components/Spending.tsx';
 
 /** Lets someone say "this ingredient is that pantry item". Saved for the whole home, so every recipe uses it. */
 function MatchPicker({ ingredient, onClose }: { ingredient: string; onClose: (changed: boolean) => void }) {
@@ -142,7 +143,7 @@ export function RecipeDetail() {
   async function addPhoto(file: File | undefined) {
     if (!file) return;
     try {
-      const { url } = await api<{ url: string }>(`${base}/uploads`, { body: { dataUrl: await fileToDataUrl(file) } });
+      const { url } = await api<{ url: string }>(`${base}/uploads`, { body: { dataUrl: await fileToDataUrl(file, 1600, true) } });
       await api(`${base}/recipes/${id}/meta`, { method: 'PATCH', body: { image: url } });
       await reload();
       toast('Photo added');
@@ -210,7 +211,18 @@ export function RecipeDetail() {
         <h1>{recipe.title}</h1>
         <button onClick={() => { setCookMode(!cookMode); setStepAt(0); }}>{cookMode ? 'Exit cook mode' : <><Icon name="cook" /> Cook mode</>}</button>
         <Link className="btn" to={`/recipes/${id}/edit`}><Icon name="edit" /> Edit</Link>
+        <button title="Save a copy to change, linked to this one" onClick={async () => {
+          const { id: copy } = await api<{ id: string }>(`${base}/recipes/${id}/variation`, { body: {} });
+          toast('Saved your own version. Change what you like.');
+          nav(`/recipes/${copy}/edit`);
+        }}>Make it my way</button>
       </div>
+      {!cookMode && (recipe.parent || !!recipe.variations?.length) && (
+        <p className="small muted" style={{ margin: 0 }}>
+          {recipe.parent && <>A variation of <Link to={`/recipes/${recipe.parent.id}`}>{recipe.parent.title}</Link>. </>}
+          {!!recipe.variations?.length && <>Variations: {recipe.variations.map((v, i) => <span key={v.id}>{i > 0 && ', '}<Link to={`/recipes/${v.id}`}>{v.title}</Link></span>)}.</>}
+        </p>
+      )}
       {recipe.image && !cookMode && <img src={recipe.image} alt="" style={{ borderRadius: 20, maxHeight: 380, objectFit: 'cover', width: '100%' }} />}
       {!recipe.image && !cookMode && (
         <div className="recipe-hero-empty" style={{ background: recipeTint(recipe.title) }}>
@@ -225,6 +237,12 @@ export function RecipeDetail() {
         <span className={`pill ${cls}`}>{label}</span>
         {recipe.prepMinutes && <span className="pill">Prep {minutes(recipe.prepMinutes)}</span>}
         {recipe.cookMinutes && <span className="pill">Cook {minutes(recipe.cookMinutes)}</span>}
+        {recipe.cost && recipe.cost.priced > 0 && (
+          <span className="pill" title={recipe.cost.unpriced.length ? `No price yet for ${recipe.cost.unpriced.join(', ')}. Add prices as you check things off the shopping list.` : 'From what you last paid'}>
+            {recipe.cost.priced < recipe.cost.of ? 'At least ' : 'About '}{dollars(recipe.cost.total)}
+            {recipe.cost.perServing != null && ` · ${dollars(recipe.cost.perServing)} a serving`}
+          </span>
+        )}
         {recipe.tags.map((t) => <span key={t} className="pill">{t}</span>)}
         {recipe.sourceUrl && <a className="small" href={recipe.sourceUrl} target="_blank" rel="noreferrer">Original</a>}
       </div>
@@ -304,8 +322,8 @@ export function RecipeDetail() {
           <button className="ghost" onClick={() => setPlanDate(null)}>Cancel</button>
         </div>
       )}
-      <div className="grid-2" style={{ alignItems: 'start' }}>
-        <div className="card">
+      <div className="grid-2 recipe-body" style={{ alignItems: 'start' }}>
+        <div className="card ingredients-card">
           <div className="row">
             <h2 style={{ margin: 0, flex: 1 }}>Ingredients</h2>
             {recipe.servings && (

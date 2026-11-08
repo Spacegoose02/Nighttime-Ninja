@@ -48,6 +48,18 @@ Issues labelled **good first issue** are small and well-described, a good place 
 - **Tests:** add or update a test for anything you fix or add. Server tests sit next to the code (`*.test.ts`); web tests use Vitest.
 - **No secrets** in code, tests or screenshots.
 
+## Translating
+
+Words people see are wrapped in `t('…')` (from `web/src/i18n.ts`). The English text is the key, so anything not yet
+translated simply shows in English. Each language is one JSON file in `web/src/locales/` that maps English to that language.
+
+- **Improve a language:** edit its file, for example `web/src/locales/es.json`.
+- **Add a language:** run `npm run i18n -- --keys` to print every key, save them as `web/src/locales/<code>.json` with your
+  translations, then add the code to `LANGUAGES` and `CATALOGS` in `web/src/i18n.ts`.
+- **Check your work:** `npm run i18n` lists anything missing or unused. Keep `{placeholders}` exactly as they are.
+- **Adding UI text in code:** wrap it in `t()`, and add the Spanish too (or open the PR and ask for help with it).
+  `npm run lint` fails when the Spanish file is missing a key.
+
 ## Releases
 
 Maintainers tag releases (`git tag vX.Y.Z && git push --tags`). GitHub Actions builds the Docker image, the Windows app and the Android app. Release notes go in [CHANGELOG.md](CHANGELOG.md).

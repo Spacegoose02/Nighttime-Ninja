@@ -30,7 +30,7 @@ export function Admin() {
               <td className="small">{[u.has_password && 'password', u.has_google && 'Google', u.passkeys && 'passkey', u.totp_enabled && '2FA'].filter(Boolean).join(', ') || 'quick only'}</td>
               <td>{u.homes}</td>
               <td>
-                <input type="checkbox" checked={!!u.is_admin} disabled={u.id === me!.user.id} style={{ width: 24, minHeight: 24 }}
+                <input type="checkbox" checked={!!u.is_admin} disabled={u.id === me!.user.id} style={{ width: 24, minHeight: 24 }} aria-label={`${u.name} is a server admin`}
                   onChange={async (e) => { await api(`/api/admin/users/${u.id}`, { method: 'PATCH', body: { isAdmin: e.target.checked } }); await reload(); }} />
               </td>
               <td>{u.id !== me!.user.id && (
@@ -49,10 +49,14 @@ export function Admin() {
   );
 }
 
-/** Server admin: which Claude model the AI helpers use, and whether they may search the web. */
+interface AiUsage { today: { requests: number; cost: number }; month: { requests: number; cost: number }; byModel: { model: string; requests: number; cost: number }[] }
+const usd = (n: number) => new Intl.NumberFormat(undefined, { style: 'currency', currency: 'USD', maximumFractionDigits: n < 1 ? 3 : 2 }).format(n);
+
+/** Server admin: which AI the helpers use, whether they may search the web, and what it's costing. */
 function AdminMixologist() {
   const { toast } = useApp();
-  const [s, reload] = useLoad<{ available: boolean; model: string | null; envModel: string | null; choices: { id: string; label: string; blurb: string }[]; webAccess: boolean }>('/api/admin/mixologist');
+  const [usage] = useLoad<AiUsage>('/api/admin/ai-usage');
+  const [s, reload] = useLoad<{ available: boolean; provider: 'claude' | 'local' | null; localUrl: string | null; model: string | null; envModel: string | null; choices: { id: string; label: string; blurb: string }[]; webAccess: boolean }>('/api/admin/mixologist');
   if (!s) return null;
   const choices = s.envModel && !s.choices.some((c) => c.id === s.envModel)
     ? [...s.choices, { id: s.envModel, label: s.envModel, blurb: 'From ANTHROPIC_MODEL' }]
@@ -61,8 +65,13 @@ function AdminMixologist() {
   const setWeb = async (webAccess: boolean) => { await api('/api/admin/mixologist', { method: 'PATCH', body: { webAccess } }); await reload(); toast('Saved'); };
   return (
     <div className="stack">
-      <h3>🍸 Mixologist model</h3>
-      {s.available ? (
+      <h3>🤖 AI helpers</h3>
+      {s.provider === 'local' ? (
+        <p className="small muted" style={{ margin: 0 }}>
+          Using your own AI server at <code>{s.localUrl}</code> with <code>{s.model}</code>. Gordy and Rocco can't search the web this way.
+          Remove <code>AI_BASE_URL</code> and set <code>ANTHROPIC_API_KEY</code> to use Claude instead.
+        </p>
+      ) : s.available ? (
         <>
           <div className="chips">
             {choices.map((c) => (
@@ -75,7 +84,17 @@ function AdminMixologist() {
           </label>
         </>
       ) : (
-        <p className="small muted" style={{ margin: 0 }}>Add <code>ANTHROPIC_API_KEY</code> to the server and restart to turn on the Mixologist, then pick a model here.</p>
+        <p className="small muted" style={{ margin: 0 }}>
+          Add <code>ANTHROPIC_API_KEY</code> to the server and restart to turn on Gordy, Rocco and the other AI helpers, then pick a model here.
+          Or run your own model with Ollama or LM Studio and set <code>AI_BASE_URL</code> (see docs/settings.md).
+        </p>
+      )}
+      {usage && usage.month.requests > 0 && (
+        <div className="small">
+          <strong>This month:</strong> {usage.month.requests} AI request{usage.month.requests === 1 ? '' : 's'}, about {usd(usage.month.cost)}
+          {' '}(today {usage.today.requests}, {usd(usage.today.cost)}).
+          <span className="muted"> {usage.byModel.map((m) => `${m.model}: ${m.requests} · ${usd(m.cost)}`).join(' · ')}. Estimated from Claude's list prices; your bill is the final word.</span>
+        </div>
       )}
     </div>
   );

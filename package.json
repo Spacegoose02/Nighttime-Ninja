@@ -1,6 +1,6 @@
 {
   "name": "nighttime-ninja",
-  "version": "0.11.0",
+  "version": "0.15.0",
   "private": true,
   "type": "module",
   "description": "Self-hosted, tablet-first kitchen manager: recipes, inventory, shopping lists, meal plans. Cooked up by a raccoon.",
@@ -15,16 +15,19 @@
     "dev:server": "npm run dev --workspace server",
     "dev:web": "npm run dev --workspace web",
     "build": "npm run build --workspace web",
+    "budget": "node scripts/bundle-budget.mjs",
     "start": "npm start --workspace server",
     "test": "node --test \"shared/**/*.test.ts\" \"server/src/**/*.test.ts\" && npm test --workspace web",
     "typecheck": "tsc -p server && tsc -p web --noEmit",
-    "lint": "biome lint",
+    "lint": "biome lint && node scripts/i18n-check.mjs --strict",
+    "i18n": "node scripts/i18n-check.mjs",
     "test:e2e": "playwright test"
   },
   "engines": {
     "node": ">=24"
   },
   "devDependencies": {
+    "@axe-core/playwright": "4.14.0",
     "@biomejs/biome": "^2.6.4",
     "@playwright/test": "^1.64.1",
     "@types/node": "^24.10.1",

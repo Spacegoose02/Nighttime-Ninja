@@ -325,6 +325,30 @@ const MIGRATIONS: string[] = [
   `
   ALTER TABLE home_settings ADD COLUMN equipment TEXT NOT NULL DEFAULT '[]';
   `,
+  // Pages a home doesn't use (Mixologist, Deals, Feed...), hidden from its menus.
+  `
+  ALTER TABLE home_settings ADD COLUMN hidden_pages TEXT NOT NULL DEFAULT '[]';
+  `,
+  // The money a home pays in, for prices, spending and recipe costs (ISO 4217, e.g. USD, EUR, GBP).
+  `
+  ALTER TABLE home_settings ADD COLUMN currency TEXT NOT NULL DEFAULT 'USD';
+  `,
+  // What the AI helpers used each day, by model, with an estimated cost in US dollars (Settings → Server admin).
+  `
+  CREATE TABLE ai_usage (
+    day TEXT NOT NULL,
+    model TEXT NOT NULL,
+    requests INTEGER NOT NULL DEFAULT 0,
+    input_tokens INTEGER NOT NULL DEFAULT 0,
+    output_tokens INTEGER NOT NULL DEFAULT 0,
+    cost REAL NOT NULL DEFAULT 0,
+    PRIMARY KEY (day, model)
+  );
+  `,
+  // A recipe saved as someone's own take on another one ("my way"), kept linked to the original.
+  `
+  ALTER TABLE recipes ADD COLUMN parent_id TEXT;
+  `,
 ];
 
 export function openDb(dataDir: string): DatabaseSync {

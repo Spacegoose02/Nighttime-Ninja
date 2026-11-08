@@ -50,7 +50,7 @@ export function RecipeEdit() {
 
   async function photo(file: File | undefined) {
     if (!file) return;
-    const { url } = await api<{ url: string }>(`${base}/uploads`, { body: { dataUrl: await fileToDataUrl(file) } });
+    const { url } = await api<{ url: string }>(`${base}/uploads`, { body: { dataUrl: await fileToDataUrl(file, 1600, true) } });
     setR({ ...r, image: url });
   }
 

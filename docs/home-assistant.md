@@ -1,3 +1,8 @@
+---
+title: Home Assistant
+nav_order: 7
+---
+
 # Home Assistant
 
 Nighttime Ninja exposes a small API that Home Assistant can read with its built-in `rest` integration.

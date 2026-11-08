@@ -6,6 +6,7 @@ import { useApp, useLoad } from '../state.tsx';
 import { minutes } from '../format.ts';
 import { recipeEmoji, recipeTint } from '../recipeArt.ts';
 import { Icon } from '../components/Icon.tsx';
+import { dollars } from '../components/Spending.tsx';
 
 export const READY_LABEL = { ready: ['ok', '✅ Ready to cook'], almost: ['warn', '🟡 Almost'], missing: ['bad', 'Missing items'] } as const;
 
@@ -99,6 +100,7 @@ export function Recipes() {
                 <div className="row small muted">
                   {r.totalMinutes && <span>⏱ {minutes(r.totalMinutes)}</span>}
                   {r.servings && <span>🍽 {r.servings}</span>}
+                  {r.costPerServing != null && <span title="Per serving, from what you last paid">{dollars(r.costPerServing)}/serving</span>}
                   {r.isPublic && <span>🌍</span>}
                   {r.rating && <span title={`${r.rating} stars`}>{'★'.repeat(r.rating)}</span>}
                 </div>

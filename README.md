@@ -6,6 +6,7 @@
 
 <p align="center">
   <a href="#quick-start-with-docker">Quick start</a> ·
+  <a href="https://spacegoose02.github.io/Nighttime-Ninja/">Docs</a> ·
   <a href="docs/settings.md">Settings</a> ·
   <a href="docs/apps.md">Apps</a> ·
   <a href="CONTRIBUTING.md">Contributing</a> ·
@@ -19,7 +20,7 @@
 
 ## What it does
 
-- **Recipes** in one standard format, imported from recipe websites (schema.org), pasted text, files, or **KitchenOwl**. Scale servings, cook mode, and share any recipe with a public link.
+- **Recipes** in one standard format, imported from recipe websites (schema.org), pasted text, files, **Mealie**, **Tandoor**, **Paprika** or **KitchenOwl**, and exported as a Paprika file the others can open. Scale servings, cook mode, and share any recipe with a public link.
 - **Ready to cook**: every recipe shows whether your pantry has what it needs. Tap **I cooked this** and the ingredients are taken out of inventory.
 - **Kitchen tools**: tick off the gear you own (air fryer, stand mixer, cocktail shaker and so on). Recipes that need something you don't have get a 🍳 note, the recipe list can show only what you can make, and Gordy and Rocco cook around what you've got.
 - **Pantry inventory** with green photo/icon tiles, low-stock warnings, expiry dates and a full **history** of every change.
@@ -33,6 +34,7 @@
 - **Mixologist**: chat with an AI bartender (Claude) that knows what's in your bar and pantry, an **Idea Zone** that turns a drink style into recipes you can make now (or adds the one or two missing bottles to your list), your saved cocktails, and a bar measurement converter and batch scaler.
 - **Feed**: follow cooks' YouTube channels, blogs or any RSS feed and watch new videos in the app.
 - **Home Assistant**: token-based API with a summary sensor and a shopping-list service.
+- **AI assistants (MCP)**: connect Claude Desktop, Claude Code or any MCP client to check the pantry, read recipes and the meal plan, and add to the shopping list.
 - **Themes and raccoons**: six themes and eight raccoon chef avatars.
 - **Live and offline**: changes show up on every screen in the home right away, and the shopping list keeps working with no signal in the store (it syncs when you're back). Install it from the browser like an app. Offline use needs https, which browsers require for it.
 - **Runs everywhere**: Docker (with an Unraid template), the browser, an Android APK, and a Windows EXE.
@@ -44,7 +46,7 @@ Everything works with no outside accounts. A few extras switch on when you add a
 | Feature | Needs |
 | --- | --- |
 | Recipes, pantry, shopping lists, meal plan, kitchen tools, cook mode, live sync, offline list, reminders | Nothing |
-| Chef Gordy, Mixologist chat and Idea Zone, Plan my week, recipe from photos or videos, nutrition, receipt scanning | `ANTHROPIC_API_KEY` |
+| Chef Gordy, Mixologist chat and Idea Zone, Plan my week, recipe from photos or videos, nutrition, receipt scanning | `ANTHROPIC_API_KEY`, or your own AI server (Ollama, LM Studio) with `AI_BASE_URL` |
 | Live Kroger prices and sale matching | `KROGER_CLIENT_ID` and `KROGER_CLIENT_SECRET` |
 | Google sign-in, calendar links | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` and `PUBLIC_URL` |
 | Barcode product details | Nothing (uses Open Food Facts) |
@@ -77,6 +79,9 @@ The server backs up its database every night and before every upgrade, into `bac
 
 - [Settings and putting it on the internet](docs/settings.md)
 - [Android and Windows apps](docs/apps.md)
+- [AI helpers, with Claude or your own AI server](docs/ai.md)
+- [Import and export (Mealie, Tandoor, Paprika)](docs/import-export.md)
+- [Use your kitchen from an AI assistant (MCP)](docs/mcp.md)
 - [Moving from KitchenOwl](docs/kitchenowl.md)
 - [Home Assistant](docs/home-assistant.md)
 - [Google sign-in](docs/google-sign-in.md)
