@@ -9,6 +9,7 @@ import { amount, itemAmount } from '../format.ts';
 import { CATEGORIES, guessItem } from '../../../shared/catalog.ts';
 import { dollars, ReceiptScan, Spending } from '../components/Spending.tsx';
 import { Icon } from '../components/Icon.tsx';
+import { SwipeRow } from '../components/SwipeRow.tsx';
 
 interface Suggestion { name: string; category: string; timesBought: number }
 interface Layout { name: string; categories: string[] }
@@ -314,7 +315,8 @@ export function Shopping() {
               <h2>{cat}</h2>
               <div className="list">
                 {list.map((i) => (
-                  <div key={i.id} className="list-item">
+                  <SwipeRow key={i.id} disabled={i.id.startsWith('pending-')} onRight={() => void toggle(i)} onLeft={() => void remove(i)} rightLabel="In the cart" leftLabel="Remove">
+                  <div className="list-item">
                     <button className="check" onClick={() => toggle(i)} disabled={i.id.startsWith('pending-')} aria-label={`Check off ${i.name}`} />
                     <span style={{ fontSize: '1.5rem' }} aria-hidden>{guessItem(i.name).icon}</span>
                     <div style={{ flex: 1 }}>
@@ -324,6 +326,7 @@ export function Shopping() {
                     {many && <button className="ghost icon" aria-label={`Move ${i.name} to another list`} title="Move to another list" disabled={i.id.startsWith('pending-')} onClick={() => setMoving(i)}><Icon name="move" /></button>}
                     <button className="ghost icon" aria-label={`Remove ${i.name}`} title="Remove" disabled={i.id.startsWith('pending-')} onClick={() => remove(i)}><Icon name="close" /></button>
                   </div>
+                  </SwipeRow>
                 ))}
               </div>
             </div>

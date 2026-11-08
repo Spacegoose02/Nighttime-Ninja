@@ -336,9 +336,13 @@ export function registerAuthRoutes(app: FastifyInstance, db: DatabaseSync): void
   app.get('/api/me', async (req) => {
     const user = requireUser(req);
     const homes = db.prepare(`
-      SELECT h.id, h.name, m.role FROM home_members m JOIN homes h ON h.id = m.home_id
-      WHERE m.user_id = ? ORDER BY h.name`).all(user.id);
-    return { user: publicUser(user), homes };
+      SELECT h.id, h.name, m.role, COALESCE(s.hidden_pages, '[]') AS hidden_pages FROM home_members m JOIN homes h ON h.id = m.home_id
+      LEFT JOIN home_settings s ON s.home_id = h.id
+      WHERE m.user_id = ? ORDER BY h.name`).all(user.id) as Row[];
+    return {
+      user: publicUser(user),
+      homes: homes.map(({ hidden_pages, ...h }) => ({ ...h, hiddenPages: JSON.parse(String(hidden_pages)) as string[] })),
+    };
   });
 
   app.patch('/api/me', async (req) => {
