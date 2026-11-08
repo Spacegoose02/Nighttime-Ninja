@@ -212,9 +212,13 @@ function HomeSettings() {
 
       {isManager && (
         <>
-          <h3>Home Assistant and automations</h3>
-          <p className="small muted" style={{ margin: 0 }}>Create a token, then follow docs/home-assistant.md in the project to add sensors and a shopping-list service.</p>
+          <h3>Home Assistant, AI assistants and automations</h3>
+          <p className="small muted" style={{ margin: 0 }}>
+            Create a token, then see the project docs for <a href="https://spacegoose02.github.io/Nighttime-Ninja/home-assistant.html" target="_blank" rel="noreferrer">Home Assistant</a> or
+            {' '}<a href="https://spacegoose02.github.io/Nighttime-Ninja/mcp.html" target="_blank" rel="noreferrer">AI assistants such as Claude (MCP)</a>.
+          </p>
           <p className="small" style={{ margin: 0 }}>API address for this home: <code style={{ wordBreak: 'break-all' }}>{location.origin}{base}</code></p>
+          <p className="small" style={{ margin: 0 }}>MCP address for AI assistants: <code style={{ wordBreak: 'break-all' }}>{location.origin}/api/mcp</code></p>
           <form className="row" onSubmit={async (e) => {
             e.preventDefault();
             const el = e.currentTarget.elements.namedItem('tn') as HTMLInputElement;

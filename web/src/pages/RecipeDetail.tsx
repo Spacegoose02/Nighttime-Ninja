@@ -211,7 +211,18 @@ export function RecipeDetail() {
         <h1>{recipe.title}</h1>
         <button onClick={() => { setCookMode(!cookMode); setStepAt(0); }}>{cookMode ? 'Exit cook mode' : <><Icon name="cook" /> Cook mode</>}</button>
         <Link className="btn" to={`/recipes/${id}/edit`}><Icon name="edit" /> Edit</Link>
+        <button title="Save a copy to change, linked to this one" onClick={async () => {
+          const { id: copy } = await api<{ id: string }>(`${base}/recipes/${id}/variation`, { body: {} });
+          toast('Saved your own version. Change what you like.');
+          nav(`/recipes/${copy}/edit`);
+        }}>Make it my way</button>
       </div>
+      {!cookMode && (recipe.parent || !!recipe.variations?.length) && (
+        <p className="small muted" style={{ margin: 0 }}>
+          {recipe.parent && <>A variation of <Link to={`/recipes/${recipe.parent.id}`}>{recipe.parent.title}</Link>. </>}
+          {!!recipe.variations?.length && <>Variations: {recipe.variations.map((v, i) => <span key={v.id}>{i > 0 && ', '}<Link to={`/recipes/${v.id}`}>{v.title}</Link></span>)}.</>}
+        </p>
+      )}
       {recipe.image && !cookMode && <img src={recipe.image} alt="" style={{ borderRadius: 20, maxHeight: 380, objectFit: 'cover', width: '100%' }} />}
       {!recipe.image && !cookMode && (
         <div className="recipe-hero-empty" style={{ background: recipeTint(recipe.title) }}>

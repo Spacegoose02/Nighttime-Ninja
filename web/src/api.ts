@@ -123,6 +123,9 @@ export interface RecipeFull extends Recipe {
   dietClashes: { ingredient: string; person: string; reason: string }[];
   missingTools: string[];
   nutrition: Nutrition | null;
+  /** The recipe this one is a variation of, and the variations made from this one. */
+  parent?: { id: string; title: string } | null;
+  variations?: { id: string; title: string }[];
   /** Estimated from what the home last paid for each ingredient. */
   cost?: { total: number; perServing: number | null; priced: number; of: number; unpriced: string[] };
 }

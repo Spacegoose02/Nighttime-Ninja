@@ -345,6 +345,10 @@ const MIGRATIONS: string[] = [
     PRIMARY KEY (day, model)
   );
   `,
+  // A recipe saved as someone's own take on another one ("my way"), kept linked to the original.
+  `
+  ALTER TABLE recipes ADD COLUMN parent_id TEXT;
+  `,
 ];
 
 export function openDb(dataDir: string): DatabaseSync {

@@ -2,6 +2,17 @@
 
 Every release, newest first. The full notes for each one are on its [GitHub release page](https://github.com/Spacegoose02/Nighttime-Ninja/releases).
 
+## 0.15.0 - unreleased
+
+Less waste, more help: photograph the fridge to update the pantry, see what gets thrown out, make recipes your own, and let an AI assistant use your kitchen.
+
+- **Stock-take from photos:** Pantry → Stock-take. Snap the fridge, freezer or a cupboard, check the list, and the pantry updates. Needs AI.
+- **Food waste log:** "Thrown out" on any pantry item, and Pantry → History shows what went in the bin this month and roughly what it cost.
+- **Make it my way:** save your own version of any recipe, linked to the original. Each shows the other.
+- **AI assistants (MCP):** Claude Desktop, Claude Code and other MCP clients can check the pantry, read recipes and the meal plan, and add to the shopping list with a home API token. See docs/mcp.md.
+- **Send the list:** share the shopping list to a message, a note or a grocery app, or copy it.
+- **Plan my week** leans on what's in season.
+
 ## 0.14.0 - unreleased
 
 Open to other apps and other AI: move recipes in and out of Mealie, Tandoor and Paprika, run the AI helpers on your own computer, and see what the AI costs.

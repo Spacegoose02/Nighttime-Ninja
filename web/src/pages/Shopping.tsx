@@ -238,6 +238,20 @@ export function Shopping() {
   }, [items, home, layout]);
   const checked = (items ?? []).filter((i) => i.checked);
 
+  /** Hands the list to someone else (a text, a note, a grocery app) through the phone's share sheet, or copies it. */
+  async function sendList() {
+    const text = [
+      current?.name ?? t('Shopping'),
+      ...groups.flatMap(([cat, list]) => [``, cat, ...list.map((i) => `• ${[itemAmount(i.quantity, i.unit, me?.user.units), i.name].filter(Boolean).join(' ')}${i.note ? ` (${i.note})` : ''}`)]),
+    ].join('\n');
+    try {
+      if (navigator.share) { await navigator.share({ title: current?.name ?? t('Shopping'), text }); return; }
+    } catch (e) {
+      if ((e as Error).name === 'AbortError') return;
+    }
+    try { await navigator.clipboard.writeText(text); toast(t('List copied. Paste it into a message or a grocery app.')); } catch { toast(t("Couldn't copy the list on this device")); }
+  }
+
   return (
     <div className="stack shopping" style={{ maxWidth: 1000 }}>
       <div className="topbar">
@@ -276,6 +290,7 @@ export function Shopping() {
           </label>
           <div className="row">
             <button onClick={() => { setMenu(false); setTimeout(() => window.print(), 50); }}><Icon name="print" /> {t('Print')}</button>
+            <button onClick={() => { setMenu(false); void sendList(); }}><Icon name="share" /> {t('Send the list')}</button>
             <span className="spacer" />
             <button className="primary" onClick={() => setMenu(false)}>{t('Done')}</button>
           </div>

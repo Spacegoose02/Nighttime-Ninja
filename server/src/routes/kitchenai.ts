@@ -16,7 +16,7 @@ import { stockForPrompt } from './mixologist.ts';
 import { homeTools } from './homes.ts';
 import { missingTools } from '../../../shared/equipment.ts';
 import { checkOff, mainList } from './shopping.ts';
-import { stockByName } from './inventory.ts';
+import { adjustItem, stockByName } from './inventory.ts';
 import { cleanRecipe, PERSONA, type PlainRecipe, RECIPE_SCHEMA, REFUSED } from './chef.ts';
 
 const SLOTS = ['breakfast', 'lunch', 'dinner', 'snack'];
@@ -123,6 +123,29 @@ export function matchListItem(line: string, open: { id: string; name: string }[]
   return open.find((o) => matchKey(o.name) === key) ?? open.find((o) => ingredientMatches(o.name, line) || ingredientMatches(line, o.name)) ?? null;
 }
 
+const STOCKTAKE_SCHEMA = {
+  type: 'object',
+  properties: {
+    found: { type: 'boolean', description: 'False when the photos show no food or drink.' },
+    items: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          name: { type: 'string', description: 'Plain grocery name, e.g. "eggs", "cheddar cheese", "ketchup". No brands.' },
+          quantity: { type: ['number', 'null'], description: 'How many you can count, or null when you cannot tell.' },
+          unit: { type: ['string', 'null'], description: 'Unit for the quantity (e.g. "carton", "bottle"), or null for a plain count.' },
+          location: { type: 'string', enum: ['Fridge', 'Freezer', 'Pantry'] },
+        },
+        required: ['name', 'quantity', 'unit', 'location'],
+        additionalProperties: false,
+      },
+    },
+  },
+  required: ['found', 'items'],
+  additionalProperties: false,
+};
+
 const DATA_URL = /^data:(image\/(?:jpeg|png|webp|gif));base64,([A-Za-z0-9+/=]+)$/;
 
 export function kitchenAiRoutes(app: FastifyInstance, db: DatabaseSync): void {
@@ -162,6 +185,7 @@ export function kitchenAiRoutes(app: FastifyInstance, db: DatabaseSync): void {
             `Plan these open meals for me: ${open.join(', ')}.`,
             'Use dishes from my recipe book where they fit (give their id), and suggest a new dish with its full recipe only when it clearly helps, at most two new ones.',
             tools.length ? 'Skip book recipes marked as needing gear they don\'t have, unless you can say how to make it with what they own.' : null,
+            `It's ${new Date().toLocaleString('en-US', { month: 'long' })}: lean on what's in season and cheap right now where it fits.`,
             'Use up anything marked [use soon] early in the week. Mix it up: no repeats, vary the proteins, and lean on favorites and things we have not cooked lately. Weeknights should be quick.',
             b.notes && `What I'm hoping for: ${str(b.notes, 500)}`,
             '',
@@ -184,6 +208,72 @@ export function kitchenAiRoutes(app: FastifyInstance, db: DatabaseSync): void {
       }).filter((m) => m.recipeId || m.recipe);
       return { meals };
     });
+  });
+
+  // Stock-take from photos: point the phone at the fridge, freezer or a cupboard and get a list to check.
+  app.post('/api/homes/:homeId/pantry/photo/read', { schema: body({ images: list(text, 4) }, ['images']), bodyLimit: 24 * 1024 * 1024 }, async (req, reply) => {
+    const ctx = homeCtx(db, req);
+    const images = ((req.body as Row).images as string[]).map((d) => DATA_URL.exec(d ?? '')).filter((m): m is RegExpExecArray => !!m);
+    if (!images.length) throw new HttpError(400, 'Add a photo of the fridge, freezer or cupboard');
+    requireAi(db);
+    limitAi(ctx);
+    await keepAlive(reply, async () => {
+      const res = await ask(db, {
+        system: 'You take stock of a kitchen from photos. List the food and drink you can actually see, one entry per kind of thing, and count what you can.',
+        messages: [{
+          role: 'user',
+          content: [
+            ...images.map((m) => ({ type: 'image' as const, source: { type: 'base64' as const, media_type: m[1] as 'image/jpeg', data: m[2] } })),
+            { type: 'text', text: "What food and drink is in these photos? Skip anything you can't name with confidence, and don't guess at what's hidden." },
+          ],
+        }],
+        output_config: { effort: 'low', format: { type: 'json_schema', schema: STOCKTAKE_SCHEMA } },
+      });
+      const out = parsed<{ found?: boolean; items?: { name?: string; quantity?: number | null; unit?: string | null; location?: string }[] }>(res, 'stock-take');
+      if (!out.found || !out.items?.length) throw new HttpError(422, "Couldn't spot any food in that. Try a brighter photo with the door wide open.");
+      const have = db.prepare('SELECT id, name, quantity, unit FROM items WHERE home_id = ?').all(ctx.homeId) as Row[];
+      const items = out.items.slice(0, 80).map((i) => {
+        const name = str(i.name, 120) ?? 'Item';
+        const match = have.find((h) => matchKey(h.name as string) === matchKey(name)) ?? null;
+        return {
+          name, quantity: num(i.quantity), unit: str(i.unit, 20), location: ['Fridge', 'Freezer', 'Pantry'].includes(String(i.location)) ? String(i.location) : 'Fridge',
+          match: match ? { id: match.id as string, name: match.name as string, quantity: match.quantity as number, unit: match.unit as string | null } : null,
+        };
+      });
+      return { items };
+    });
+  });
+
+  // Stock-take, step 2: new things go in the pantry, and counts for things already there are set to what was seen.
+  app.post('/api/homes/:homeId/pantry/photo/apply', {
+    schema: body({ items: list({ type: 'object', properties: { name: text, quantity: number, unit: text, location: text, itemId: text } }, 80) }, ['items']),
+  }, async (req) => {
+    const ctx = homeCtx(db, req);
+    const userId = ctx.user?.id ?? null;
+    let added = 0;
+    let updated = 0;
+    tx(db, () => {
+      for (const i of (req.body as Row).items as Row[]) {
+        const quantity = num(i.quantity) ?? 1;
+        const existing = i.itemId ? db.prepare('SELECT id, quantity FROM items WHERE id = ? AND home_id = ?').get(String(i.itemId), ctx.homeId) as Row | undefined : undefined;
+        if (existing) {
+          const delta = quantity - Number(existing.quantity);
+          if (delta) { adjustItem(db, ctx.homeId, existing.id as string, delta, 'stock-take', userId); updated++; }
+          continue;
+        }
+        const name = str(i.name, 120);
+        if (!name) continue;
+        const isNew = !(db.prepare('SELECT name FROM items WHERE home_id = ?').all(ctx.homeId) as Row[]).some((h) => matchKey(h.name as string) === matchKey(name));
+        const historyId = stockByName(db, ctx.homeId, name, quantity, str(i.unit, 20), 'stock-take', userId);
+        const location = str(i.location, 40);
+        if (isNew && location) {
+          const h = db.prepare('SELECT item_id FROM inventory_history WHERE id = ?').get(historyId) as Row | undefined;
+          if (h?.item_id) db.prepare('UPDATE items SET location = ? WHERE id = ?').run(location, h.item_id as string);
+        }
+        added++;
+      }
+    });
+    return { added, updated };
   });
 
   // "Snap a recipe": a photo of a cookbook page or a handwritten card becomes a recipe to check and save.

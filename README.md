@@ -34,6 +34,7 @@
 - **Mixologist**: chat with an AI bartender (Claude) that knows what's in your bar and pantry, an **Idea Zone** that turns a drink style into recipes you can make now (or adds the one or two missing bottles to your list), your saved cocktails, and a bar measurement converter and batch scaler.
 - **Feed**: follow cooks' YouTube channels, blogs or any RSS feed and watch new videos in the app.
 - **Home Assistant**: token-based API with a summary sensor and a shopping-list service.
+- **AI assistants (MCP)**: connect Claude Desktop, Claude Code or any MCP client to check the pantry, read recipes and the meal plan, and add to the shopping list.
 - **Themes and raccoons**: six themes and eight raccoon chef avatars.
 - **Live and offline**: changes show up on every screen in the home right away, and the shopping list keeps working with no signal in the store (it syncs when you're back). Install it from the browser like an app. Offline use needs https, which browsers require for it.
 - **Runs everywhere**: Docker (with an Unraid template), the browser, an Android APK, and a Windows EXE.
@@ -80,6 +81,7 @@ The server backs up its database every night and before every upgrade, into `bac
 - [Android and Windows apps](docs/apps.md)
 - [AI helpers, with Claude or your own AI server](docs/ai.md)
 - [Import and export (Mealie, Tandoor, Paprika)](docs/import-export.md)
+- [Use your kitchen from an AI assistant (MCP)](docs/mcp.md)
 - [Moving from KitchenOwl](docs/kitchenowl.md)
 - [Home Assistant](docs/home-assistant.md)
 - [Google sign-in](docs/google-sign-in.md)

@@ -10,6 +10,7 @@ import { useLabel } from './homes.ts';
 import { body, flag, list, number, text } from '../schemas.ts';
 import { publicFetch } from '../security.ts';
 import { saveImage } from './integrations.ts';
+import { ingredientCost, latestPurchases } from '../cost.ts';
 
 const ITEM = {
   name: text, category: text, location: text, icon: text, photo: text, quantity: number, unit: text,
@@ -214,6 +215,22 @@ export function inventoryRoutes(app: FastifyInstance, db: DatabaseSync): void {
       for (const id of ids) if (undoHistory(db, ctx.homeId, id, ctx.user?.id ?? null)) undone++;
     });
     return { undone };
+  });
+
+  // Food that was thrown out (pantry changes with the reason "wasted"), by item, with what it likely cost.
+  app.get('/api/homes/:homeId/waste', async (req) => {
+    const ctx = homeCtx(db, req);
+    const days = Math.min(365, Math.max(1, Number((req.query as Row).days) || 30));
+    const rows = db.prepare(`SELECT item_name AS name, COUNT(*) AS times, -SUM(delta) AS amount, MAX(unit) AS unit, MAX(created_at) AS last
+      FROM inventory_history WHERE home_id = ? AND reason = 'wasted' AND created_at >= datetime('now', ?)
+      GROUP BY lower(item_name) ORDER BY times DESC, amount DESC LIMIT 50`).all(ctx.homeId, `-${days} days`) as Row[];
+    const bought = latestPurchases(db, ctx.homeId);
+    const items = rows.map((r) => {
+      const p = bought.find((b) => b.name.toLowerCase() === String(r.name).toLowerCase());
+      const value = p ? ingredientCost({ name: String(r.name), quantity: Number(r.amount) || null, unit: r.unit as string | null }, p) : null;
+      return { name: r.name as string, times: Number(r.times), amount: Number(r.amount), unit: r.unit as string | null, last: r.last as string, value: value == null ? null : Math.round(value * 100) / 100 };
+    });
+    return { days, items, count: items.reduce((n, i) => n + i.times, 0), value: Math.round(items.reduce((n, i) => n + (i.value ?? 0), 0) * 100) / 100 };
   });
 
   app.get('/api/homes/:homeId/history', async (req) => {

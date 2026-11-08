@@ -204,7 +204,22 @@ export function recipeRoutes(app: FastifyInstance, db: DatabaseSync): void {
       dietClashes: dietClashes(full.ingredients, homeEaters(db, ctx.homeId)),
       missingTools: missingTools(full, homeTools(db, ctx.homeId)),
       nutrition: parseJson<Record<string, number> | null>(row.nutrition, null),
+      parent: row.parent_id ? (db.prepare('SELECT id, title FROM recipes WHERE id = ? AND home_id = ?').get(row.parent_id as string, ctx.homeId) as { id: string; title: string } | undefined) ?? null : null,
+      variations: db.prepare('SELECT id, title FROM recipes WHERE parent_id = ? AND home_id = ? ORDER BY created_at').all(full.id, ctx.homeId) as { id: string; title: string }[],
     };
+  });
+
+  // "Make it my way": a copy to change freely, kept linked to the original so both show the other.
+  app.post('/api/homes/:homeId/recipes/:id/variation', async (req) => {
+    const ctx = homeCtx(db, req);
+    const row = db.prepare('SELECT * FROM recipes WHERE id = ? AND home_id = ?').get((req.params as { id: string }).id, ctx.homeId) as Row | undefined;
+    if (!row) throw new HttpError(404, 'Recipe not found');
+    const { id: _id, isPublic: _p, shareSlug: _s, createdAt: _c, updatedAt: _u, ...recipe } = loadRecipe(db, row);
+    const title = str((req.body as Row | undefined)?.title, 200) ?? `${recipe.title} (my way)`;
+    const id = saveRecipe(db, ctx.homeId, { ...recipe, title }, ctx.user?.id ?? null);
+    // A variation of a variation still points at the first recipe, so they all sit together.
+    db.prepare('UPDATE recipes SET parent_id = ? WHERE id = ?').run((row.parent_id as string | null) ?? row.id as string, id);
+    return { id };
   });
 
   app.post('/api/homes/:homeId/recipes', async (req) => {

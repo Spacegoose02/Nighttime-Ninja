@@ -29,6 +29,7 @@ import { kitchenAiRoutes } from './routes/kitchenai.ts';
 import { pushRoutes } from './push.ts';
 import { backupRoutes } from './backup.ts';
 import { transferRoutes } from './routes/transfer.ts';
+import { mcpRoutes } from './mcp.ts';
 
 export async function buildApp(db: DatabaseSync, opts: { logger?: boolean; serveWeb?: boolean } = {}): Promise<FastifyInstance> {
   const app = Fastify({ logger: opts.logger ?? false, bodyLimit: 5 * 1024 * 1024, trustProxy: config.trustProxy, schemaErrorFormatter });
@@ -64,6 +65,7 @@ export async function buildApp(db: DatabaseSync, opts: { logger?: boolean; serve
   kitchenOwlRoutes(app, db);
   mixologistRoutes(app, db);
   transferRoutes(app, db);
+  mcpRoutes(app, db);
   chefRoutes(app, db);
   sampleRoutes(app, db);
   kitchenAiRoutes(app, db);
