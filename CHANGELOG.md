@@ -2,6 +2,13 @@
 
 Every release, newest first. The full notes for each one are on its [GitHub release page](https://github.com/Spacegoose02/Nighttime-Ninja/releases).
 
+## [0.17.0](https://github.com/Spacegoose02/Nighttime-Ninja/releases/tag/v0.17.0) - 2026-11-08
+
+Kids can ask for groceries, and a grown-up says yes or no.
+
+- **Requests tab on Shopping:** kids pick groceries in Den Duty (the chore app), and they show up here. Pick which list "Yes" adds to, then answer each one. Yes adds the item with "Asked for by …", no turns it down, and Den Duty shows the kid the answer. Parents get a push when something's asked for.
+- For other apps: a home API token can send requests and read the answers (`/api/homes/:homeId/shopping/requests`), but only a signed-in person can answer them. `GET /api/token/home` lets an app link with just the address and a token.
+
 ## [0.16.0](https://github.com/Spacegoose02/Nighttime-Ninja/releases/tag/v0.16.0) - 2026-11-08
 
 Cooking as a household: prep the week in one go, give the kids a job, and keep the plan in Google Calendar both ways.
