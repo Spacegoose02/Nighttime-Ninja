@@ -12,7 +12,8 @@ import { homeEaters, homeTools } from './homes.ts';
 import { toolsForPrompt } from '../../../shared/equipment.ts';
 import { dietsForPrompt } from '../../../shared/diets.ts';
 import { existingRecipeId, runChat, TOOL_RULES } from './aichat.ts';
-import { aiWebAccess, ask, claude, keepAlive, limitAi, MODEL_CHOICES, mixologistModel, textOf } from '../claude.ts';
+import { usageSummary } from '../aiusage.ts';
+import { aiAvailable, aiProvider, aiWebAccess, ask, keepAlive, limitAi, MODEL_CHOICES, mixologistModel, textOf, requireAi } from '../claude.ts';
 
 const PERSONA = `You are the Mixologist inside Nighttime Ninja, a home kitchen app run by a raccoon chef.
 
@@ -164,11 +165,16 @@ const REFUSED = "I can't help with that one. Ask me about another drink, or tell
 
 
 export function mixologistRoutes(app: FastifyInstance, db: DatabaseSync): void {
-  app.get('/api/mixologist/status', async () => ({ available: !!config.anthropic, model: mixologistModel(db) }));
+  app.get('/api/mixologist/status', async () => ({ available: aiAvailable(), provider: aiProvider(), model: mixologistModel(db) }));
 
   app.get('/api/admin/mixologist', async (req) => {
     requireAdmin(req);
-    return { available: !!config.anthropic, model: mixologistModel(db), envModel: config.anthropic?.model ?? null, choices: MODEL_CHOICES, webAccess: aiWebAccess(db) };
+    return { available: aiAvailable(), provider: aiProvider(), localUrl: config.localAi?.baseUrl ?? null, model: mixologistModel(db), envModel: config.anthropic?.model ?? null, choices: MODEL_CHOICES, webAccess: aiWebAccess(db) };
+  });
+
+  app.get('/api/admin/ai-usage', async (req) => {
+    requireAdmin(req);
+    return usageSummary(db);
   });
 
   app.patch('/api/admin/mixologist', async (req) => {
@@ -239,7 +245,7 @@ export function mixologistRoutes(app: FastifyInstance, db: DatabaseSync): void {
       'Build each drink from what is in stock. A drink may need at most two things that are not in stock; prefer drinks that need none.',
       'Use the household item names exactly as listed for anything in stock. Amounts in oz for liquids.',
     ].filter(Boolean).join('\n');
-    claude(db);
+    requireAi(db);
     limitAi(ctx);
     await keepAlive(reply, async () => {
     const res = await ask(db, {

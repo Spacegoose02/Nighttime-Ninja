@@ -8,7 +8,7 @@ import { tx, type Row } from '../db.ts';
 import { HttpError, localDate, newId, num, parseJson, str } from '../util.ts';
 import { guessItem } from '../../../shared/catalog.ts';
 import { ingredientMatches, matchKey } from '../../../shared/recipe.ts';
-import { ask, claude, keepAlive, limitAi, textOf } from '../claude.ts';
+import { ask, keepAlive, limitAi, textOf, requireAi } from '../claude.ts';
 import { publicFetch } from '../security.ts';
 import { list, body, number, text } from '../schemas.ts';
 import { checkIngredients, loadRecipe, stockIndex } from './recipes.ts';
@@ -148,7 +148,7 @@ export function kitchenAiRoutes(app: FastifyInstance, db: DatabaseSync): void {
       const lacking = missingTools({ title: r.title as string, instructions: parseJson<string[]>(r.instructions, []) }, tools);
       return lacking.length ? ` | needs ${lacking.join(', ')} (they don't have it)` : '';
     };
-    claude(db);
+    requireAi(db);
     limitAi(ctx);
     await keepAlive(reply, async () => {
       const res = await ask(db, {
@@ -191,7 +191,7 @@ export function kitchenAiRoutes(app: FastifyInstance, db: DatabaseSync): void {
     const ctx = homeCtx(db, req);
     const images = ((req.body as Row).images as string[]).map((d) => DATA_URL.exec(d ?? '')).filter((m): m is RegExpExecArray => !!m);
     if (!images.length) throw new HttpError(400, 'Add a photo of the recipe');
-    claude(db);
+    requireAi(db);
     limitAi(ctx);
     await keepAlive(reply, async () => {
       const res = await ask(db, {
@@ -221,7 +221,7 @@ export function kitchenAiRoutes(app: FastifyInstance, db: DatabaseSync): void {
     const url = str((req.body as Row).url, 500) ?? '';
     const id = /(?:youtube\.com\/(?:watch\?v=|shorts\/|embed\/)|youtu\.be\/)([\w-]{11})/.exec(url)?.[1];
     if (!id) throw new HttpError(400, 'That only works for YouTube videos. For blog posts, use Import with the link.');
-    claude(db);
+    requireAi(db);
     limitAi(ctx);
     await keepAlive(reply, async () => {
       const page = await publicFetch(`https://www.youtube.com/watch?v=${id}`, { headers: { 'accept-language': 'en-US,en;q=0.9' }, signal: AbortSignal.timeout(15000) });
@@ -247,7 +247,7 @@ export function kitchenAiRoutes(app: FastifyInstance, db: DatabaseSync): void {
     const ctx = homeCtx(db, req);
     const img = DATA_URL.exec(String((req.body as Row).image ?? ''));
     if (!img) throw new HttpError(400, 'Add a photo of the receipt');
-    claude(db);
+    requireAi(db);
     limitAi(ctx);
     await keepAlive(reply, async () => {
       const res = await ask(db, {
@@ -315,7 +315,7 @@ export function kitchenAiRoutes(app: FastifyInstance, db: DatabaseSync): void {
     if (!row) throw new HttpError(404, 'Recipe not found');
     const r = loadRecipe(db, row);
     if (!r.ingredients.length) throw new HttpError(400, 'Add ingredients first');
-    claude(db);
+    requireAi(db);
     limitAi(ctx);
     await keepAlive(reply, async () => {
       const res = await ask(db, {

@@ -142,7 +142,11 @@ export interface HomeDetail {
 }
 
 /** Reads an image file into a data URL, shrinking big photos so uploads stay small. */
-export async function fileToDataUrl(file: File, maxSize = 1200): Promise<string> {
+/**
+ * A photo shrunk to fit maxSize pixels, as a data: URL. Photos the app keeps (recipe pictures) are saved as WebP,
+ * which is about a third smaller than JPEG at the same quality; photos only sent to the AI stay JPEG.
+ */
+export async function fileToDataUrl(file: File, maxSize = 1200, keep = false): Promise<string> {
   const url = URL.createObjectURL(file);
   try {
     const img = await new Promise<HTMLImageElement>((resolve, reject) => {
@@ -156,6 +160,10 @@ export async function fileToDataUrl(file: File, maxSize = 1200): Promise<string>
     canvas.width = Math.round(img.width * scale);
     canvas.height = Math.round(img.height * scale);
     canvas.getContext('2d')!.drawImage(img, 0, 0, canvas.width, canvas.height);
+    if (keep) {
+      const webp = canvas.toDataURL('image/webp', 0.82);
+      if (webp.startsWith('data:image/webp')) return webp;
+    }
     return canvas.toDataURL('image/jpeg', 0.85);
   } finally {
     URL.revokeObjectURL(url);

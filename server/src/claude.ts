@@ -7,6 +7,8 @@ import { getSetting, type HomeCtx } from './auth.ts';
 import { config } from './config.ts';
 import { rateLimit } from './security.ts';
 import { HttpError } from './util.ts';
+import { askLocal } from './localai.ts';
+import { recordUsage } from './aiusage.ts';
 
 // Models that take the server-side refusal fallback. Others just run without it.
 const FALLBACK_MODELS = new Set(['claude-fable-5-1', 'claude-opus-5-5', 'claude-opus-5', 'claude-sonnet-5-5']);
@@ -21,6 +23,7 @@ export const MODEL_CHOICES = [
 
 /** An admin's pick in Settings wins over ANTHROPIC_MODEL. */
 export function mixologistModel(db: DatabaseSync): string | null {
+  if (config.localAi) return config.localAi.model;
   if (!config.anthropic) return null;
   return getSetting(db, 'mixologistModel') ?? config.anthropic.model;
 }
@@ -48,7 +51,7 @@ export function aiWebAccess(db: DatabaseSync): boolean {
  */
 export function webTools(db: DatabaseSync): Anthropic.Beta.BetaToolUnion[] {
   const model = mixologistModel(db);
-  if (!model || !aiWebAccess(db)) return [];
+  if (!model || config.localAi || !aiWebAccess(db)) return [];
   const pages = { max_uses: 3, max_content_tokens: 20000, citations: { enabled: true } };
   return FILTERED_WEB_MODELS.has(model)
     ? [{ type: 'web_search_20260209', name: 'web_search', max_uses: 3 }, { type: 'web_fetch_20260209', name: 'web_fetch', ...pages }]
@@ -56,6 +59,22 @@ export function webTools(db: DatabaseSync): Anthropic.Beta.BetaToolUnion[] {
 }
 
 let client: Anthropic | null = null;
+
+/** Whether any AI is set up: Claude (ANTHROPIC_API_KEY) or your own server (AI_BASE_URL). */
+export function aiAvailable(): boolean {
+  return !!(config.localAi || config.anthropic);
+}
+
+/** Which AI answers: "local" for your own server, "claude", or null when neither is set up. */
+export function aiProvider(): 'local' | 'claude' | null {
+  return config.localAi ? 'local' : config.anthropic ? 'claude' : null;
+}
+
+/** The model that will answer, or a clear error when no AI is set up. Call before starting slow work. */
+export function requireAi(db: DatabaseSync): string {
+  if (!aiAvailable()) throw new HttpError(503, 'AI features need Claude (set ANTHROPIC_API_KEY) or your own AI server (set AI_BASE_URL). Add one to the server settings and restart.');
+  return mixologistModel(db)!;
+}
 
 export function claude(db: DatabaseSync): { client: Anthropic; model: string } {
   if (!config.anthropic) throw new HttpError(503, 'The Mixologist needs a Claude API key. Add ANTHROPIC_API_KEY to the server settings and restart.');
@@ -83,6 +102,11 @@ function claudeMessage(err: InstanceType<typeof Anthropic.APIError>): string {
 
 /** Asks Claude. onText, when given, hears the reply's text as it's written. */
 export async function ask(db: DatabaseSync, params: Omit<Anthropic.Beta.MessageCreateParamsNonStreaming, 'model' | 'max_tokens'>, onText?: (text: string) => void): Promise<Anthropic.Beta.BetaMessage> {
+  if (config.localAi) {
+    const res = await askLocal(config.localAi, params, onText);
+    recordUsage(db, config.localAi.model, res.usage, true);
+    return res;
+  }
   const { client, model } = claude(db);
   const { output_config, ...rest } = params;
   const send = (withFallback: boolean) => {
@@ -96,14 +120,18 @@ export async function ask(db: DatabaseSync, params: Omit<Anthropic.Beta.MessageC
     if (onText) stream.on('text', onText);
     return stream.finalMessage();
   };
+  const counted = (res: Anthropic.Beta.BetaMessage) => {
+    try { recordUsage(db, res.model || model, res.usage); } catch (err) { console.warn('AI usage: not recorded', err); }
+    return res;
+  };
   try {
     try {
-      return await send(FALLBACK_MODELS.has(model));
+      return counted(await send(FALLBACK_MODELS.has(model)));
     } catch (err) {
       // Not every account can use the refusal fallback yet. If Claude turns the request down, try once without it.
       if (!(err instanceof Anthropic.BadRequestError) || !FALLBACK_MODELS.has(model)) throw err;
       console.warn('Mixologist: retrying without the refusal fallback:', claudeMessage(err));
-      return await send(false);
+      return counted(await send(false));
     }
   } catch (err) {
     if (err instanceof Anthropic.AuthenticationError) throw new HttpError(502, 'Claude rejected the API key. Check ANTHROPIC_API_KEY.');

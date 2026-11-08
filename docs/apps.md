@@ -1,3 +1,8 @@
+---
+title: Apps
+nav_order: 5
+---
+
 # Apps
 
 - **Android (phones and tablets)**: download the APK from [Releases](https://github.com/Spacegoose02/Nighttime-Ninja/releases). On first launch, enter your server's address. To sign in, open **Settings → Pair a device** on a computer and type the code on the tablet.

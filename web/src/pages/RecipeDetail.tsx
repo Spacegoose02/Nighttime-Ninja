@@ -143,7 +143,7 @@ export function RecipeDetail() {
   async function addPhoto(file: File | undefined) {
     if (!file) return;
     try {
-      const { url } = await api<{ url: string }>(`${base}/uploads`, { body: { dataUrl: await fileToDataUrl(file) } });
+      const { url } = await api<{ url: string }>(`${base}/uploads`, { body: { dataUrl: await fileToDataUrl(file, 1600, true) } });
       await api(`${base}/recipes/${id}/meta`, { method: 'PATCH', body: { image: url } });
       await reload();
       toast('Photo added');

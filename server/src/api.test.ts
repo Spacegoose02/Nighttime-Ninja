@@ -818,3 +818,24 @@ test('shopping and cooking keep the pantry right', async () => {
   const open = (await call(a, 'GET', `${base}/shopping`)).body.filter((s: { checked: boolean }) => !s.checked);
   assert.deepEqual(open.map((s: { name: string; quantity: number }) => [s.name, s.quantity]).sort(), [['ground beef', 2], ['tomatoes', 2]]);
 });
+
+test('recipes move in from Mealie and out as a Paprika file', async () => {
+  const { app, login, call } = await setup();
+  const { zip, unzip } = await import('./zip.ts');
+  const alice = await login('Alice');
+  const { body: home } = await call(alice, 'POST', '/api/homes', { name: 'Den' });
+  const file = zip([{ name: 'recipes/tacos/tacos.json', data: Buffer.from(JSON.stringify({
+    name: 'Tacos', recipeIngredient: ['1 lb ground beef', '8 tortillas'], recipeInstructions: [{ text: 'Cook.' }],
+  })) }]).toString('base64');
+  const first = await call(alice, 'POST', `/api/homes/${home.id}/import/archive`, { file, filename: 'mealie.zip' });
+  assert.equal(first.status, 200, JSON.stringify(first.body));
+  assert.deepEqual(first.body, { format: 'mealie', recipes: 1, recipesSkipped: 0, photos: 0 });
+  // Importing again skips what's already there.
+  assert.equal((await call(alice, 'POST', `/api/homes/${home.id}/import/archive`, { file })).body.recipesSkipped, 1);
+  assert.equal((await call(alice, 'POST', `/api/homes/${home.id}/import/archive`, { file: Buffer.from('nope').toString('base64') })).status, 422);
+
+  const out = await app.inject({ method: 'GET', url: `/api/homes/${home.id}/export/paprika`, headers: alice });
+  assert.equal(out.statusCode, 200);
+  assert.match(String(out.headers['content-disposition']), /den\.paprikarecipes/);
+  assert.deepEqual(unzip(out.rawPayload).map((e) => e.name), ['Tacos.paprikarecipe']);
+});

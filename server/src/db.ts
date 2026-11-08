@@ -333,6 +333,18 @@ const MIGRATIONS: string[] = [
   `
   ALTER TABLE home_settings ADD COLUMN currency TEXT NOT NULL DEFAULT 'USD';
   `,
+  // What the AI helpers used each day, by model, with an estimated cost in US dollars (Settings → Server admin).
+  `
+  CREATE TABLE ai_usage (
+    day TEXT NOT NULL,
+    model TEXT NOT NULL,
+    requests INTEGER NOT NULL DEFAULT 0,
+    input_tokens INTEGER NOT NULL DEFAULT 0,
+    output_tokens INTEGER NOT NULL DEFAULT 0,
+    cost REAL NOT NULL DEFAULT 0,
+    PRIMARY KEY (day, model)
+  );
+  `,
 ];
 
 export function openDb(dataDir: string): DatabaseSync {

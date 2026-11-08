@@ -1,3 +1,8 @@
+---
+title: Google sign-in
+nav_order: 6
+---
+
 # Google sign-in
 
 1. Go to the [Google Cloud console credentials page](https://console.cloud.google.com/apis/credentials) and create a project if you don't have one.

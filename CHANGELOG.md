@@ -2,6 +2,18 @@
 
 Every release, newest first. The full notes for each one are on its [GitHub release page](https://github.com/Spacegoose02/Nighttime-Ninja/releases).
 
+## 0.14.0 - unreleased
+
+Open to other apps and other AI: move recipes in and out of Mealie, Tandoor and Paprika, run the AI helpers on your own computer, and see what the AI costs.
+
+- **Import from Mealie, Tandoor and Paprika**, photos included, in Recipes → Import.
+- **Export a Paprika file** of every recipe (Settings → Home → Backup). Paprika opens it, and Mealie and Tandoor can import it.
+- **Your own AI server:** set `AI_BASE_URL` and `AI_MODEL` to use Ollama, LM Studio, llama.cpp or any OpenAI-compatible server instead of Claude.
+- **What the AI costs:** Settings → Server admin shows this month's AI requests and estimated cost by model.
+- **Smaller photos:** recipe photos are saved as WebP.
+- **Documentation site** at spacegoose02.github.io/Nighttime-Ninja, built from the `docs` folder, with new pages on AI helpers and import and export.
+- For contributors: a bundle size budget runs in CI (`npm run budget`).
+
 ## 0.13.0 - unreleased
 
 Works for more people: more languages, more countries, bigger text and checked accessibility.
