@@ -57,7 +57,7 @@ test('only admins can list, make and download backups', async () => {
   const dl = await app.inject({ method: 'GET', url: `/api/admin/backups/${name}`, headers: admin });
   assert.equal(dl.statusCode, 200);
   assert.equal(dl.rawPayload.subarray(0, 15).toString(), 'SQLite format 3');
-  assert.equal((await app.inject({ method: 'GET', url: '/api/admin/backups/..%2Fnighttime-ninja.db', headers: admin })).statusCode, 400);
+  assert.equal((await app.inject({ method: 'GET', url: '/api/admin/backups/..%2Fnighttime-ninja.db', headers: admin })).statusCode, 404);
   const health = await app.inject({ method: 'GET', url: '/api/health' });
   assert.equal(health.json().ok, true);
   assert.match(health.json().version, /^\d+\.\d+\.\d+/);

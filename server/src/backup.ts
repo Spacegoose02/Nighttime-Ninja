@@ -5,6 +5,7 @@ import type { DatabaseSync } from 'node:sqlite';
 import type { FastifyInstance } from 'fastify';
 import { requireAdmin } from './auth.ts';
 import { HttpError } from './util.ts';
+import { rateLimit } from './security.ts';
 
 /** How many of each kind to keep. Older ones are removed after a new one is made. */
 const KEEP = { nightly: 7, upgrade: 3, manual: 5 } as const;
@@ -78,13 +79,15 @@ export function backupRoutes(app: FastifyInstance, db: DatabaseSync, dataDir: st
 
   app.get('/api/admin/backups/:name', async (req, reply) => {
     requireAdmin(req);
+    // Backups are whole databases: keep downloads to a sensible pace even for an admin session.
+    rateLimit(`backup-download:${req.ip}`, 30, 15 * 60e3);
     const { name } = req.params as { name: string };
-    if (!NAME.test(name)) throw new HttpError(400, 'Not a backup file');
-    const file = path.join(backupDir(dataDir), name);
-    if (!fs.existsSync(file)) throw new HttpError(404, 'That backup is gone');
+    // Only ever serve a file the server listed itself, never a path built from the request.
+    const found = listBackups(dataDir).find((b) => b.name === name);
+    if (!found) throw new HttpError(404, 'That backup is gone');
     reply.header('content-type', 'application/vnd.sqlite3');
-    reply.header('content-disposition', `attachment; filename="${name}"`);
+    reply.header('content-disposition', `attachment; filename="${found.name}"`);
     reply.header('cache-control', 'no-store');
-    return reply.send(fs.createReadStream(file));
+    return reply.send(fs.createReadStream(path.join(backupDir(dataDir), found.name)));
   });
 }
