@@ -13,6 +13,7 @@ import { ingredientMatches } from '../../../shared/recipe.ts';
 import { READY_LABEL } from './Recipes.tsx';
 import { Icon } from '../components/Icon.tsx';
 import { recipeEmoji, recipeTint } from '../recipeArt.ts';
+import { dollars } from '../components/Spending.tsx';
 
 /** Lets someone say "this ingredient is that pantry item". Saved for the whole home, so every recipe uses it. */
 function MatchPicker({ ingredient, onClose }: { ingredient: string; onClose: (changed: boolean) => void }) {
@@ -225,6 +226,12 @@ export function RecipeDetail() {
         <span className={`pill ${cls}`}>{label}</span>
         {recipe.prepMinutes && <span className="pill">Prep {minutes(recipe.prepMinutes)}</span>}
         {recipe.cookMinutes && <span className="pill">Cook {minutes(recipe.cookMinutes)}</span>}
+        {recipe.cost && recipe.cost.priced > 0 && (
+          <span className="pill" title={recipe.cost.unpriced.length ? `No price yet for ${recipe.cost.unpriced.join(', ')}. Add prices as you check things off the shopping list.` : 'From what you last paid'}>
+            {recipe.cost.priced < recipe.cost.of ? 'At least ' : 'About '}{dollars(recipe.cost.total)}
+            {recipe.cost.perServing != null && ` · ${dollars(recipe.cost.perServing)} a serving`}
+          </span>
+        )}
         {recipe.tags.map((t) => <span key={t} className="pill">{t}</span>)}
         {recipe.sourceUrl && <a className="small" href={recipe.sourceUrl} target="_blank" rel="noreferrer">Original</a>}
       </div>
@@ -304,8 +311,8 @@ export function RecipeDetail() {
           <button className="ghost" onClick={() => setPlanDate(null)}>Cancel</button>
         </div>
       )}
-      <div className="grid-2" style={{ alignItems: 'start' }}>
-        <div className="card">
+      <div className="grid-2 recipe-body" style={{ alignItems: 'start' }}>
+        <div className="card ingredients-card">
           <div className="row">
             <h2 style={{ margin: 0, flex: 1 }}>Ingredients</h2>
             {recipe.servings && (

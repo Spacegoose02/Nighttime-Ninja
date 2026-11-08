@@ -55,3 +55,17 @@
 /* A recipe with no photo yet: its dish on a colour of its own, and a way to add one. */
 .recipe-hero-empty { border-radius: var(--radius-xl); min-height: 160px; display: flex; align-items: center; justify-content: center; gap: var(--space-5); flex-wrap: wrap; padding: var(--space-4); }
 .recipe-hero-empty > span { font-size: 4rem; }
+
+/* Home: tonight's dinner, or three ideas. */
+.tonight-ideas { display: flex; flex-direction: column; gap: var(--space-2); }
+.tonight-idea { display: flex; align-items: center; gap: var(--space-3); }
+.tonight-cover { width: 56px; height: 56px; flex: none; border-radius: var(--radius-m); display: grid; place-items: center; font-size: 1.8rem; overflow: hidden; text-decoration: none; }
+.tonight-cover img { width: 100%; height: 100%; object-fit: cover; }
+
+/* Settings: search and section tabs stay at the top. */
+.settings-nav { position: sticky; top: 0; z-index: 5; background: var(--bg); display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-2) 0; }
+
+/* On a tablet or bigger, the ingredients stay in view while you scroll the steps. */
+@media (min-width: 900px) {
+  .recipe-body .ingredients-card { position: sticky; top: var(--space-4); max-height: calc(100dvh - 32px); overflow-y: auto; }
+}

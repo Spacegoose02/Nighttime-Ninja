@@ -2,6 +2,18 @@
 
 Every release, newest first. The full notes for each one are on its [GitHub release page](https://github.com/Spacegoose02/Nighttime-Ninja/releases).
 
+## 0.12.0 - unreleased
+
+Faster everyday use: dinner ideas on Home, one search for everything, and what recipes cost.
+
+- **Tonight on Home:** tonight's planned recipe one tap away, or three ideas you can make now, starting with ones that use up food about to expire. "Tonight" plans it.
+- **Search everything (Ctrl+K, or Search in the menu):** pages, recipes, pantry items and settings, plus "add … to the shopping list" and "ask Gordy …".
+- **Swipe shopping items** right to check them off, left to remove them (on touch screens).
+- **What it costs:** recipes show their cost and cost per serving from what you last paid, and the meal plan shows the week's total.
+- **Settings** has a search box and You / Home / Kitchen / Server admin sections.
+- **Hide pages** a home doesn't use (Meal Plan, Gordy, Mixologist, Deals, Feed) in Settings → Home.
+- On a tablet, a recipe's ingredients stay in view while you scroll the steps.
+
 ## 0.11.0 - unreleased
 
 A calmer, more consistent look, a tidier shopping list, and automatic backups.

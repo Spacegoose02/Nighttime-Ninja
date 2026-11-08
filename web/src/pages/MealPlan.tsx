@@ -7,6 +7,7 @@ import { useListPicker } from '../components/ListPicker.tsx';
 import { useUrlState } from '../urlState.ts';
 import { addDays, todayIso } from '../format.ts';
 import { Icon } from '../components/Icon.tsx';
+import { dollars } from '../components/Spending.tsx';
 
 const SLOTS = ['breakfast', 'lunch', 'dinner', 'snack'];
 
@@ -202,6 +203,17 @@ export function MealPlan() {
   const [ai] = useLoad<{ available: boolean }>('/api/mixologist/status');
   const days = Array.from({ length: 7 }, (_, i) => addDays(start, i));
   const today = todayIso();
+  // What the week's planned recipes cost, from what you last paid. Only recipes with every ingredient priced count.
+  const [costs] = useLoad<RecipeSummary[]>(`${base}/recipes`);
+  const weekCost = (() => {
+    let total = 0;
+    let counted = 0;
+    for (const m of meals ?? []) {
+      const r = m.recipeId ? costs?.find((x) => x.id === m.recipeId) : null;
+      if (r?.costPerServing != null && r.servings) { total += r.costPerServing * r.servings; counted++; }
+    }
+    return { total, counted, of: (meals ?? []).filter((m) => m.recipeId).length };
+  })();
 
   async function copyLastWeek() {
     const r = await api<{ copied: number }>(`${base}/mealplan/copy`, { body: { from: addDays(start, -7), to: start, days: 7 } });
@@ -238,6 +250,11 @@ export function MealPlan() {
         {ai?.available && <button onClick={() => setPlanning(true)}>✨ Plan my week</button>}
         <button className="primary" onClick={shopForWeek}>🛒 Shop for this week</button>
       </div>
+      {weekCost.counted > 0 && (
+        <p className="small muted" style={{ margin: 0 }}>
+          This week's recipes cost about {dollars(weekCost.total)}{weekCost.counted < weekCost.of ? ` (${weekCost.counted} of ${weekCost.of} meals have prices)` : ''}, from what you last paid.
+        </p>
+      )}
       <div className="week">
         {days.map((d) => {
           const dayMeals = (meals ?? []).filter((m) => m.date === d).sort((a, b) => SLOTS.indexOf(a.slot) - SLOTS.indexOf(b.slot));

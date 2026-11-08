@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { useUrlState } from '../urlState.ts';
 import { Link } from 'react-router-dom';
 import { useDialogs } from '../components/Dialog.tsx';
 import { forgetDevice } from '../offline.ts';
@@ -120,6 +121,19 @@ function HomeSettings() {
         </form>
       ) : <p style={{ margin: 0 }}><strong>{home.name}</strong> <span className="muted">(you're a member)</span></p>}
 
+      <h3>Pages</h3>
+      <p className="small muted" style={{ margin: 0 }}>Hide what this home doesn't use. They come back here any time.</p>
+      <div className="chips">
+        {OPTIONAL_PAGES.map((p) => {
+          const on = !(home.settings.hiddenPages ?? []).includes(p.to);
+          const hidden = home.settings.hiddenPages ?? [];
+          return (
+            <button key={p.to} disabled={!isManager} aria-pressed={on} className={`chip${on ? ' on' : ''}`}
+              onClick={async () => { await patch({ hiddenPages: on ? [...hidden, p.to] : hidden.filter((x) => x !== p.to) }); await refresh(); }}>{p.label}</button>
+          );
+        })}
+      </div>
+
       <h3>Invite people</h3>
       <div className="row">
         <span>Join code:</span>
@@ -227,19 +241,76 @@ function HomeSettings() {
   );
 }
 
+const OPTIONAL_PAGES = [
+  { to: '/plan', label: 'Meal Plan' }, { to: '/chef', label: 'Chef Gordy' }, { to: '/mixologist', label: 'Mixologist' },
+  { to: '/deals', label: 'Deals' }, { to: '/feed', label: 'Feed' },
+];
+
+const SECTIONS = [
+  { key: 'you', label: 'You' },
+  { key: 'home', label: 'Home' },
+  { key: 'kitchen', label: 'Kitchen' },
+  { key: 'server', label: 'Server admin', admin: true },
+] as const;
+
 export function Settings() {
   const { me } = useApp();
+  const [tab, setTab] = useUrlState('section', 'all');
+  const [q, setQ] = useUrlState('q', '');
+  const box = useRef<HTMLDivElement>(null);
+  const [none, setNone] = useState(false);
+  // Search hides every card that doesn't mention the words, across all sections.
+  useEffect(() => {
+    const filter = () => {
+      const cards = [...(box.current?.querySelectorAll<HTMLElement>('[data-section] > *') ?? [])];
+      const words = q.trim().toLowerCase().split(/\s+/).filter(Boolean);
+      let shown = 0;
+      for (const c of cards) {
+        const hit = words.every((w) => (c.textContent ?? '').toLowerCase().includes(w));
+        if (c.hidden === hit) c.hidden = !hit;
+        if (hit) shown++;
+      }
+      setNone(!!words.length && !shown);
+    };
+    filter();
+    // Cards fill in as their data loads; filter those too.
+    const watch = new MutationObserver(filter);
+    if (box.current) watch.observe(box.current, { childList: true, subtree: true, characterData: true });
+    return () => watch.disconnect();
+  }, [q, tab]);
+  const show = (key: string) => !!q || tab === 'all' || tab === key;
+  const sections = SECTIONS.filter((x) => !('admin' in x) || me?.user.isAdmin);
   return (
-    <div className="stack" style={{ maxWidth: 960 }}>
+    <div className="stack" style={{ maxWidth: 960 }} ref={box}>
       <div className="topbar"><h1>Settings</h1></div>
-      <Profile />
-      <Reminders />
-      <SecurityCard />
-      <HomeSettings />
-      <KitchenTools />
-      <PlacesAndCategories />
-      <VersionCard />
-      {me?.user.isAdmin && <Admin />}
+      <div className="settings-nav">
+        <input type="search" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search settings" aria-label="Search settings" />
+        <div className="chips scroll-x" role="tablist" aria-label="Settings sections">
+          <button role="tab" aria-selected={tab === 'all'} className={`chip${tab === 'all' && !q ? ' on' : ''}`} onClick={() => { setQ(''); setTab('all'); }}>All</button>
+          {sections.map((x) => (
+            <button key={x.key} role="tab" aria-selected={tab === x.key} className={`chip${tab === x.key && !q ? ' on' : ''}`} onClick={() => { setQ(''); setTab(x.key); }}>{x.label}</button>
+          ))}
+        </div>
+      </div>
+      {none && <div className="card muted">No setting mentions “{q}”.</div>}
+      <section data-section="you" className="stack" hidden={!show('you')}>
+        <Profile />
+        <Reminders />
+        <SecurityCard />
+      </section>
+      <section data-section="home" className="stack" hidden={!show('home')}>
+        <HomeSettings />
+        <PlacesAndCategories />
+      </section>
+      <section data-section="kitchen" className="stack" hidden={!show('kitchen')}>
+        <KitchenTools />
+        <VersionCard />
+      </section>
+      {me?.user.isAdmin && (
+        <section data-section="server" className="stack" hidden={!show('server')}>
+          <Admin />
+        </section>
+      )}
       <p className="small muted">Nighttime Ninja is open source under the MIT license.</p>
     </div>
   );

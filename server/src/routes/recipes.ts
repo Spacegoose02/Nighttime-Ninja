@@ -12,6 +12,7 @@ import { dietClashes } from '../../../shared/diets.ts';
 import { missingTools } from '../../../shared/equipment.ts';
 import { body, flag, list, number, text } from '../schemas.ts';
 import { addShoppingItem } from './shopping.ts';
+import { latestPurchases, recipeCost } from '../cost.ts';
 
 /** Things nobody tracks in inventory. */
 const ALWAYS_HAVE = new Set(['water', 'ice', 'hot water', 'cold water', 'warm water', 'ice water']);
@@ -166,10 +167,13 @@ export function recipeRoutes(app: FastifyInstance, db: DatabaseSync): void {
     const expiring = expiringIds(db, ctx.homeId);
     const eaters = homeEaters(db, ctx.homeId);
     const tools = homeTools(db, ctx.homeId);
+    const purchases = latestPurchases(db, ctx.homeId);
     const list = rows.map((r) => {
       const full = loadRecipe(db, r);
       const { status, missing } = readiness(checkIngredients(index, full.ingredients));
+      const cost = purchases.length ? recipeCost(full.ingredients, full.servings, purchases) : null;
       return {
+        costPerServing: cost && cost.priced === cost.of ? cost.perServing : null,
         usesExpiring: usesExpiring(index, full.ingredients, expiring),
         dietWarnings: dietClashes(full.ingredients.filter((i) => !i.optional), eaters).length,
         missingTools: missingTools(full, tools),
@@ -191,8 +195,10 @@ export function recipeRoutes(app: FastifyInstance, db: DatabaseSync): void {
     const factor = servings && full.servings ? servings / full.servings : 1;
     const checked = checkIngredients(stockIndex(db, ctx.homeId), full.ingredients, factor);
     const cooks = db.prepare('SELECT COUNT(*) AS n, MAX(cooked_at) AS last FROM recipe_cooks WHERE recipe_id = ?').get(full.id) as Row;
+    const scaled = full.ingredients.map((i) => ({ ...i, quantity: i.quantity == null ? null : i.quantity * factor }));
     return {
       ...full, ingredients: checked, ...readiness(checked),
+      cost: recipeCost(scaled, servings ?? full.servings, latestPurchases(db, ctx.homeId)),
       favorite: !!row.favorite, rating: row.rating as number | null, notes: row.notes as string, collections: parseJson<string[]>(row.collections, []),
       cookCount: Number(cooks.n), lastCooked: cooks.last as string | null,
       dietClashes: dietClashes(full.ingredients, homeEaters(db, ctx.homeId)),

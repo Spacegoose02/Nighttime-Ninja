@@ -8,6 +8,9 @@ import { body, flag, list, oneOf, text } from '../schemas.ts';
 import { DIETS, type Eater } from '../../../shared/diets.ts';
 import { cleanTools } from '../../../shared/equipment.ts';
 
+/** Pages a home can switch off. Home, Pantry, Recipes, Shopping and Settings always stay. */
+export const HIDEABLE_PAGES = ['/plan', '/chef', '/mixologist', '/deals', '/feed'];
+
 export type LabelKind = 'locations' | 'categories';
 const DEFAULT_LABELS: Record<LabelKind, readonly string[]> = { locations: LOCATIONS, categories: CATEGORIES };
 
@@ -112,11 +115,12 @@ export function homeRoutes(app: FastifyInstance, db: DatabaseSync): void {
         krogerLocationId: settings?.kroger_location_id ?? null,
         ...homeLabels(db, ctx.homeId),
         equipment: homeTools(db, ctx.homeId),
+        hiddenPages: JSON.parse(String((db.prepare('SELECT hidden_pages FROM home_settings WHERE home_id = ?').get(ctx.homeId) as Row | undefined)?.hidden_pages ?? '[]')),
       },
     };
   });
 
-  app.patch('/api/homes/:homeId', { schema: body({ name: text, zipCode: text, stores: list(text, 20), krogerLocationId: text }) }, async (req) => {
+  app.patch('/api/homes/:homeId', { schema: body({ name: text, zipCode: text, stores: list(text, 20), krogerLocationId: text, hiddenPages: list(text, 20) }) }, async (req) => {
     const ctx = homeCtx(db, req, 'manager');
     const b = (req.body ?? {}) as Row;
     const name = str(b.name, 80);
@@ -125,6 +129,10 @@ export function homeRoutes(app: FastifyInstance, db: DatabaseSync): void {
     if ('zipCode' in b) db.prepare('UPDATE home_settings SET zip_code = ? WHERE home_id = ?').run(str(b.zipCode, 10), ctx.homeId);
     if (Array.isArray(b.stores)) db.prepare('UPDATE home_settings SET stores = ? WHERE home_id = ?').run(JSON.stringify(b.stores.map(String).slice(0, 20)), ctx.homeId);
     if ('krogerLocationId' in b) db.prepare('UPDATE home_settings SET kroger_location_id = ? WHERE home_id = ?').run(str(b.krogerLocationId, 20), ctx.homeId);
+    if (Array.isArray(b.hiddenPages)) {
+      const pages = (b.hiddenPages as unknown[]).map(String).filter((p) => HIDEABLE_PAGES.includes(p));
+      db.prepare('UPDATE home_settings SET hidden_pages = ? WHERE home_id = ?').run(JSON.stringify([...new Set(pages)]), ctx.homeId);
+    }
     return { ok: true };
   });
 

@@ -325,6 +325,10 @@ const MIGRATIONS: string[] = [
   `
   ALTER TABLE home_settings ADD COLUMN equipment TEXT NOT NULL DEFAULT '[]';
   `,
+  // Pages a home doesn't use (Mixologist, Deals, Feed...), hidden from its menus.
+  `
+  ALTER TABLE home_settings ADD COLUMN hidden_pages TEXT NOT NULL DEFAULT '[]';
+  `,
 ];
 
 export function openDb(dataDir: string): DatabaseSync {

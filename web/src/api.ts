@@ -77,7 +77,7 @@ function safeJson(t: string): unknown {
 
 export interface Me {
   user: { id: string; name: string; email: string | null; avatar: string; theme: string; units: 'us' | 'metric' | 'original'; isAdmin: boolean; lastHomeId: string | null };
-  homes: { id: string; name: string; role: 'manager' | 'member' }[];
+  homes: { id: string; name: string; role: 'manager' | 'member'; hiddenPages?: string[] }[];
 }
 
 export interface Item {
@@ -112,6 +112,8 @@ export interface RecipeSummary {
   dietWarnings: number;
   /** Gear the recipe needs that the home doesn't have (empty until the home lists its kitchen tools). */
   missingTools: string[];
+  /** Dollars per serving from what the home last paid, when every ingredient has a price. */
+  costPerServing?: number | null;
 }
 
 export interface RecipeFull extends Recipe {
@@ -121,6 +123,8 @@ export interface RecipeFull extends Recipe {
   dietClashes: { ingredient: string; person: string; reason: string }[];
   missingTools: string[];
   nutrition: Nutrition | null;
+  /** Estimated from what the home last paid for each ingredient. */
+  cost?: { total: number; perServing: number | null; priced: number; of: number; unpriced: string[] };
 }
 
 /** Per serving, estimated by AI. */
@@ -134,7 +138,7 @@ export interface Meal {
 export interface HomeDetail {
   id: string; name: string; role: 'manager' | 'member'; joinCode: string; calendarUrl: string | null;
   members: { id: string; name: string; avatar: string; role: string; joined_at: string; diets: string[]; allergies: string[] }[];
-  settings: { zipCode: string | null; stores: string[]; krogerLocationId: string | null; locations: string[]; categories: string[]; equipment: string[] };
+  settings: { zipCode: string | null; stores: string[]; krogerLocationId: string | null; locations: string[]; categories: string[]; equipment: string[]; hiddenPages?: string[] };
 }
 
 /** Reads an image file into a data URL, shrinking big photos so uploads stay small. */

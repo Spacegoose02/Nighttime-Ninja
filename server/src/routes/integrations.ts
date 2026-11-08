@@ -37,7 +37,7 @@ export function integrationRoutes(app: FastifyInstance, db: DatabaseSync): void 
     const shopping = db.prepare('SELECT name, quantity, unit FROM shopping_items WHERE home_id = ? AND checked = 0 ORDER BY name').all(ctx.homeId) as Row[];
     const low = db.prepare(`SELECT name, quantity, unit FROM items WHERE home_id = ? AND ${LOW_SQL} ORDER BY name`).all(ctx.homeId) as Row[];
     const expiring = db.prepare("SELECT name, expires_on FROM items WHERE home_id = ? AND expires_on IS NOT NULL AND expires_on <= ? ORDER BY expires_on").all(ctx.homeId, localDate(3)) as Row[];
-    const meals = db.prepare(`SELECT m.slot, COALESCE(r.title, m.title) AS title, m.cooked_at, u.name AS cook FROM meal_plan m LEFT JOIN recipes r ON r.id = m.recipe_id
+    const meals = db.prepare(`SELECT m.slot, m.recipe_id, COALESCE(r.title, m.title) AS title, m.cooked_at, u.name AS cook FROM meal_plan m LEFT JOIN recipes r ON r.id = m.recipe_id
       LEFT JOIN users u ON u.id = m.cook_id
       WHERE m.home_id = ? AND m.date = ? ORDER BY CASE m.slot WHEN 'breakfast' THEN 0 WHEN 'lunch' THEN 1 WHEN 'snack' THEN 2 ELSE 3 END`).all(ctx.homeId, today) as Row[];
     const index = stockIndex(db, ctx.homeId);
@@ -54,6 +54,8 @@ export function integrationRoutes(app: FastifyInstance, db: DatabaseSync): void 
       todays_meals: meals.map((m) => ({ slot: m.slot, title: m.title, cooked: !!m.cooked_at, cook: m.cook ?? null })),
       tonight: dinner?.title ?? null,
       tonight_cook: dinner?.cook ?? null,
+      tonight_recipe_id: dinner?.recipe_id ?? null,
+      tonight_cooked: !!dinner?.cooked_at,
       ready_to_cook_count: ready.length,
       recipe_count: (db.prepare('SELECT COUNT(*) AS n FROM recipes WHERE home_id = ?').get(ctx.homeId) as Row).n,
       item_count: (db.prepare('SELECT COUNT(*) AS n FROM items WHERE home_id = ?').get(ctx.homeId) as Row).n,
