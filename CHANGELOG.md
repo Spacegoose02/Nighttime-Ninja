@@ -10,7 +10,7 @@ Cooking as a household: prep the week in one go, give the kids a job, and keep t
 - **Little helpers:** every recipe suggests jobs kids can do on it, for ages 3, 5, 8 and 11 and up. It works from the recipe itself, with no AI needed.
 - **Two-way Google Calendar sync:** a home manager connects Google Calendar in Settings → Home. Meals become events in a calendar of their own; moving or deleting an event changes the plan, and events added there join it. Needs Google set up (see docs/google-sign-in.md), with the Calendar API turned on.
 
-## 0.15.0 - unreleased
+## [0.15.0](https://github.com/Spacegoose02/Nighttime-Ninja/releases/tag/v0.15.0) - 2026-11-08
 
 Less waste, more help: photograph the fridge to update the pantry, see what gets thrown out, make recipes your own, and let an AI assistant use your kitchen.
 
@@ -21,7 +21,7 @@ Less waste, more help: photograph the fridge to update the pantry, see what gets
 - **Send the list:** share the shopping list to a message, a note or a grocery app, or copy it.
 - **Plan my week** leans on what's in season.
 
-## 0.14.0 - unreleased
+## 0.14.0 - shipped in 0.15.0
 
 Open to other apps and other AI: move recipes in and out of Mealie, Tandoor and Paprika, run the AI helpers on your own computer, and see what the AI costs.
 
@@ -33,7 +33,7 @@ Open to other apps and other AI: move recipes in and out of Mealie, Tandoor and 
 - **Documentation site** at spacegoose02.github.io/Nighttime-Ninja, built from the `docs` folder, with new pages on AI helpers and import and export.
 - For contributors: a bundle size budget runs in CI (`npm run budget`).
 
-## 0.13.0 - unreleased
+## 0.13.0 - shipped in 0.15.0
 
 Works for more people: more languages, more countries, bigger text and checked accessibility.
 
@@ -44,7 +44,7 @@ Works for more people: more languages, more countries, bigger text and checked a
 - **High contrast theme.**
 - Accessibility is now checked automatically on every change, for every page and every theme. Fixed low-contrast status pills, an unlabeled checkbox and the shopping list tabs for screen readers.
 
-## 0.12.0 - unreleased
+## 0.12.0 - shipped in 0.15.0
 
 Faster everyday use: dinner ideas on Home, one search for everything, and what recipes cost.
 
@@ -56,7 +56,7 @@ Faster everyday use: dinner ideas on Home, one search for everything, and what r
 - **Hide pages** a home doesn't use (Meal Plan, Gordy, Mixologist, Deals, Feed) in Settings → Home.
 - On a tablet, a recipe's ingredients stay in view while you scroll the steps.
 
-## 0.11.0 - unreleased
+## 0.11.0 - shipped in 0.15.0
 
 A calmer, more consistent look, a tidier shopping list, and automatic backups.
 
