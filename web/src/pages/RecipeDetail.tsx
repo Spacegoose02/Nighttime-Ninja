@@ -14,6 +14,7 @@ import { READY_LABEL } from './Recipes.tsx';
 import { Icon } from '../components/Icon.tsx';
 import { recipeEmoji, recipeTint } from '../recipeArt.ts';
 import { dollars } from '../components/Spending.tsx';
+import { kidJobs, type KidJob } from '../../../shared/kidjobs.ts';
 
 /** Lets someone say "this ingredient is that pantry item". Saved for the whole home, so every recipe uses it. */
 function MatchPicker({ ingredient, onClose }: { ingredient: string; onClose: (changed: boolean) => void }) {
@@ -96,6 +97,39 @@ function NutritionCard({ recipeId, nutrition, onChange }: { recipeId: string; nu
 }
 
 const AVAIL = { have: ['ok', '✓'], unknown: ['ok', '✓'], low: ['warn', 'low'], missing: ['bad', 'need'] } as const;
+
+const AGES = [3, 5, 8, 11] as const;
+
+/** Jobs kids can do on this recipe, for the age picked (remembered on this device). */
+function KidJobs({ recipe }: { recipe: Pick<RecipeFull, 'ingredients' | 'instructions'> }) {
+  const [age, setAge] = useState<KidJob['age'] | null>(() => {
+    try { const a = Number(localStorage.getItem('nn-kid-age')); return (AGES as readonly number[]).includes(a) ? (a as KidJob['age']) : null; } catch { return null; }
+  });
+  const pick = (a: KidJob['age'] | null) => {
+    setAge(a);
+    try { if (a) localStorage.setItem('nn-kid-age', String(a)); else localStorage.removeItem('nn-kid-age'); } catch { /* private mode */ }
+  };
+  const jobs = age ? kidJobs(recipe, age) : [];
+  return (
+    <div className="card stack">
+      <div className="row">
+        <h2 style={{ margin: 0, flex: 1 }}>👧 Little helpers</h2>
+        <div className="chips">
+          {AGES.map((a) => (
+            <button key={a} className={`chip${age === a ? ' on' : ''}`} aria-pressed={age === a} aria-label={`Helper aged ${a} and up`}
+              onClick={() => pick(age === a ? null : a)}>{a}+</button>
+          ))}
+        </div>
+      </div>
+      {!age && <p className="small muted" style={{ margin: 0 }}>Cooking with kids? Pick their age for jobs they can do on this recipe.</p>}
+      {age && (
+        <ul style={{ margin: 0 }}>
+          {jobs.map((j) => <li key={j.task}>{j.task} <span className="small muted">({j.age}+)</span></li>)}
+        </ul>
+      )}
+    </div>
+  );
+}
 
 export function RecipeDetail() {
   const { id } = useParams();
@@ -375,6 +409,7 @@ export function RecipeDetail() {
         </div>
       </div>
       {!cookMode && <NutritionCard recipeId={recipe.id} nutrition={recipe.nutrition} onChange={() => void reload()} />}
+      {!cookMode && <KidJobs recipe={recipe} />}
       <label className="field card">📝 Our notes
         <textarea key={recipe.notes} defaultValue={recipe.notes} rows={3} placeholder="Double the garlic. Kids liked it with rice."
           onBlur={(e) => { if (e.target.value !== recipe.notes) void meta({ notes: e.target.value }); }} />

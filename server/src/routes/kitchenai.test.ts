@@ -166,3 +166,28 @@ test('reads the title and description from a YouTube page', () => {
   assert.deepEqual(youTubeDetails(html), { title: 'Best Biscuits', description: 'INGREDIENTS\n2 cups flour' });
   assert.equal(youTubeDetails('<html></html>'), null);
 });
+
+test('a prep session covers the planned recipe meals', async () => {
+  const { call, base } = await setup();
+  // Nothing planned from the recipe book yet.
+  await call('POST', `${base}/mealplan`, { date: '2030-04-01', title: 'Leftovers' });
+  assert.equal((await call('POST', `${base}/chef/prep-session`, { start: '2030-04-01', days: 7 })).status, 400);
+
+  const { body: saved } = await call('POST', `${base}/recipes/import`, { save: true, text: 'Chili\nIngredients\n2 onions\n1 lb beans\nInstructions\nChop the onions.\nSimmer.' });
+  await call('POST', `${base}/mealplan`, { date: '2030-04-02', recipeId: saved.ids[0] });
+  await call('POST', `${base}/mealplan`, { date: '2030-04-20', recipeId: saved.ids[0] }); // outside the week
+  answers.push({
+    intro: 'An hour on Sunday.', minutes: 45,
+    steps: [{ task: 'Chop both onions', meals: ['Chili'], minutes: 10, store: 'Fridge, 4 days' }, { task: '', meals: [], minutes: 0, store: '' }],
+    leaveForTheDay: ['Simmer the chili'],
+  });
+  const { status, body } = await call('POST', `${base}/chef/prep-session`, { start: '2030-04-01', days: 7 });
+  assert.equal(status, 200, JSON.stringify(body));
+  assert.equal(body.minutes, 45);
+  assert.deepEqual(body.steps.map((s: { task: string }) => s.task), ['Chop both onions']);
+  assert.deepEqual(body.leaveForTheDay, ['Simmer the chili']);
+  assert.deepEqual(body.meals, [{ date: '2030-04-02', title: 'Chili' }]);
+  const prompt = JSON.stringify(asked.at(-1)!.messages);
+  assert.match(prompt, /2 onions/);
+  assert.match(prompt, /Chop the onions/);
+});

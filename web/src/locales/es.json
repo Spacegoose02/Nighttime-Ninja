@@ -142,5 +142,21 @@
   "with the home's join code.": "con el código del hogar.",
   "{name} is cooking": "Cocina {name}",
   "{name} is empty.": "{name} está vacía.",
-  "{recipe} is tonight's dinner": "{recipe} es la cena de esta noche"
+  "{recipe} is tonight's dinner": "{recipe} es la cena de esta noche",
+  "A home manager can connect it.": "Un administrador del hogar puede conectarlo.",
+  "Connect Google Calendar": "Conectar Google Calendar",
+  "Disconnect": "Desconectar",
+  "Google Calendar couldn't be connected. Try again.": "No se pudo conectar Google Calendar. Inténtalo de nuevo.",
+  "Google Calendar is connected. Your meals are on their way.": "Google Calendar está conectado. Tus comidas van en camino.",
+  "Google Calendar was not connected.": "Google Calendar no se conectó.",
+  "Last synced": "Última sincronización",
+  "Not synced yet": "Aún sin sincronizar",
+  "Open in Google Calendar": "Abrir en Google Calendar",
+  "Or connect Google Calendar both ways: move or delete a meal in the calendar and the plan follows, and events you add there join the plan. It gets a calendar of its own and can’t see your others.": "O conecta Google Calendar en ambos sentidos: mueve o borra una comida en el calendario y el plan cambia también, y los eventos que añadas allí se suman al plan. Tiene su propio calendario y no puede ver los demás.",
+  "Stop syncing with Google Calendar? The calendar stays in Google with what it has now.": "¿Dejar de sincronizar con Google Calendar? El calendario se queda en Google con lo que tiene ahora.",
+  "Sync now": "Sincronizar ahora",
+  "Synced": "Sincronizado",
+  "Syncing both ways with Google Calendar": "Sincronizando en ambos sentidos con Google Calendar",
+  "Syncing…": "Sincronizando…",
+  "That took too long. Try connecting again.": "Tardó demasiado. Intenta conectar de nuevo."
 }

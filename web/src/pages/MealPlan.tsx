@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Modal } from '../components/Dialog.tsx';
+import { PrepSession } from '../components/PrepSession.tsx';
 import { api, type HomeDetail, type Meal, type RecipeSummary } from '../api.ts';
 import { useApp, useLoad } from '../state.tsx';
 import { useListPicker } from '../components/ListPicker.tsx';
@@ -200,6 +201,7 @@ export function MealPlan() {
   const [editing, setEditing] = useState<Meal | null>(null);
   const [dropDay, setDropDay] = useState<string | null>(null);
   const [planning, setPlanning] = useState(false);
+  const [prepping, setPrepping] = useState(false);
   const [ai] = useLoad<{ available: boolean }>('/api/mixologist/status');
   const days = Array.from({ length: 7 }, (_, i) => addDays(start, i));
   const today = todayIso();
@@ -248,6 +250,7 @@ export function MealPlan() {
         <button className="icon" onClick={() => setStart(addDays(start, 7))} aria-label="Next week">›</button>
         <button onClick={copyLastWeek}>⧉ Copy last week</button>
         {ai?.available && <button onClick={() => setPlanning(true)}>✨ Plan my week</button>}
+        {ai?.available && (meals ?? []).some((m) => m.recipeId && !m.cookedAt) && <button onClick={() => setPrepping(true)} title="One batch-prep list for this week's recipes">🔪 Prep session</button>}
         <button className="primary" onClick={shopForWeek}>🛒 Shop for this week</button>
       </div>
       {weekCost.counted > 0 && (
@@ -284,6 +287,7 @@ export function MealPlan() {
         })}
       </div>
       <p className="small muted">Want this in Google Calendar? Settings → Home → Calendar link.</p>
+      {prepping && <PrepSession start={start} onClose={() => setPrepping(false)} />}
       {planning && <PlanWithGordy start={start} onClose={(c) => { setPlanning(false); if (c) void reload(); }} />}
       {editing && <EditMeal meal={editing} onClose={(c) => { setEditing(null); if (c) void reload(); }} />}
       {adding && <AddMeal date={adding} onClose={(c) => { setAdding(null); if (c) void reload(); }} />}

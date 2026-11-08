@@ -349,6 +349,28 @@ const MIGRATIONS: string[] = [
   `
   ALTER TABLE recipes ADD COLUMN parent_id TEXT;
   `,
+  // Two-way Google Calendar sync: one connected calendar per home, and which event is which meal.
+  `
+  CREATE TABLE gcal_links (
+    home_id TEXT PRIMARY KEY REFERENCES homes(id) ON DELETE CASCADE,
+    user_id TEXT,
+    refresh_token TEXT NOT NULL,
+    calendar_id TEXT NOT NULL,
+    sync_token TEXT,
+    last_sync TEXT,
+    last_error TEXT,
+    created_at TEXT NOT NULL
+  );
+  CREATE TABLE gcal_events (
+    home_id TEXT NOT NULL REFERENCES homes(id) ON DELETE CASCADE,
+    meal_id TEXT NOT NULL,
+    event_id TEXT NOT NULL,
+    etag TEXT NOT NULL DEFAULT '',
+    hash TEXT NOT NULL DEFAULT '',
+    PRIMARY KEY (home_id, meal_id),
+    UNIQUE (home_id, event_id)
+  );
+  `,
 ];
 
 export function openDb(dataDir: string): DatabaseSync {

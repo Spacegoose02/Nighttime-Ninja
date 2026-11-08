@@ -123,6 +123,32 @@ export function matchListItem(line: string, open: { id: string; name: string }[]
   return open.find((o) => matchKey(o.name) === key) ?? open.find((o) => ingredientMatches(o.name, line) || ingredientMatches(line, o.name)) ?? null;
 }
 
+const PREP_SCHEMA = {
+  type: 'object',
+  properties: {
+    intro: { type: 'string', description: 'One or two friendly sentences: what this session sets up and roughly how long it takes.' },
+    minutes: { type: 'integer', description: 'Total hands-on time for the whole session.' },
+    steps: {
+      type: 'array',
+      description: 'In the order to do them, overlapping waits (oven, simmering) with other work.',
+      items: {
+        type: 'object',
+        properties: {
+          task: { type: 'string', description: 'One clear job, e.g. "Dice 3 onions".' },
+          meals: { type: 'array', items: { type: 'string' }, description: 'Which planned meals this is for, by title.' },
+          minutes: { type: 'integer' },
+          store: { type: 'string', description: 'How to keep it until it is needed, e.g. "airtight tub in the fridge, 3 days".' },
+        },
+        required: ['task', 'meals', 'minutes', 'store'],
+        additionalProperties: false,
+      },
+    },
+    leaveForTheDay: { type: 'array', items: { type: 'string' }, description: 'Things better done fresh on the day, briefly.' },
+  },
+  required: ['intro', 'minutes', 'steps', 'leaveForTheDay'],
+  additionalProperties: false,
+};
+
 const STOCKTAKE_SCHEMA = {
   type: 'object',
   properties: {
@@ -207,6 +233,52 @@ export function kitchenAiRoutes(app: FastifyInstance, db: DatabaseSync): void {
         return { date: m.date!, slot: m.slot!, recipeId, title: str(m.title, 200) ?? recipe?.title ?? 'Dinner', why: str(m.why, 300) ?? '', recipe, missing };
       }).filter((m) => m.recipeId || m.recipe);
       return { meals };
+    });
+  });
+
+  // Prep session: one batch-prep list for the planned meals (chop once, cook grains, make sauces, marinate).
+  app.post('/api/homes/:homeId/chef/prep-session', { schema: body({ start: text, days: number }, ['start']) }, async (req, reply) => {
+    const ctx = homeCtx(db, req);
+    const b = req.body as Row;
+    const start = /^\d{4}-\d{2}-\d{2}$/.test(String(b.start)) ? String(b.start) : localDate();
+    const days = Math.min(14, Math.max(1, num(b.days) ?? 7));
+    const meals = db.prepare(`SELECT m.date, m.slot, m.recipe_id, COALESCE(r.title, m.title) AS title FROM meal_plan m LEFT JOIN recipes r ON r.id = m.recipe_id
+      WHERE m.home_id = ? AND m.date >= ? AND m.date < date(?, ?) AND m.cooked_at IS NULL ORDER BY m.date`).all(ctx.homeId, start, start, `+${days} days`) as Row[];
+    const withRecipes = meals.filter((m) => m.recipe_id);
+    if (!withRecipes.length) throw new HttpError(400, 'Plan a few meals from your recipe book first, then Gordy can make a prep list for them.');
+    requireAi(db);
+    limitAi(ctx);
+    const recipes = withRecipes.slice(0, 14).map((m) => {
+      const r = loadRecipe(db, db.prepare('SELECT * FROM recipes WHERE id = ?').get(m.recipe_id as string) as Row);
+      return [
+        `## ${m.title} (${m.date}, ${m.slot})`,
+        `Serves ${r.servings ?? '?'}`,
+        'Ingredients:', ...r.ingredients.map((i) => `- ${[i.quantity, i.unit, i.name].filter((x) => x != null && x !== '').join(' ')}${i.note ? `, ${i.note}` : ''}`),
+        'Steps:', ...r.instructions.map((s, i) => `${i + 1}. ${s}`),
+      ].join('\n');
+    });
+    await keepAlive(reply, async () => {
+      const res = await ask(db, {
+        system: [{ type: 'text', text: PERSONA, cache_control: { type: 'ephemeral' } }],
+        messages: [{
+          role: 'user',
+          content: [
+            'Make me one prep session I can do today for these planned meals: a single ordered list that does the shared work once (all the onions at once, grains in one pot, sauces and marinades ahead), with how to store each thing.',
+            "Only prep what keeps well until its day; list the rest under leave for the day. Keep it realistic for a home kitchen, and don't repeat whole recipes.",
+            '',
+            ...recipes,
+          ].join('\n'),
+        }],
+        output_config: { effort: 'medium', format: { type: 'json_schema', schema: PREP_SCHEMA } },
+      });
+      const out = parsed<{ intro?: string; minutes?: number; steps?: { task?: string; meals?: string[]; minutes?: number; store?: string }[]; leaveForTheDay?: string[] }>(res, 'prep list');
+      return {
+        intro: str(out.intro, 600) ?? '',
+        minutes: Math.max(0, Math.round(num(out.minutes) ?? 0)),
+        steps: (out.steps ?? []).slice(0, 60).map((s) => ({ task: str(s.task, 300) ?? '', meals: (s.meals ?? []).slice(0, 8).map((x) => str(x, 200) ?? '').filter(Boolean), minutes: Math.max(0, Math.round(num(s.minutes) ?? 0)), store: str(s.store, 200) ?? '' })).filter((s) => s.task),
+        leaveForTheDay: (out.leaveForTheDay ?? []).slice(0, 20).map((x) => str(x, 300) ?? '').filter(Boolean),
+        meals: withRecipes.map((m) => ({ date: m.date as string, title: m.title as string })),
+      };
     });
   });
 

@@ -2,6 +2,14 @@
 
 Every release, newest first. The full notes for each one are on its [GitHub release page](https://github.com/Spacegoose02/Nighttime-Ninja/releases).
 
+## 0.16.0 - unreleased
+
+Cooking as a household: prep the week in one go, give the kids a job, and keep the plan in Google Calendar both ways.
+
+- **Prep sessions:** Meal plan → 🔪 Prep session. Gordy turns the week's planned recipes into one batch-prep list that does shared work once (all the onions at once, grains in one pot), says how to store each thing, and lists what to leave for the day. Tick steps off as you go. Needs AI.
+- **Little helpers:** every recipe suggests jobs kids can do on it, for ages 3, 5, 8 and 11 and up. It works from the recipe itself, with no AI needed.
+- **Two-way Google Calendar sync:** a home manager connects Google Calendar in Settings → Home. Meals become events in a calendar of their own; moving or deleting an event changes the plan, and events added there join it. Needs Google set up (see docs/google-sign-in.md), with the Calendar API turned on.
+
 ## [0.15.0](https://github.com/Spacegoose02/Nighttime-Ninja/releases/tag/v0.15.0) - 2026-11-08
 
 Less waste, more help: photograph the fridge to update the pantry, see what gets thrown out, make recipes your own, and let an AI assistant use your kitchen.
