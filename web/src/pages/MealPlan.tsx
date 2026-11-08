@@ -6,6 +6,7 @@ import { useApp, useLoad } from '../state.tsx';
 import { useListPicker } from '../components/ListPicker.tsx';
 import { useUrlState } from '../urlState.ts';
 import { addDays, todayIso } from '../format.ts';
+import { Icon } from '../components/Icon.tsx';
 
 const SLOTS = ['breakfast', 'lunch', 'dinner', 'snack'];
 
@@ -257,7 +258,7 @@ export function MealPlan() {
                     {m.recipeId ? <Link to={`/recipes/${m.recipeId}`} className={m.cookedAt ? 'done' : ''}>{m.title}</Link> : <span className={m.cookedAt ? 'done' : ''}>{m.title}</span>}
                     {m.cookName && <div className="small muted">👩‍🍳 {m.cookName}</div>}
                   </div>
-                  <button className="ghost icon" style={{ minWidth: 36, minHeight: 36 }} aria-label={`Change ${m.title}`} onClick={() => setEditing(m)}>✎</button>
+                  <button className="ghost icon" style={{ minWidth: 36, minHeight: 36 }} aria-label={`Change ${m.title}`} onClick={() => setEditing(m)}><Icon name="edit" /></button>
                 </div>
               ))}
               <button className="ghost" onClick={() => setAdding(d)}>＋ Add</button>

@@ -1,0 +1,121 @@
+/* Shared components: icon picker, pantry tiles, recipe cards, list rows, dialogs, toasts, chat, timers, stars. */
+/* pantry icon picker */
+.icon-picker { display: flex; flex-direction: column; gap: 6px; }
+.icon-picker > span { font-weight: 600; font-size: 0.9rem; }
+.icon-current { justify-content: flex-start; align-self: flex-start; }
+.icon-panel { border: 1px solid var(--border); border-radius: 14px; padding: 10px; max-height: 320px; overflow-y: auto; background: var(--surface-2); }
+.icon-panel .row input { flex: 1; }
+.icon-grid { display: grid; gap: 4px; grid-template-columns: repeat(auto-fill, minmax(44px, 1fr)); }
+.icon-cell { min-height: 44px; padding: 0; font-size: 1.5rem; border-radius: 10px; background: var(--surface); }
+.icon-cell.on { outline: 3px solid var(--primary); outline-offset: -3px; }
+
+/* green item tiles */
+.tiles { display: grid; gap: 14px; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
+.tile {
+  position: relative; border-radius: 20px; padding: 14px 12px 12px; min-height: 150px; color: var(--on-tile);
+  background: linear-gradient(160deg, var(--tile), var(--tile-2)); display: flex; flex-direction: column;
+  align-items: center; text-align: center; gap: 6px; border: none; cursor: pointer; box-shadow: 0 2px 6px rgba(0,0,0,.08);
+}
+.tile .art { width: 64px; height: 64px; border-radius: 16px; display: grid; place-items: center; font-size: 2.6rem; background: rgba(255,255,255,.16); overflow: hidden; }
+.tile .art img { width: 100%; height: 100%; object-fit: cover; }
+.tile .name { font-weight: 700; line-height: 1.15; }
+.tile .qty { font-size: 0.85rem; opacity: 0.9; }
+.tile.low { background: linear-gradient(160deg, #9c6b00, #8a5e00); }
+.tile.out { background: linear-gradient(160deg, #c93a3a, #b02e2e); }
+.tile .badge { position: absolute; top: 8px; right: 10px; font-size: 0.7rem; font-weight: 700; background: rgba(0,0,0,.25); padding: 2px 8px; border-radius: 99px; }
+
+/* recipe cards */
+.recipe-grid { display: grid; gap: 16px; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); }
+.recipe-card { overflow: hidden; padding: 0; text-decoration: none; color: inherit; display: flex; flex-direction: column; }
+.recipe-card .cover { aspect-ratio: 16 / 10; background: var(--surface-2); display: grid; place-items: center; font-size: 3rem; overflow: hidden; }
+.recipe-card .cover img { width: 100%; height: 100%; object-fit: cover; }
+.recipe-card .body { padding: 12px 14px 14px; display: flex; flex-direction: column; gap: 6px; }
+.recipe-card .title { font-weight: 700; }
+
+.list { display: flex; flex-direction: column; }
+.list-item { display: flex; align-items: center; gap: 12px; padding: 10px 4px; border-bottom: 1px solid var(--border); min-height: 60px; }
+.list-item:last-child { border-bottom: none; }
+.check {
+  width: 40px; height: 40px; border-radius: 12px; border: 2px solid var(--primary); display: grid; place-items: center;
+  flex-shrink: 0; background: transparent; padding: 0; min-height: 0; font-size: 1.2rem; color: var(--on-primary);
+}
+.check.on { background: var(--primary); }
+.done { text-decoration: line-through; color: var(--muted); }
+
+.modal {
+  background: var(--surface); color: var(--text); border: none; border-radius: 22px; padding: 20px; width: min(560px, calc(100% - 32px));
+  /* biome-ignore lint/suspicious/noDuplicateProperties: 100vh is the fallback for browsers without dvh. */
+  max-height: calc(100vh - 32px); max-height: calc(100dvh - 32px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+  overflow: auto; overscroll-behavior: contain;
+}
+.modal::backdrop { background: rgba(0,0,0,.45); }
+.modal.ask { width: min(440px, calc(100% - 32px)); }
+.ask-text { white-space: pre-wrap; user-select: text; line-height: 1.45; }
+button.danger-fill { background: var(--danger); color: #fff; border-color: transparent; }
+
+.toast {
+  position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); background: var(--text); color: var(--bg);
+  padding: 12px 20px; border-radius: 14px; z-index: 60; font-weight: 600; max-width: calc(100% - 32px);
+}
+@media (max-width: 699px) { .toast { bottom: calc(96px + env(safe-area-inset-bottom)); } }
+
+/* Avatar picker: rounded tiles (not pills) so longer names like "Executive Chef" wrap inside instead of spilling out. */
+.avatar-grid { display: grid; gap: 10px; grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); }
+.avatar-pick {
+  display: flex; flex-direction: column; align-items: center; justify-content: flex-start; gap: 6px; padding: 10px 6px;
+  min-height: 0; height: auto; border-radius: 16px; font-size: 0.8rem; line-height: 1.2; text-align: center; white-space: normal;
+}
+.avatar-pick span { overflow-wrap: anywhere; }
+.avatar-pick.on { border: 2px solid var(--primary); background: var(--surface-2); }
+
+/* mixologist */
+.chat-log { min-height: 240px; max-height: 62vh; overflow-y: auto; }
+.bubble { max-width: min(720px, 92%); padding: 10px 14px; border-radius: 16px; line-height: 1.45; white-space: pre-wrap; }
+.bubble.user { align-self: flex-end; background: var(--primary); color: var(--on-primary); border-bottom-right-radius: 4px; }
+.bubble.assistant { align-self: flex-start; background: var(--surface-2); border-bottom-left-radius: 4px; white-space: normal; }
+.md ul, .md ol { margin: 4px 0; padding-left: 22px; }
+.md li { margin: 2px 0; }
+.drink-ingredients { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.drink-ingredients li.missing { color: var(--danger); }
+
+/* Chat bubbles with the persona's picture (Rocco Rocks, Gordy Scavengé). */
+.chat-row { display: flex; gap: 8px; align-items: flex-end; }
+.chat-row.user { justify-content: flex-end; }
+.chat-row .bubble { max-width: min(720px, calc(100% - 52px)); }
+.chat-avatar { width: 40px; height: 40px; border-radius: 50%; object-fit: cover; flex-shrink: 0; background: var(--surface-2); display: grid; place-items: center; }
+
+.toast { display: flex; align-items: center; gap: 14px; }
+.toast-undo { min-height: 36px; padding: 4px 14px; background: transparent; color: inherit; border: 2px solid currentColor; font-weight: 700; }
+
+.stars { display: inline-flex; border: 0; padding: 0; margin: 0; }
+.star { all: unset; cursor: pointer; font-size: 1.6rem; line-height: 1; padding: 4px 3px; color: var(--warn); }
+.star:focus-visible { outline: 3px solid color-mix(in srgb, var(--primary) 40%, transparent); border-radius: 6px; }
+.scanner-video { width: 100%; max-height: 50vh; border-radius: 16px; background: #000; object-fit: cover; }
+.layout-list { list-style: none; padding: 0; margin: 0; max-height: 50vh; overflow: auto; }
+.tile .frozen { font-size: 0.75rem; font-weight: 700; background: rgba(0,0,0,.25); padding: 2px 8px; border-radius: 99px; }
+
+/* Kitchen timers stay on screen wherever you go. */
+.timer-bar {
+  position: fixed; right: 16px; bottom: 16px; z-index: 50; display: flex; flex-direction: column; gap: 8px;
+  max-width: calc(100% - 32px);
+}
+@media (max-width: 699px) { .timer-bar { bottom: calc(84px + env(safe-area-inset-bottom)); right: 8px; } }
+.timer {
+  display: flex; align-items: center; gap: 10px; background: var(--surface); border: 1px solid var(--border);
+  border-radius: 16px; padding: 8px 10px 8px 14px; box-shadow: 0 6px 20px rgb(0 0 0 / 0.18);
+}
+.timer-time { font-size: 1.4rem; font-weight: 800; font-variant-numeric: tabular-nums; }
+.timer-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 220px; }
+.timer.ringing { border-color: var(--danger); animation: ring 1s ease-in-out infinite; }
+@keyframes ring { 50% { background: color-mix(in srgb, var(--danger) 18%, var(--surface)); } }
+@media (prefers-reduced-motion: reduce) { .timer.ringing { animation: none; background: color-mix(in srgb, var(--danger) 18%, var(--surface)); } }
+
+/* A row of chips that scrolls sideways instead of wrapping onto more lines. */
+.chips.scroll-x { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; padding-bottom: 2px; }
+.chips.scroll-x::-webkit-scrollbar { display: none; }
+.chips.scroll-x > .chip { flex: none; }
+.chip .count { margin-left: 6px; padding: 0 7px; border-radius: var(--radius-pill); font-size: 0.75rem; background: color-mix(in srgb, currentColor 16%, transparent); }
+.chip .i { width: 16px; height: 16px; }
+.check .i { width: 22px; height: 22px; stroke-width: 3; }
+/* The quick-add box stays at the top while you scroll a long list. */
+.quick-add { position: sticky; top: 0; z-index: 5; background: var(--bg); padding: var(--space-2) 0; margin: calc(-1 * var(--space-2)) 0; }

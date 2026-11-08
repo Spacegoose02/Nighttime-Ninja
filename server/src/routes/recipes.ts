@@ -279,7 +279,7 @@ export function recipeRoutes(app: FastifyInstance, db: DatabaseSync): void {
   });
 
   // The household's own take on a recipe: favorite, 1 to 5 stars, notes ("double the garlic").
-  app.patch('/api/homes/:homeId/recipes/:id/meta', { schema: body({ favorite: flag, rating: number, notes: text, collections: list(text, 20) }) }, async (req) => {
+  app.patch('/api/homes/:homeId/recipes/:id/meta', { schema: body({ favorite: flag, rating: number, notes: text, collections: list(text, 20), image: text }) }, async (req) => {
     const ctx = homeCtx(db, req);
     const id = (req.params as { id: string }).id;
     if (!db.prepare('SELECT 1 FROM recipes WHERE id = ? AND home_id = ?').get(id, ctx.homeId)) throw new HttpError(404, 'Recipe not found');
@@ -290,6 +290,12 @@ export function recipeRoutes(app: FastifyInstance, db: DatabaseSync): void {
       db.prepare('UPDATE recipes SET rating = ? WHERE id = ?').run(r && r >= 1 && r <= 5 ? Math.round(r) : null, id);
     }
     if ('notes' in b) db.prepare('UPDATE recipes SET notes = ? WHERE id = ?').run(str(b.notes, 4000) ?? '', id);
+    // A photo taken in the app (from the uploads endpoint), or null to take it away.
+    if ('image' in b) {
+      const image = str(b.image, 300);
+      if (image && !/^\/uploads\/[\w.-]+$/.test(image)) throw new HttpError(400, 'Upload the photo first');
+      db.prepare('UPDATE recipes SET image = ? WHERE id = ?').run(image ?? null, id);
+    }
     if (Array.isArray(b.collections)) {
       const names = [...new Set((b.collections as unknown[]).map((c) => str(c, 40)).filter((c): c is string => !!c))];
       db.prepare('UPDATE recipes SET collections = ? WHERE id = ?').run(JSON.stringify(names), id);

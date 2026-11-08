@@ -1,0 +1,57 @@
+/* Styles for one page each: meal plan, dashboard, feed, recipe detail and cook mode, spending. */
+.week { display: grid; gap: 12px; grid-template-columns: repeat(7, minmax(150px, 1fr)); overflow-x: auto; }
+@media (max-width: 1100px) { .week { grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); } }
+.day { min-height: 200px; }
+.day.today { border-color: var(--primary); border-width: 2px; }
+.day.drop { border-color: var(--primary); border-style: dashed; border-width: 2px; background: var(--surface-2); }
+.meal[draggable] { cursor: grab; }
+.meal { background: var(--surface-2); border-radius: 12px; padding: 8px 10px; display: flex; gap: 8px; align-items: center; }
+.meal .slot { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); font-weight: 700; }
+
+.hero { display: grid; grid-template-columns: minmax(260px, 1.1fr) 1fr; gap: 20px; align-items: center; }
+@media (max-width: 800px) { .hero { grid-template-columns: 1fr; } }
+.kitchen-scene { width: 100%; height: auto; border-radius: 22px; display: block; }
+.steam path { animation: steam 2.6s ease-in-out infinite; opacity: 0; }
+.steam path:nth-child(2) { animation-delay: 0.8s; }
+.steam path:nth-child(3) { animation-delay: 1.6s; }
+@keyframes steam { 0% { opacity: 0; transform: translateY(8px); } 40% { opacity: 1; } 100% { opacity: 0; transform: translateY(-14px); } }
+@media (prefers-reduced-motion: reduce) { .steam path { animation: none; opacity: 0.8; } }
+
+.stat { display: flex; flex-direction: column; gap: 2px; }
+.stat .num { font-size: 2rem; font-weight: 800; color: var(--primary); }
+
+.video-grid { display: grid; gap: 16px; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); }
+.video { padding: 0; overflow: hidden; }
+.video .thumb { aspect-ratio: 16 / 9; background: #000; display: block; width: 100%; }
+.video .thumb img { width: 100%; height: 100%; object-fit: cover; }
+.video iframe { width: 100%; aspect-ratio: 16 / 9; border: 0; display: block; }
+
+.ingredients li { padding: 6px 0; }
+.steps li { padding: 8px 0; }
+/* Tap a step to cross it off. A real button so it works from a keyboard too, styled as plain text. */
+.steps button.step { all: unset; display: block; width: 100%; cursor: pointer; border-radius: 6px; }
+.steps button.step:focus-visible { outline: 3px solid color-mix(in srgb, var(--primary) 40%, transparent); outline-offset: 2px; }
+.cook-mode .steps li { font-size: 1.35rem; }
+
+/* Cook mode: one big step at a time, ingredients ticked off as they're measured. */
+.cook-focus { border: 2px solid var(--primary); }
+.cook-focus-step { font-size: clamp(1.4rem, 2.6vw, 2rem); line-height: 1.4; margin: 0; }
+.ingredients li.got > span { text-decoration: line-through; opacity: 0.55; }
+.got-box { width: 28px; min-height: 28px; flex: none; }
+
+.welcome { border: 2px solid var(--primary); }
+.welcome-steps { margin: 0; padding-left: 22px; display: flex; flex-direction: column; gap: 6px; }
+.diet-warning { border: 2px solid var(--danger); }
+.nutrition { display: grid; grid-template-columns: repeat(auto-fill, minmax(90px, 1fr)); gap: 10px; }
+.nutrition > div { display: flex; flex-direction: column; background: var(--surface-2); border-radius: 12px; padding: 8px 10px; }
+.nutrition strong { font-size: 1.2rem; }
+
+/* Spending */
+.spend-bars { display: flex; align-items: flex-end; gap: 10px; overflow-x: auto; padding-top: 8px; }
+.spend-bar { display: flex; flex-direction: column; align-items: center; gap: 4px; min-width: 56px; flex: 1; }
+.spend-bar > div { width: 100%; max-width: 48px; background: var(--primary); border-radius: 6px 6px 0 0; }
+.price-input { width: 84px; min-height: 36px; padding: 4px 8px; }
+
+/* A recipe with no photo yet: its dish on a colour of its own, and a way to add one. */
+.recipe-hero-empty { border-radius: var(--radius-xl); min-height: 160px; display: flex; align-items: center; justify-content: center; gap: var(--space-5); flex-wrap: wrap; padding: var(--space-4); }
+.recipe-hero-empty > span { font-size: 4rem; }

@@ -5,9 +5,10 @@ import { rememberList } from '../components/ListPicker.tsx';
 import { useApp, useLoad } from '../state.tsx';
 import { useUrlState } from '../urlState.ts';
 import { pending, sendOrQueue } from '../offline.ts';
-import { amount } from '../format.ts';
+import { amount, itemAmount } from '../format.ts';
 import { CATEGORIES, guessItem } from '../../../shared/catalog.ts';
 import { dollars, ReceiptScan, Spending } from '../components/Spending.tsx';
+import { Icon } from '../components/Icon.tsx';
 
 interface Suggestion { name: string; category: string; timesBought: number }
 interface Layout { name: string; categories: string[] }
@@ -57,7 +58,7 @@ function MoveTo({ item, lists, onPick, onClose }: { item: ShoppingItem; lists: S
     <Modal label={`Move ${item.name}`} onClose={onClose}>
       <h2>Move {item.name} to…</h2>
       <div className="stack">
-        {lists.filter((l) => l.id !== item.listId).map((l) => <button key={l.id} onClick={() => onPick(l)}>🛒 {l.name}</button>)}
+        {lists.filter((l) => l.id !== item.listId).map((l) => <button key={l.id} onClick={() => onPick(l)}><Icon name="shopping" /> {l.name}</button>)}
       </div>
       <div className="row"><span className="spacer" /><button onClick={onClose}>Cancel</button></div>
     </Modal>
@@ -119,7 +120,10 @@ export function Shopping() {
   const tab = (['history', 'spending'].includes(tabParam) ? tabParam : 'list') as 'list' | 'history' | 'spending';
   const [history] = useLoad<ShoppingItem[]>(tab === 'history' ? `${base}/shopping/history` : null, [tab]);
   const [text, setText] = useState('');
-  const [stock, setStock] = useState(true);
+  const stockKey = `nn-stock-${homeId}`;
+  const [stock, setStockState] = useState(() => { try { return localStorage.getItem(stockKey) !== 'off'; } catch { return true; } });
+  const setStock = (on: boolean) => { setStockState(on); try { localStorage.setItem(stockKey, on ? 'on' : 'off'); } catch { /* private mode */ } };
+  const [menu, setMenu] = useState(false);
   const [ai] = useLoad<{ available: boolean }>('/api/mixologist/status');
 
   const refresh = () => Promise.all([reload(), reloadSugg(), reloadLists()]);
@@ -208,6 +212,14 @@ export function Shopping() {
     setItems((cur) => (cur ?? []).filter((x) => x.id !== i.id));
     try {
       if (!(await sendOrQueue(`${base}/shopping/${i.id}`, 'DELETE', undefined))) offline();
+      else {
+        // No "are you sure?": it goes straight away, and Undo puts it back.
+        const again = [i.quantity != null ? amount(i.quantity, i.unit, 'original') : '', i.name].filter(Boolean).join(' ');
+        toast(`Removed ${i.name}`, async () => {
+          await api(`${base}/shopping`, { body: { text: again, listId: i.listId ?? listId } });
+          await refresh();
+        });
+      }
     } catch (e) {
       toast((e as Error).message);
       await reload();
@@ -225,55 +237,69 @@ export function Shopping() {
   const checked = (items ?? []).filter((i) => i.checked);
 
   return (
-    <div className="stack" style={{ maxWidth: 1000 }}>
+    <div className="stack shopping" style={{ maxWidth: 1000 }}>
       <div className="topbar">
         <h1>Shopping</h1>
-        <button className="ghost" onClick={() => window.print()}>🖨 Print</button>
-        <div className="chips">
-          <button className={`chip${tab === 'list' ? ' on' : ''}`} onClick={() => setTab('list')}>List</button>
-          <button className={`chip${tab === 'history' ? ' on' : ''}`} onClick={() => setTab('history')}>History</button>
-          <button className={`chip${tab === 'spending' ? ' on' : ''}`} onClick={() => setTab('spending')}>Spending</button>
+        <div className="chips" role="tablist" aria-label="Shopping views">
+          <button role="tab" aria-selected={tab === 'list'} className={`chip${tab === 'list' ? ' on' : ''}`} onClick={() => setTab('list')}>List</button>
+          <button role="tab" aria-selected={tab === 'history'} className={`chip${tab === 'history' ? ' on' : ''}`} onClick={() => setTab('history')}>History</button>
+          <button role="tab" aria-selected={tab === 'spending'} className={`chip${tab === 'spending' ? ' on' : ''}`} onClick={() => setTab('spending')}>Spending</button>
         </div>
+        <button className="ghost icon" aria-label="List options" aria-haspopup="dialog" title="List options" onClick={() => setMenu(true)}><Icon name="menu" /></button>
       </div>
 
-      {tab === 'list' ? (
-        <>
-          <div className="row list-tabs">
-            <div className="chips" role="tablist" aria-label="Shopping lists">
-              {lists?.map((l) => (
-                <button key={l.id} role="tab" aria-selected={l.id === listId} className={`chip${l.id === listId ? ' on' : ''}`} onClick={() => openList(l.id)}>
-                  🛒 {l.name}{l.open ? ` · ${l.open}` : ''}
-                </button>
-              ))}
-              {current && <button className="chip" onClick={() => renameList(current)} aria-label={`Rename ${current.name}`}>✎</button>}
-              {current && many && <button className="chip" onClick={() => deleteList(current)} aria-label={`Delete ${current.name}`}>🗑</button>}
-              <button className="chip" onClick={newList}>＋ List</button>
-            </div>
-          </div>
-          {moving && lists && <MoveTo item={moving} lists={lists} onPick={(l) => void move(moving, l)} onClose={() => setMoving(null)} />}
-          <form className="row" onSubmit={(e) => { e.preventDefault(); void add(text); }}>
-            <input value={text} onChange={(e) => setText(e.target.value)} placeholder={many && current ? `Add to ${current.name}: “2 lb chicken, milk”` : 'Quick add: “2 lb chicken, milk, 3 avocados”'} style={{ flex: 1 }} aria-label={current ? `Add to ${current.name}` : 'Quick add'} />
-            <button className="primary" disabled={!text.trim()}>Add</button>
-          </form>
-          {!!suggestions?.length && (
-            <div className="stack">
-              <span className="small muted">Tap to add again</span>
-              <div className="chips">
-                {suggestions.slice(0, 24).map((s) => (
-                  <button key={s.name} className="chip" onClick={() => add(s.name)}>{guessItem(s.name).icon} {s.name}</button>
-                ))}
-              </div>
+      {menu && (
+        <Modal label="List options" onClose={() => setMenu(false)}>
+          <h2>List options</h2>
+          {tab === 'list' && current && (
+            <div className="stack" style={{ gap: 8 }}>
+              <button onClick={() => { setMenu(false); void newList(); }}><Icon name="add" /> New list</button>
+              <button onClick={() => { setMenu(false); void renameList(current); }}><Icon name="edit" /> Rename {current.name}</button>
+              {many && <button className="danger" onClick={() => { setMenu(false); void deleteList(current); }}><Icon name="delete" /> Delete {current.name}</button>}
             </div>
           )}
-          <div className="row">
-            <span className="small muted">🏬 Aisle order</span>
+          <div className="stack" style={{ gap: 8 }}>
+            <h3 style={{ margin: 0 }}>Aisle order</h3>
+            <p className="small muted" style={{ margin: 0 }}>Pick your store and the list follows the order you walk its aisles.</p>
             <div className="chips">
               <button className={`chip${!layout ? ' on' : ''}`} onClick={() => setStore('')}>Usual</button>
               {layouts?.map((l) => <button key={l.name} className={`chip${layout?.name === l.name ? ' on' : ''}`} onClick={() => setStore(l.name)}>{l.name}</button>)}
-              {layout && <button className="chip" onClick={() => setEditingLayout(layout)} aria-label={`Change the order for ${layout.name}`}>✎</button>}
-              <button className="chip" onClick={() => setEditingLayout('new')}>＋ Store</button>
+              {layout && <button className="chip" onClick={() => { setMenu(false); setEditingLayout(layout); }} aria-label={`Change the order for ${layout.name}`}><Icon name="edit" /></button>}
+              <button className="chip" onClick={() => { setMenu(false); setEditingLayout('new'); }}><Icon name="add" /> Store</button>
             </div>
           </div>
+          <label className="row" style={{ gap: 8 }}>
+            <input type="checkbox" checked={stock} onChange={(e) => setStock(e.target.checked)} style={{ width: 22, minHeight: 22 }} />
+            Put checked-off items in the pantry
+          </label>
+          <div className="row">
+            <button onClick={() => { setMenu(false); setTimeout(() => window.print(), 50); }}><Icon name="print" /> Print</button>
+            <span className="spacer" />
+            <button className="primary" onClick={() => setMenu(false)}>Done</button>
+          </div>
+        </Modal>
+      )}
+
+      {tab === 'list' ? (
+        <>
+          <div className="chips scroll-x" role="tablist" aria-label="Shopping lists">
+            {lists?.map((l) => (
+              <button key={l.id} role="tab" aria-selected={l.id === listId} className={`chip${l.id === listId ? ' on' : ''}`} onClick={() => openList(l.id)}>
+                {l.name}{l.open ? <span className="count">{l.open}</span> : null}
+              </button>
+            ))}
+            <button className="chip" onClick={newList} aria-label="New list"><Icon name="add" /> List</button>
+          </div>
+          {moving && lists && <MoveTo item={moving} lists={lists} onPick={(l) => void move(moving, l)} onClose={() => setMoving(null)} />}
+          <form className="row quick-add" onSubmit={(e) => { e.preventDefault(); void add(text); }}>
+            <input value={text} onChange={(e) => setText(e.target.value)} placeholder={many && current ? `Add to ${current.name}: “2 lb chicken, milk”` : 'Quick add: “2 lb chicken, milk, 3 avocados”'} style={{ flex: 1 }} aria-label={current ? `Add to ${current.name}` : 'Quick add'} />
+            <button className="primary" disabled={!text.trim()}>Add</button>
+          </form>
+          {(layout || !stock) && (
+            <p className="small muted" style={{ margin: 0 }}>
+              {[layout && `In ${layout.name} aisle order`, !stock && "Checked-off items won't go in the pantry"].filter(Boolean).join(' · ')}
+            </p>
+          )}
           {editingLayout && (
             <LayoutEditor layout={editingLayout === 'new' ? null : editingLayout} all={homeOrder} onClose={() => setEditingLayout(null)}
               onSave={(l) => {
@@ -282,10 +308,6 @@ export function Shopping() {
               }}
               onDelete={editingLayout === 'new' ? null : () => void saveLayouts((layouts ?? []).filter((x) => x.name !== (editingLayout as Layout).name), '')} />
           )}
-          <label className="row small muted" style={{ gap: 8 }}>
-            <input type="checkbox" checked={stock} onChange={(e) => setStock(e.target.checked)} style={{ width: 22, minHeight: 22 }} />
-            Put checked-off items in the pantry
-          </label>
           {items && !groups.length && <div className="card">{many && current ? `${current.name} is empty.` : 'The list is empty.'} Nice work, ninja. 🦝</div>}
           {groups.map(([cat, list]) => (
             <div key={cat} className="card">
@@ -296,16 +318,26 @@ export function Shopping() {
                     <button className="check" onClick={() => toggle(i)} disabled={i.id.startsWith('pending-')} aria-label={`Check off ${i.name}`} />
                     <span style={{ fontSize: '1.5rem' }} aria-hidden>{guessItem(i.name).icon}</span>
                     <div style={{ flex: 1 }}>
-                      <div style={{ fontWeight: 600 }}>{i.quantity != null && <span>{amount(i.quantity, i.unit, me?.user.units)} </span>}{i.name}</div>
+                      <div style={{ fontWeight: 600 }}>{itemAmount(i.quantity, i.unit, me?.user.units) && <span>{itemAmount(i.quantity, i.unit, me?.user.units)} </span>}{i.name}</div>
                       {(i.note || i.addedBy || i.lastPrice != null) && <div className="small muted">{[i.note, i.addedBy && `added by ${i.addedBy}`, i.lastPrice != null && `last paid ${dollars(i.lastPrice)}`].filter(Boolean).join(' · ')}</div>}
                     </div>
-                    {many && <button className="ghost icon" aria-label={`Move ${i.name} to another list`} title="Move to another list" disabled={i.id.startsWith('pending-')} onClick={() => setMoving(i)}>⇄</button>}
-                    <button className="ghost icon" aria-label={`Remove ${i.name}`} disabled={i.id.startsWith('pending-')} onClick={() => remove(i)}>✕</button>
+                    {many && <button className="ghost icon" aria-label={`Move ${i.name} to another list`} title="Move to another list" disabled={i.id.startsWith('pending-')} onClick={() => setMoving(i)}><Icon name="move" /></button>}
+                    <button className="ghost icon" aria-label={`Remove ${i.name}`} title="Remove" disabled={i.id.startsWith('pending-')} onClick={() => remove(i)}><Icon name="close" /></button>
                   </div>
                 ))}
               </div>
             </div>
           ))}
+          {!!suggestions?.length && (
+            <div className="stack" style={{ gap: 6 }}>
+              <span className="small muted">Tap to add again</span>
+              <div className="chips">
+                {suggestions.slice(0, 24).map((s) => (
+                  <button key={s.name} className="chip" onClick={() => add(s.name)}>{guessItem(s.name).icon} {s.name}</button>
+                ))}
+              </div>
+            </div>
+          )}
           {!!checked.length && (
             <div className="card">
               <div className="row">
@@ -315,8 +347,8 @@ export function Shopping() {
               <div className="list">
                 {checked.map((i) => (
                   <div key={i.id} className="list-item">
-                    <button className="check on" onClick={() => toggle(i)} aria-label={`Uncheck ${i.name}`}>✓</button>
-                    <span className="done" style={{ flex: 1 }}>{i.quantity != null && `${amount(i.quantity, i.unit, me?.user.units)} `}{i.name}</span>
+                    <button className="check on" onClick={() => toggle(i)} aria-label={`Uncheck ${i.name}`}><Icon name="check" /></button>
+                    <span className="done" style={{ flex: 1 }}>{itemAmount(i.quantity, i.unit, me?.user.units) && `${itemAmount(i.quantity, i.unit, me?.user.units)} `}{i.name}</span>
                     <input className="price-input" type="number" step="0.01" min="0" inputMode="decimal" placeholder={i.lastPrice != null ? dollars(i.lastPrice) : '$'}
                       defaultValue={i.price ?? ''} aria-label={`What ${i.name} cost`}
                       onBlur={(e) => { const v = e.target.value === '' ? null : Number(e.target.value); if (v !== (i.price ?? null)) void setPrice(i, v); }} />

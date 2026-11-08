@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Question or idea to talk through
+    url: https://github.com/Spacegoose02/Nighttime-Ninja/discussions
+    about: Ask how to set something up, or kick an idea around before opening an issue.
+  - name: Security problem
+    url: https://github.com/Spacegoose02/Nighttime-Ninja/security/advisories/new
+    about: Report it privately, please.

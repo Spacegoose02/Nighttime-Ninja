@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { Modal, useDialogs } from '../components/Dialog.tsx';
-import { api, type Item, type Nutrition, type RecipeFull } from '../api.ts';
+import { api, fileToDataUrl, type Item, type Nutrition, type RecipeFull } from '../api.ts';
 import { useApp, useLoad } from '../state.tsx';
 import { useListPicker } from '../components/ListPicker.tsx';
 import { amount, minutes, todayIso } from '../format.ts';
@@ -11,6 +11,8 @@ import { startTimer, useWakeLock } from '../components/Timers.tsx';
 import { canListen, say, useVoice } from '../components/Voice.tsx';
 import { ingredientMatches } from '../../../shared/recipe.ts';
 import { READY_LABEL } from './Recipes.tsx';
+import { Icon } from '../components/Icon.tsx';
+import { recipeEmoji, recipeTint } from '../recipeArt.ts';
 
 /** Lets someone say "this ingredient is that pantry item". Saved for the whole home, so every recipe uses it. */
 function MatchPicker({ ingredient, onClose }: { ingredient: string; onClose: (changed: boolean) => void }) {
@@ -137,6 +139,16 @@ export function RecipeDetail() {
   const units = me?.user.units ?? 'us';
   const [cls, label] = READY_LABEL[recipe.status];
 
+  async function addPhoto(file: File | undefined) {
+    if (!file) return;
+    try {
+      const { url } = await api<{ url: string }>(`${base}/uploads`, { body: { dataUrl: await fileToDataUrl(file) } });
+      await api(`${base}/recipes/${id}/meta`, { method: 'PATCH', body: { image: url } });
+      await reload();
+      toast('Photo added');
+    } catch (e) { toast((e as Error).message); }
+  }
+
   async function cook() {
     if (!(await dialogs.confirm(`Take the ingredients for ${recipe!.title} out of the pantry?`, { okLabel: 'I cooked it' }))) return;
     const r = await api<{ used: unknown[]; skipped: string[]; historyIds: number[] }>(`${base}/recipes/${id}/cook`, { body: { servings } });
@@ -196,10 +208,19 @@ export function RecipeDetail() {
       <div className="topbar">
         <button className="ghost" onClick={() => nav(-1)}>← Back</button>
         <h1>{recipe.title}</h1>
-        <button onClick={() => { setCookMode(!cookMode); setStepAt(0); }}>{cookMode ? 'Exit cook mode' : '👩‍🍳 Cook mode'}</button>
-        <Link className="btn" to={`/recipes/${id}/edit`}>✏️ Edit</Link>
+        <button onClick={() => { setCookMode(!cookMode); setStepAt(0); }}>{cookMode ? 'Exit cook mode' : <><Icon name="cook" /> Cook mode</>}</button>
+        <Link className="btn" to={`/recipes/${id}/edit`}><Icon name="edit" /> Edit</Link>
       </div>
       {recipe.image && !cookMode && <img src={recipe.image} alt="" style={{ borderRadius: 20, maxHeight: 380, objectFit: 'cover', width: '100%' }} />}
+      {!recipe.image && !cookMode && (
+        <div className="recipe-hero-empty" style={{ background: recipeTint(recipe.title) }}>
+          <span aria-hidden>{recipeEmoji(recipe.title, recipe.tags)}</span>
+          <label className="btn">
+            Add a photo
+            <input type="file" accept="image/*" className="sr-only" onChange={(e) => void addPhoto(e.target.files?.[0])} />
+          </label>
+        </div>
+      )}
       <div className="row">
         <span className={`pill ${cls}`}>{label}</span>
         {recipe.prepMinutes && <span className="pill">Prep {minutes(recipe.prepMinutes)}</span>}
@@ -269,12 +290,12 @@ export function RecipeDetail() {
         </div>
       )}
       <div className="row">
-        <button className="primary" onClick={cook}>🍳 I cooked this</button>
-        <button onClick={() => toList(false)}>🛒 Add missing to list</button>
-        <button onClick={() => toList(true)}>🛒 Add all</button>
-        <button onClick={() => setPlanDate(todayIso())}>📅 Plan it</button>
-        <button onClick={share}>{recipe.isPublic ? '🌍 Stop sharing' : '🔗 Share publicly'}</button>
-        <button onClick={() => window.print()}>🖨 Print</button>
+        <button className="primary" onClick={cook}><Icon name="cooked" /> I cooked this</button>
+        <button onClick={() => toList(false)}><Icon name="shopping" /> Add missing to list</button>
+        <button onClick={() => toList(true)}><Icon name="shopping" /> Add all</button>
+        <button onClick={() => setPlanDate(todayIso())}><Icon name="plan" /> Plan it</button>
+        <button onClick={share}>{recipe.isPublic ? <><Icon name="globe" /> Stop sharing</> : <><Icon name="share" /> Share publicly</>}</button>
+        <button onClick={() => window.print()}><Icon name="print" /> Print</button>
       </div>
       {planDate !== null && (
         <div className="card row">

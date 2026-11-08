@@ -1,0 +1,24 @@
+/* Design tokens: one scale for spacing, corners, shadows and type, so pages stay consistent.
+   Colours live in themes.css; everything else that repeats should come from here. */
+:root {
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+
+  --radius-s: 10px;
+  --radius-m: 14px;
+  --radius-l: 18px;
+  --radius-xl: 22px;
+  --radius-pill: 999px;
+
+  --shadow-1: 0 2px 6px rgb(0 0 0 / 0.08);
+  --shadow-2: 0 6px 20px rgb(0 0 0 / 0.18);
+
+  --font-body: 17px;
+  --font-small: 0.85rem;
+  --tap: 48px;
+  --icon-size: 22px;
+}
