@@ -2,7 +2,7 @@
 
 Every release, newest first. The full notes for each one are on its [GitHub release page](https://github.com/Spacegoose02/Nighttime-Ninja/releases).
 
-## Unreleased
+## [0.18.0](https://github.com/Spacegoose02/Nighttime-Ninja/releases/tag/v0.18.0) - 2026-11-14
 
 Linking up with the family's other apps.
 
