@@ -2,6 +2,14 @@
 
 Every release, newest first. The full notes for each one are on its [GitHub release page](https://github.com/Spacegoose02/Nighttime-Ninja/releases).
 
+## Unreleased
+
+Linking up with the family's other apps.
+
+- **Single sign-on through your reverse proxy:** set `FORWARD_AUTH_HEADER` (and `FORWARD_AUTH_TRUSTED`) and Tinyauth, Authelia or another forward-auth proxy signs people in. Headers are only trusted from the proxy's own address. See docs/single-sign-on.md, including one Tinyauth for Nighttime Ninja, Den Duty and BookBandit.
+- **Ask a kid to help:** link Den Duty in Settings → Home → Den Duty (address, home id, a control token, stored encrypted) and each Little helpers job on a recipe gets an "Ask … to help" button per kid. It becomes a one-off chore for today in Den Duty, worth the points you pick. See docs/den-duty.md.
+- **Recipes that stay private:** apps can save recipes with `noPublicShare: true` (on `POST /recipes/import` with `save`, and on `POST /recipes`). Those recipes, and variations made from them, can't get a public share link. BookBandit uses it for recipes from your cookbooks.
+
 ## [0.17.0](https://github.com/Spacegoose02/Nighttime-Ninja/releases/tag/v0.17.0) - 2026-11-08
 
 Kids can ask for groceries, and a grown-up says yes or no.

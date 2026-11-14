@@ -18,6 +18,7 @@ import { KitchenTools } from './settings/KitchenTools.tsx';
 import { DietsAndAllergies } from './settings/Diets.tsx';
 import { Reminders } from './settings/Reminders.tsx';
 import { CalendarSync } from './settings/CalendarSync.tsx';
+import { DenDuty } from './settings/DenDuty.tsx';
 
 const THEMES = [
   { id: 'auto', name: 'Match my device', swatch: 'linear-gradient(135deg, #2f7d4f 50%, #0f1612 50%)' },
@@ -361,6 +362,7 @@ export function Settings() {
       <section data-section="home" className="stack" hidden={!show('home')}>
         <HomeSettings />
         <PlacesAndCategories />
+        <DenDuty />
       </section>
       <section data-section="kitchen" className="stack" hidden={!show('kitchen')}>
         <KitchenTools />

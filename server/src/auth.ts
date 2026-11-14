@@ -21,6 +21,7 @@ export interface User {
   disabled: number;
   last_home_id: string | null;
   google_sub: string | null;
+  forward_user: string | null;
   password_hash: string | null;
   totp_secret: string | null;
   totp_enabled: number;
@@ -111,16 +112,16 @@ export function getUser(db: DatabaseSync, id: string): User | undefined {
 }
 
 /** Creates a user. The very first account on a server becomes its admin. */
-export function createUser(db: DatabaseSync, u: { name: string; username?: string | null; email?: string | null; googleSub?: string | null; passwordHash?: string | null }): User {
+export function createUser(db: DatabaseSync, u: { name: string; username?: string | null; email?: string | null; googleSub?: string | null; forwardUser?: string | null; passwordHash?: string | null }): User {
   const id = newId();
-  db.prepare('INSERT INTO users (id, name, username, email, google_sub, password_hash, is_admin) VALUES (?, ?, ?, ?, ?, ?, ?)')
-    .run(id, u.name, u.username ?? null, u.email ?? null, u.googleSub ?? null, u.passwordHash ?? null, hasUsers(db) ? 0 : 1);
+  db.prepare('INSERT INTO users (id, name, username, email, google_sub, forward_user, password_hash, is_admin) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
+    .run(id, u.name, u.username ?? null, u.email ?? null, u.googleSub ?? null, u.forwardUser ?? null, u.passwordHash ?? null, hasUsers(db) ? 0 : 1);
   return getUser(db, id)!;
 }
 
 /** Accounts protected by a password, Google, two-factor or a passkey can never be used through name-only sign-in. */
 function isQuickAccount(db: DatabaseSync, u: User): boolean {
-  return !u.password_hash && !u.google_sub && !u.email && !u.totp_enabled
+  return !u.password_hash && !u.google_sub && !u.forward_user && !u.email && !u.totp_enabled
     && !db.prepare('SELECT 1 FROM passkeys WHERE user_id = ?').get(u.id);
 }
 
@@ -153,7 +154,10 @@ export function installAuth(app: FastifyInstance, db: DatabaseSync): void {
       }
       sessionId = token;
     }
-    if (!sessionId) return;
+    if (!sessionId) {
+      resolveForwardAuth(db, req);
+      return;
+    }
     const hash = sha256(sessionId);
     const row = db.prepare(`
       SELECT u.*, s.last_seen_at AS session_seen FROM sessions s JOIN users u ON u.id = s.user_id
@@ -169,6 +173,58 @@ export function installAuth(app: FastifyInstance, db: DatabaseSync): void {
       if (fromCookie) reply.setCookie(SESSION_COOKIE, sessionId, { ...cookieOpts(reply), maxAge: SESSION_DAYS * 86400 });
     }
   });
+}
+
+/** Is the machine that sent this request one of the reverse proxies allowed to vouch for people? */
+export function trustedPeer(addr: string | undefined, trusted: string[]): boolean {
+  if (!addr) return false;
+  const ip = addr.replace(/^::ffff:/, '');
+  const ipv4 = /^\d+\.\d+\.\d+\.\d+$/;
+  const toNum = (s: string) => s.split('.').reduce((n, o) => (n << 8) + Number(o), 0) >>> 0;
+  return trusted.some((t) => {
+    if (t === 'private') return isPrivateAddress(ip);
+    if (!t.includes('/')) return t === ip;
+    const [net, bits] = t.split('/');
+    if (!ipv4.test(ip) || !ipv4.test(net)) return false;
+    const mask = Number(bits) === 0 ? 0 : (~0 << (32 - Number(bits))) >>> 0;
+    return (toNum(ip) & mask) === (toNum(net) & mask);
+  });
+}
+
+/**
+ * A reverse proxy in front of us (Tinyauth, Authelia...) signed this person in and says who they are in a header.
+ * Matched by the proxy's username, then by email (and linked). New people get an account unless sign-up is closed:
+ * the proxy already decided they may come in, so no join code is needed; they create or join a home next.
+ */
+function resolveForwardAuth(db: DatabaseSync, req: FastifyRequest): void {
+  const fa = config.forwardAuth;
+  if (!fa) return;
+  const header = (name: string) => {
+    const v = req.headers[name];
+    return str(Array.isArray(v) ? v[0] : v, 200);
+  };
+  const username = header(fa.userHeader);
+  // Only the proxy itself may send this header; anyone else could just type it. The socket address is used, not
+  // X-Forwarded-For, so a client can't pretend to be the proxy.
+  if (!username || !trustedPeer(req.socket.remoteAddress, fa.trusted)) return;
+  const emailRaw = header(fa.emailHeader);
+  const email = emailRaw && /^[^@\s]+@[^@\s]+$/.test(emailRaw) ? emailRaw.toLowerCase() : null;
+  let user = db.prepare('SELECT * FROM users WHERE forward_user = ?').get(username) as User | undefined;
+  let emailTaken = false;
+  if (!user && email) {
+    const byEmail = db.prepare('SELECT * FROM users WHERE email = ? COLLATE NOCASE').get(email) as User | undefined;
+    // An account already linked to a different proxy username keeps that link; this one gets its own account.
+    if (byEmail && !byEmail.forward_user) {
+      db.prepare('UPDATE users SET forward_user = ? WHERE id = ?').run(username, byEmail.id);
+      user = { ...byEmail, forward_user: username };
+    }
+    emailTaken = !!byEmail && !user;
+  }
+  if (!user) {
+    if (hasUsers(db) && signupMode(db) === 'closed') return;
+    user = createUser(db, { name: str(header(fa.nameHeader), 60) ?? username.slice(0, 60), email: emailTaken ? null : email, forwardUser: username });
+  }
+  if (!user.disabled) req.user = user;
 }
 
 export function requireUser(req: FastifyRequest): User {
@@ -218,6 +274,8 @@ export function publicUser(u: User) {
 export function registerAuthRoutes(app: FastifyInstance, db: DatabaseSync): void {
   app.get('/api/auth/config', async (req) => ({
     google: !!config.google,
+    // Signed in by the reverse proxy: Sign out here does nothing, sign out at the proxy.
+    forwardAuth: !!config.forwardAuth,
     local: localLoginAllowed(db, req),
     passwords: true,
     passkeys: true,
