@@ -206,6 +206,7 @@ export function mixologistRoutes(app: FastifyInstance, db: DatabaseSync): void {
       saveTool: 'save_drink_recipe',
       refused: REFUSED,
       empty: "Let me know what you're in the mood for.",
+      updatesSaved: (input) => typeof input.title === 'string' && !!existingRecipeId(db, ctx.homeId, input.title),
       runTool(name, input, actions) {
         const userId = ctx.user?.id ?? null;
         if (name === 'add_to_shopping_list') {

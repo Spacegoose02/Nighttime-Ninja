@@ -17,6 +17,7 @@ export const TOOL_RULES = `
 ## Saving and the shopping list (important)
 - Only say something is saved, kept, or added after the tool for it has run in this reply and succeeded. Never claim it otherwise.
 - Never save on your own. Only call the save tool when the person's latest message asks you to save, or says yes to your offer to save. If they haven't asked, you can end with a short question like "Want me to save this to your recipe book?" and wait for their answer.
+- When the person asks for a change to a recipe that's already in their recipe book (like "add Worcestershire to the recipe"), save the updated recipe with the same title. That updates it in place.
 - When asked to save, call the save tool with the full recipe. Then reply with one short line confirming it. Do not write the recipe out again.
 - Earlier replies note what the app already did, like "(Done in the app: Saved Biscuits)". Don't save the same recipe again unless asked. Saving a recipe with the same title updates it rather than making a copy, so keep the title the same when saving changes.
 - Don't repeat a recipe you already gave unless the person asks for changes.`;
@@ -36,6 +37,9 @@ const NOT_SAVE = /\b(shopping|grocery|list)\b|\b(don'?t|do not|no need to|not) s
 const OFFERS_SAVE = /\b(save|keep|add)\b[^?]{0,120}\?\s*$/i;
 const SAYS_YES = /^\W*(y|ya|yes|yeah|yep|yup|sure|ok|okay|please|please do|do it|go ahead|go for it|absolutely|definitely|of course|sounds good|save it|yes please)\b/i;
 const SAYS_NO = /\b(no|nope|nah|don'?t|do not|not)\b/i;
+// Asking for a change to a recipe ("add Worcestershire to the recipe", "swap the butter in it"). That okays updating
+// a recipe already in the book, but never saving a new one.
+const EDIT_INTENT = /\b(add|put|throw|toss|swap|replace|change|update|edit|tweak|fix|remove|take out|drop|use|include|double|halve|reduce|increase)\b.{0,80}\b(recipe|it|that|this|them)\b/i;
 const CLAIMS_SAVE = /\b(i'?ve saved|i have saved|saved (it|this|that|them|your)|it'?s saved|is now saved|added (it|this|that) to your (recipes?|recipe book|drinks))\b/i;
 
 function cleanSources(v: unknown): WebSource[] {
@@ -54,6 +58,12 @@ function cleanActions(v: unknown): ChatAction[] {
 
 /** The conversation as the browser sent it, keeping what the app did after each reply. */
 export const wantsToSave = (text: string): boolean => SAVE_INTENT.test(text) && !NOT_SAVE.test(text);
+
+/** Whether the person's latest message asks for a change to a recipe, which okays updating one already saved. */
+export function editApproved(history: StoredMsg[]): boolean {
+  const last = history.at(-1);
+  return last?.role === 'user' && EDIT_INTENT.test(last.content) && !NOT_SAVE.test(last.content);
+}
 
 /**
  * Whether the person okayed a save in their latest message: they asked for one, or said yes when the
@@ -93,6 +103,8 @@ export interface ChatTurn {
   refused: string;
   empty: string;
   runTool: (name: string, input: Row, actions: ChatAction[]) => string;
+  /** Whether a save tool call would update a recipe that's already in the book, rather than add a new one. */
+  updatesSaved?: (input: Row) => boolean;
 }
 
 function saveChat(db: DatabaseSync, ctx: HomeCtx, kind: ChatKind, chatId: string | null, msgs: StoredMsg[]): string {
@@ -119,13 +131,14 @@ export async function runChat(db: DatabaseSync, req: FastifyRequest, reply: Fast
   limitAi(ctx);
   const chatId = str(b.chatId, 60);
   const wantsSave = saveApproved(history);
+  const wantsEdit = editApproved(history);
 
   const stream = /application\/x-ndjson/.test(req.headers.accept ?? '');
   // Web search, when the admin leaves it on, rides along with the chat's own tools.
   const web = webTools(db);
   const withWeb = web.length ? { ...turn, tools: [...turn.tools, ...web], system: [...turn.system, { type: 'text' as const, text: WEB_RULES }] } : turn;
   await keepAlive(reply, async (onText) => {
-    const { reply: replyText, actions, sources } = await chatLoop((p, t) => ask(db, p, t), { ...withWeb, canForce: canForceTool(model) }, history, wantsSave, onText);
+    const { reply: replyText, actions, sources } = await chatLoop((p, t) => ask(db, p, t), { ...withWeb, canForce: canForceTool(model) }, history, wantsSave, onText, wantsEdit);
     const stored: StoredMsg[] = [...history, { role: 'assistant', content: replyText, actions, ...(sources.length ? { sources } : {}) }];
     const id = saveChat(db, ctx, turn.kind, chatId, stored);
     return { reply: replyText, actions, sources, chatId: id };
@@ -142,8 +155,10 @@ type AskFn = (p: Omit<Anthropic.Beta.MessageCreateParamsNonStreaming, 'model' | 
  * models reject one outright), a save is asked for in a system message instead, which stays in the conversation.
  * wantsSave says the person okayed a save this turn. Without it the save tool is turned away, so nothing is
  * ever saved unless they asked.
+ * wantsEdit says they asked for a change to a recipe. That lets the save tool update a recipe already in the
+ * book (turn.updatesSaved), so "add Worcestershire to the recipe" goes through instead of being turned away.
  */
-export async function chatLoop(askFn: AskFn, turn: Pick<ChatTurn, 'system' | 'tools' | 'saveTool' | 'refused' | 'empty' | 'runTool'> & { canForce?: boolean }, history: StoredMsg[], wantsSave: boolean, onText?: (text: string) => void): Promise<{ reply: string; actions: ChatAction[]; sources: WebSource[] }> {
+export async function chatLoop(askFn: AskFn, turn: Pick<ChatTurn, 'system' | 'tools' | 'saveTool' | 'refused' | 'empty' | 'runTool' | 'updatesSaved'> & { canForce?: boolean }, history: StoredMsg[], wantsSave: boolean, onText?: (text: string) => void, wantsEdit = false): Promise<{ reply: string; actions: ChatAction[]; sources: WebSource[] }> {
   const messages = toClaude(history);
   const actions: ChatAction[] = [];
   const sources = new Map<string, WebSource>();
@@ -188,7 +203,8 @@ export async function chatLoop(askFn: AskFn, turn: Pick<ChatTurn, 'system' | 'to
     const results: Anthropic.Beta.BetaToolResultBlockParam[] = [];
     for (const block of res.content) {
       if (block.type !== 'tool_use') continue;
-      if (block.name === turn.saveTool && !wantsSave) {
+      const okayedUpdate = wantsEdit && !!turn.updatesSaved?.(block.input as Row);
+      if (block.name === turn.saveTool && !wantsSave && !okayedUpdate) {
         results.push({ type: 'tool_result', tool_use_id: block.id, is_error: true, content: 'Not saved. The person has not asked to save this. Ask them whether they want it saved, and only save after they say yes.' });
         continue;
       }

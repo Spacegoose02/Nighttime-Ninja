@@ -264,6 +264,7 @@ export function chefRoutes(app: FastifyInstance, db: DatabaseSync): void {
       saveTool: 'save_recipe',
       refused: REFUSED,
       empty: 'Well, come on in! What are we cooking today, sugar?',
+      updatesSaved: (input) => typeof input.title === 'string' && !!existingRecipeId(db, ctx.homeId, input.title),
       runTool(name, input, actions) {
         const userId = ctx.user?.id ?? null;
         if (name === 'add_to_shopping_list') {

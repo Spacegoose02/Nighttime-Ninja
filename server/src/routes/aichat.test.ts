@@ -194,3 +194,27 @@ test('a refused reply has no sources', async () => {
   assert.deepEqual(out.sources, []);
   assert.equal(out.reply, 'no');
 });
+
+test('asking for a change to a saved recipe lets the update through, but never a new save', async () => {
+  const { editApproved } = await import('./aichat.ts');
+  assert.ok(editApproved([{ role: 'user', content: 'add worcestershire sauce to the recipe' }]));
+  assert.ok(editApproved([{ role: 'user', content: 'can you swap the butter in it for lard?' }]));
+  assert.ok(!editApproved([{ role: 'user', content: 'add worcestershire to my shopping list' }]));
+  assert.ok(!editApproved([{ role: 'user', content: 'what goes with biscuits?' }]));
+
+  const history = [{ role: 'user' as const, content: 'add worcestershire sauce to the recipe' }];
+  const script = () => fake([{ tool: { name: 'save_recipe', input: { title: 'Meatloaf' } } }, { text: 'Added the Worcestershire, sugar!' }]);
+  // Already in the book: the update runs and nothing says it failed.
+  const saves: string[] = [];
+  const { askFn, calls } = script();
+  const out = await chatLoop(askFn, { ...turn(saves), updatesSaved: () => true }, history, false, undefined, true);
+  assert.deepEqual(saves, ['Meatloaf']);
+  assert.equal(calls[0].tool_choice, undefined);
+  assert.doesNotMatch(JSON.stringify(calls[1].messages.at(-1)), /Not saved/);
+  assert.equal(out.reply, 'Added the Worcestershire, sugar!');
+  // Not in the book yet: still turned away, so nothing new is saved without asking.
+  const none: string[] = [];
+  const second = script();
+  await chatLoop(second.askFn, { ...turn(none), updatesSaved: () => false }, history, false, undefined, true);
+  assert.deepEqual(none, []);
+});
