@@ -12,6 +12,7 @@ All settings are environment variables. See [.env.example](https://github.com/Sp
 | `PUBLIC_URL` | The address people use, e.g. `https://kitchen.example.com`. Needed for Google sign-in and calendar links. |
 | `DATA_DIR` | Where the SQLite database and photos live (`/data` in Docker). |
 | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | Turn on Google sign-in. See [docs/google-sign-in.md](google-sign-in.md). |
+| `FORWARD_AUTH_HEADER`, `FORWARD_AUTH_EMAIL_HEADER`, `FORWARD_AUTH_NAME_HEADER`, `FORWARD_AUTH_TRUSTED` | Single sign-on through your reverse proxy (Tinyauth, Authelia). See [docs/single-sign-on.md](single-sign-on.md). |
 | `SIGNUP_MODE` | `invite` (default, needs a home join code), `open`, or `closed`. Admins can change it in Settings. |
 | `LOCAL_LOGIN` | Name-only quick sign-in: `lan` (home network only), `off`, or `anywhere`. |
 | `TRUST_PROXY` | Reverse proxies allowed to set X-Forwarded headers. Defaults to loopback and private networks. |

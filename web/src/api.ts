@@ -117,7 +117,10 @@ export interface RecipeSummary {
 }
 
 export interface RecipeFull extends Recipe {
-  id: string; isPublic: boolean; shareSlug: string | null; status: 'ready' | 'almost' | 'missing'; missing: string[];
+  id: string; isPublic: boolean; shareSlug: string | null;
+  /** Sent over by another app (BookBandit) that asked for it never to be shared publicly. */
+  noPublicShare?: boolean;
+  status: 'ready' | 'almost' | 'missing'; missing: string[];
   ingredients: (Ingredient & { availability: Availability; matched?: string[]; linked?: boolean })[];
   favorite: boolean; rating: number | null; notes: string; cookCount: number; lastCooked: string | null; collections: string[];
   dietClashes: { ingredient: string; person: string; reason: string }[];

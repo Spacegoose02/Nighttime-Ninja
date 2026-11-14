@@ -32,6 +32,7 @@ import { backupRoutes } from './backup.ts';
 import { transferRoutes } from './routes/transfer.ts';
 import { mcpRoutes } from './mcp.ts';
 import { calendarSyncRoutes } from './gcal.ts';
+import { denDutyRoutes } from './routes/denduty.ts';
 
 export async function buildApp(db: DatabaseSync, opts: { logger?: boolean; serveWeb?: boolean } = {}): Promise<FastifyInstance> {
   const app = Fastify({ logger: opts.logger ?? false, bodyLimit: 5 * 1024 * 1024, trustProxy: config.trustProxy, schemaErrorFormatter });
@@ -70,6 +71,7 @@ export async function buildApp(db: DatabaseSync, opts: { logger?: boolean; serve
   transferRoutes(app, db);
   mcpRoutes(app, db);
   calendarSyncRoutes(app, db);
+  denDutyRoutes(app, db);
   chefRoutes(app, db);
   sampleRoutes(app, db);
   kitchenAiRoutes(app, db);

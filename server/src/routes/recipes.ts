@@ -40,6 +40,11 @@ export function saveRecipe(db: DatabaseSync, homeId: string, r: Recipe, userId: 
   return id;
 }
 
+/** Marks a recipe as never publicly shareable (and takes back any share it had). One-way: nothing clears it. */
+export function markNoPublicShare(db: DatabaseSync, id: string): void {
+  db.prepare('UPDATE recipes SET no_public_share = 1, is_public = 0 WHERE id = ?').run(id);
+}
+
 export function loadRecipe(db: DatabaseSync, row: Row) {
   const ingredients = (db.prepare('SELECT name, quantity, unit, note, optional FROM recipe_ingredients WHERE recipe_id = ? ORDER BY position').all(row.id as string) as Row[])
     .map((i): Ingredient => ({ name: i.name as string, quantity: i.quantity as number | null, unit: i.unit as string | null, note: i.note as string | null, optional: !!i.optional }));
@@ -55,6 +60,8 @@ export function loadRecipe(db: DatabaseSync, row: Row) {
     instructions: parseJson<string[]>(row.instructions, []),
     tags: parseJson<string[]>(row.tags, []),
     isPublic: !!row.is_public,
+    /** Sent over by another app (BookBandit's cookbooks) that asked for it never to be shared publicly. */
+    noPublicShare: !!row.no_public_share,
     shareSlug: row.share_slug as string | null,
     createdAt: row.created_at as string,
     updatedAt: row.updated_at as string,
@@ -219,14 +226,19 @@ export function recipeRoutes(app: FastifyInstance, db: DatabaseSync): void {
     const id = saveRecipe(db, ctx.homeId, { ...recipe, title }, ctx.user?.id ?? null);
     // A variation of a variation still points at the first recipe, so they all sit together.
     db.prepare('UPDATE recipes SET parent_id = ? WHERE id = ?').run((row.parent_id as string | null) ?? row.id as string, id);
+    // A take on a recipe that mustn't be shared can't be shared either.
+    if (row.no_public_share) markNoPublicShare(db, id);
     return { id };
   });
 
   app.post('/api/homes/:homeId/recipes', async (req) => {
     const ctx = homeCtx(db, req);
-    const r = req.body as Recipe;
+    const r = req.body as Recipe & { noPublicShare?: unknown };
     if (!r?.title) throw new HttpError(400, 'Title is required');
-    return { id: saveRecipe(db, ctx.homeId, r, ctx.user?.id ?? null) };
+    const { noPublicShare, ...recipe } = r;
+    const id = saveRecipe(db, ctx.homeId, recipe, ctx.user?.id ?? null);
+    if (noPublicShare === true) markNoPublicShare(db, id);
+    return { id };
   });
 
   app.put('/api/homes/:homeId/recipes/:id', async (req) => {
@@ -253,7 +265,12 @@ export function recipeRoutes(app: FastifyInstance, db: DatabaseSync): void {
     const input = url ? await fetchPage(url) : String(b.text ?? '');
     const recipes = importAny(input, url);
     if (!recipes.length) throw new HttpError(422, url ? "Couldn't find a recipe on that page" : "Couldn't read a recipe from that");
-    if (b.save) return { ids: recipes.map((r) => saveRecipe(db, ctx.homeId, r, ctx.user?.id ?? null)) };
+    if (b.save) {
+      const ids = recipes.map((r) => saveRecipe(db, ctx.homeId, r, ctx.user?.id ?? null));
+      // Another app's recipes it doesn't want on the open web (BookBandit sends cookbook recipes this way).
+      if (b.noPublicShare === true) for (const id of ids) markNoPublicShare(db, id);
+      return { ids };
+    }
     return { recipes };
   });
 
@@ -379,9 +396,10 @@ export function recipeRoutes(app: FastifyInstance, db: DatabaseSync): void {
   app.post('/api/homes/:homeId/recipes/:id/share', async (req) => {
     const ctx = homeCtx(db, req);
     const { id } = req.params as { id: string };
-    const row = db.prepare('SELECT share_slug FROM recipes WHERE id = ? AND home_id = ?').get(id, ctx.homeId) as Row | undefined;
+    const row = db.prepare('SELECT share_slug, no_public_share FROM recipes WHERE id = ? AND home_id = ?').get(id, ctx.homeId) as Row | undefined;
     if (!row) throw new HttpError(404, 'Recipe not found');
     const makePublic = (req.body as Row)?.public !== false;
+    if (makePublic && row.no_public_share) throw new HttpError(403, "This recipe came from a book in your library, so it can't be shared publicly");
     const slug = (row.share_slug as string | null) ?? randomToken(9);
     db.prepare('UPDATE recipes SET is_public = ?, share_slug = ? WHERE id = ?').run(makePublic ? 1 : 0, slug, id);
     return { isPublic: makePublic, shareUrl: makePublic ? `/r/${slug}` : null };
@@ -389,7 +407,7 @@ export function recipeRoutes(app: FastifyInstance, db: DatabaseSync): void {
 
   app.post('/api/homes/:homeId/recipes/copy/:slug', async (req) => {
     const ctx = homeCtx(db, req);
-    const row = db.prepare('SELECT * FROM recipes WHERE share_slug = ? AND is_public = 1').get((req.params as { slug: string }).slug) as Row | undefined;
+    const row = db.prepare('SELECT * FROM recipes WHERE share_slug = ? AND is_public = 1 AND no_public_share = 0').get((req.params as { slug: string }).slug) as Row | undefined;
     if (!row) throw new HttpError(404, 'That recipe is not shared');
     const { id: _id, isPublic: _p, shareSlug: _s, createdAt: _c, updatedAt: _u, ...recipe } = loadRecipe(db, row);
     return { id: saveRecipe(db, ctx.homeId, recipe, ctx.user?.id ?? null) };
@@ -400,12 +418,12 @@ export function recipeRoutes(app: FastifyInstance, db: DatabaseSync): void {
     const q = str((req.query as Row).q, 100);
     const rows = db.prepare(`
       SELECT r.title, r.image, r.share_slug, r.tags, r.servings, h.name AS home_name FROM recipes r JOIN homes h ON h.id = r.home_id
-      WHERE r.is_public = 1 ${q ? 'AND r.title LIKE ?' : ''} ORDER BY r.updated_at DESC LIMIT 200`).all(...(q ? [`%${q}%`] : [])) as Row[];
+      WHERE r.is_public = 1 AND r.no_public_share = 0 ${q ? 'AND r.title LIKE ?' : ''} ORDER BY r.updated_at DESC LIMIT 200`).all(...(q ? [`%${q}%`] : [])) as Row[];
     return rows.map((r) => ({ title: r.title, image: r.image, slug: r.share_slug, tags: parseJson(r.tags, []), servings: r.servings, from: r.home_name }));
   });
 
   app.get('/api/public/recipes/:slug', async (req) => {
-    const row = db.prepare('SELECT * FROM recipes WHERE share_slug = ? AND is_public = 1').get((req.params as { slug: string }).slug) as Row | undefined;
+    const row = db.prepare('SELECT * FROM recipes WHERE share_slug = ? AND is_public = 1 AND no_public_share = 0').get((req.params as { slug: string }).slug) as Row | undefined;
     if (!row) throw new HttpError(404, 'That recipe is not shared');
     const { id: _id, ...rest } = loadRecipe(db, row);
     return rest;

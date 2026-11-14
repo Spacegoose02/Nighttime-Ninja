@@ -100,8 +100,41 @@ const AVAIL = { have: ['ok', '✓'], unknown: ['ok', '✓'], low: ['warn', 'low'
 
 const AGES = [3, 5, 8, 11] as const;
 
+interface DenKid { id: string; name: string; age: number | null }
+
+/** With Den Duty linked: a button per kid old enough for the job, which sends it to them as a one-off chore for today. */
+function AskKids({ recipeId, job, kids }: { recipeId: string; job: KidJob; kids: DenKid[] }) {
+  const { base, toast } = useApp();
+  const [asked, setAsked] = useState<string[]>([]);
+  const [busy, setBusy] = useState<string | null>(null);
+  const able = kids.filter((k) => k.age == null || k.age >= job.age);
+  if (!able.length) return null;
+  const ask = async (kid: DenKid) => {
+    setBusy(kid.id);
+    try {
+      const r = await api<{ points: number }>(`${base}/denduty/chores`, { body: { kidId: kid.id, task: job.task, recipeId, dueDate: todayIso() } });
+      setAsked((a) => [...a, kid.id]);
+      toast(`Sent to ${kid.name} in Den Duty${r.points ? ` (${r.points} points)` : ''}`);
+    } catch (e) {
+      toast((e as Error).message);
+    } finally {
+      setBusy(null);
+    }
+  };
+  return (
+    <span className="row" style={{ gap: 6, marginTop: 4, alignItems: 'center' }}>
+      {able.map((k) => asked.includes(k.id)
+        ? <button key={k.id} className="chip on" disabled style={{ opacity: 1 }} aria-live="polite">✓ Asked {k.name}</button>
+        : <button key={k.id} className="chip" disabled={busy === k.id} onClick={() => void ask(k)}>🙋 Ask {k.name} to help</button>)}
+    </span>
+  );
+}
+
 /** Jobs kids can do on this recipe, for the age picked (remembered on this device). */
-function KidJobs({ recipe }: { recipe: Pick<RecipeFull, 'ingredients' | 'instructions'> }) {
+function KidJobs({ recipe }: { recipe: Pick<RecipeFull, 'id' | 'ingredients' | 'instructions'> }) {
+  const { base } = useApp();
+  const [den] = useLoad<{ linked: boolean }>(`${base}/denduty`);
+  const [kids] = useLoad<DenKid[]>(den?.linked ? `${base}/denduty/kids` : null, [den?.linked]);
   const [age, setAge] = useState<KidJob['age'] | null>(() => {
     try { const a = Number(localStorage.getItem('nn-kid-age')); return (AGES as readonly number[]).includes(a) ? (a as KidJob['age']) : null; } catch { return null; }
   });
@@ -124,7 +157,12 @@ function KidJobs({ recipe }: { recipe: Pick<RecipeFull, 'ingredients' | 'instruc
       {!age && <p className="small muted" style={{ margin: 0 }}>Cooking with kids? Pick their age for jobs they can do on this recipe.</p>}
       {age && (
         <ul style={{ margin: 0 }}>
-          {jobs.map((j) => <li key={j.task}>{j.task} <span className="small muted">({j.age}+)</span></li>)}
+          {jobs.map((j) => (
+            <li key={j.task}>
+              {j.task} <span className="small muted">({j.age}+)</span>
+              {!!kids?.length && <AskKids recipeId={recipe.id} job={j} kids={kids} />}
+            </li>
+          ))}
         </ul>
       )}
     </div>
@@ -346,7 +384,7 @@ export function RecipeDetail() {
         <button onClick={() => toList(false)}><Icon name="shopping" /> Add missing to list</button>
         <button onClick={() => toList(true)}><Icon name="shopping" /> Add all</button>
         <button onClick={() => setPlanDate(todayIso())}><Icon name="plan" /> Plan it</button>
-        <button onClick={share}>{recipe.isPublic ? <><Icon name="globe" /> Stop sharing</> : <><Icon name="share" /> Share publicly</>}</button>
+        {!recipe.noPublicShare && <button onClick={share}>{recipe.isPublic ? <><Icon name="globe" /> Stop sharing</> : <><Icon name="share" /> Share publicly</>}</button>}
         <button onClick={() => window.print()}><Icon name="print" /> Print</button>
       </div>
       {planDate !== null && (

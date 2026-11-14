@@ -393,6 +393,23 @@ const MIGRATIONS: string[] = [
   CREATE INDEX shopping_requests_home ON shopping_requests(home_id, status, created_at);
   CREATE UNIQUE INDEX shopping_requests_external ON shopping_requests(home_id, source, external_id);
   `,
+  // Single sign-on through a reverse proxy (Tinyauth, Authelia...): the proxy's username for the person.
+  // Recipes another app sent over that must never get a public share link (BookBandit's cookbook recipes).
+  // A link to the home's Den Duty, so a Little helpers job can become a one-off chore. The token is sealed.
+  `
+  ALTER TABLE users ADD COLUMN forward_user TEXT COLLATE NOCASE;
+  CREATE UNIQUE INDEX users_forward_user ON users(forward_user);
+  ALTER TABLE recipes ADD COLUMN no_public_share INTEGER NOT NULL DEFAULT 0;
+  CREATE TABLE denduty_links (
+    home_id TEXT PRIMARY KEY REFERENCES homes(id) ON DELETE CASCADE,
+    url TEXT NOT NULL,
+    den_home_id TEXT NOT NULL,
+    den_home_name TEXT,
+    token TEXT NOT NULL,
+    points INTEGER NOT NULL DEFAULT 5,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+  `,
 ];
 
 export function openDb(dataDir: string): DatabaseSync {
