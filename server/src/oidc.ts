@@ -228,6 +228,7 @@ export function ssoRoutes(app: FastifyInstance, db: DatabaseSync): void {
   });
 
   app.get('/api/auth/sso/:id/callback', async (req, reply) => {
+    limitAuth(req, 'sso-callback');
     const p = getProvider(db, (req.params as { id: string }).id);
     const c = readCookie(req);
     reply.clearCookie(COOKIE, { path: '/' });
