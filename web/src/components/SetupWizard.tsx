@@ -82,9 +82,9 @@ export function SetupWizard({ onDone }: { onDone: () => void }) {
           <ol className="welcome-steps">
             <li><Link to="/inventory">{t("Add what's in your pantry")}</Link>, {t('or scan barcodes as you put groceries away.')}</li>
             <li><Link to="/recipes/import">{t('Bring in recipes')}</Link> {t('from any recipe website, or paste one in.')}</li>
-            <li><Link to="/settings?section=kitchen">{t('Tick the kitchen tools you have')}</Link>, {t('so recipes and Gordy know what you can make.')}</li>
+            <li><Link to="/settings/kitchen">{t('Tick the kitchen tools you have')}</Link>, {t('so recipes and Gordy know what you can make.')}</li>
             <li><Link to="/plan">{t('Plan a few dinners')}</Link> {t('and let the app fill your shopping list.')}</li>
-            <li><Link to="/settings?section=home">{t('Invite your household')}</Link> {t("with the home's join code.")}</li>
+            <li><Link to="/settings/home">{t('Invite your household')}</Link> {t("with the home's join code.")}</li>
           </ol>
           <div className="row">
             {manager && <button className="primary" disabled={busy} onClick={sample}>🧺 {t('Load a sample kitchen')}</button>}

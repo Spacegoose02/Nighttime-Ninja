@@ -23,7 +23,7 @@ Photos come along. Recipes you already have (same name) are skipped, so it's saf
 
 ## Taking recipes out
 
-In **Settings → Home → Backup**:
+In **Settings → Download and delete**:
 
 - **Download everything (JSON)**: the whole home (recipes, pantry, shopping lists, history, meal plan and feeds) in Nighttime Ninja's own format. Import it into another Nighttime Ninja server.
 - **Recipes for another app (Paprika file)**: every recipe, with its photo, as a .paprikarecipes file. Paprika opens it, and Mealie and Tandoor can both import it.

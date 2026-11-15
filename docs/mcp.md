@@ -9,7 +9,7 @@ Nighttime Ninja is a [Model Context Protocol](https://modelcontextprotocol.io) s
 
 ## Set it up
 
-1. In Nighttime Ninja, open **Settings → Home → API tokens** and make a token. Copy it; it's shown once.
+1. In Nighttime Ninja, open **Settings → Connections** and make a token. Copy it; it's shown once.
 2. Add a server to your assistant with this address and the token as a Bearer header:
 
    - Address: `https://your-kitchen.example.com/api/mcp`

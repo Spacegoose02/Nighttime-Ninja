@@ -9,7 +9,7 @@ Nighttime Ninja exposes a small API that Home Assistant can read with its built-
 
 ## 1. Create a token
 
-In Nighttime Ninja go to **Settings → Home → Home Assistant and automations**, name a token (for example “Home Assistant”), and copy it. Only home managers can do this. Tokens can read and update that one home but can't manage members or delete anything big.
+In Nighttime Ninja go to **Settings → Connections → Home Assistant, AI assistants and automations**, name a token (for example “Home Assistant”), and copy it. Only home managers can do this. Tokens can read and update that one home but can't manage members or delete anything big.
 
 You'll also need your home's API address. It's shown right under the token box in Settings. Test it with:
 

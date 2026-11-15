@@ -13,7 +13,7 @@ nav_order: 7.5
 ## Ask a kid to help
 
 1. In Den Duty, go to Settings, Home Assistant and API tokens, and make a **control** token (it needs to create chores). Note the home id shown there.
-2. In Nighttime Ninja, a home manager opens **Settings → Home → Den Duty** and fills in Den Duty's address, the home id, the token and how many points a kitchen job is worth. Nighttime Ninja checks them with Den Duty before saving. The token is stored encrypted and never sent back to the browser.
+2. In Nighttime Ninja, a home manager opens **Settings → Connections → Den Duty** and fills in Den Duty's address, the home id, the token and how many points a kitchen job is worth. Nighttime Ninja checks them with Den Duty before saving. The token is stored encrypted and never sent back to the browser.
 3. On any recipe, pick an age under **Little helpers**. Each job gets an **Ask … to help** button for every Den Duty kid old enough for it (kids without a birthday in Den Duty get every job). Tapping it creates a one-off chore for today in Den Duty, titled with the recipe and the job, for the points you set.
 
 Anyone in the home can use the buttons; only managers can link or unlink. Home API tokens (Home Assistant) can't create chores.

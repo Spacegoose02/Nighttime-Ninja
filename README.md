@@ -25,7 +25,7 @@
 - **Kitchen tools**: tick off the gear you own (air fryer, stand mixer, cocktail shaker and so on). Recipes that need something you don't have get a 🍳 note, the recipe list can show only what you can make, and Gordy and Rocco cook around what you've got.
 - **Pantry inventory** with green photo/icon tiles, low-stock warnings, expiry dates and a full **history** of every change.
 - **Shopping lists**: Main plus as many as you like (a quick trip, long-term buys), with items you can move between them. Quick add (“2 lb chicken, milk, 3 avocados”), suggestions from what you buy most, purchase history, and checked-off items flowing into the pantry.
-- **Requests from the kids**: link [Den Duty](https://github.com/Spacegoose02/den-duty) (the family's chore app) with a home API token and the groceries kids pick there land in **Shopping → Requests**. Say yes and it goes on the list you pick (with who asked), or no; the kid sees the answer in Den Duty. Other apps can use the same API (`/api/homes/:homeId/shopping/requests`). Link it back from **Settings → Home → Den Duty** and every Little helpers job on a recipe gets an **Ask … to help** button that sends it to that kid as a chore ([docs/den-duty.md](docs/den-duty.md)).
+- **Requests from the kids**: link [Den Duty](https://github.com/Spacegoose02/den-duty) (the family's chore app) with a home API token and the groceries kids pick there land in **Shopping → Requests**. Say yes and it goes on the list you pick (with who asked), or no; the kid sees the answer in Den Duty. Other apps can use the same API (`/api/homes/:homeId/shopping/requests`). Link it back from **Settings → Connections → Den Duty** and every Little helpers job on a recipe gets an **Ask … to help** button that sends it to that kid as a chore ([docs/den-duty.md](docs/den-duty.md)).
 - **7-day meal plan** that can fill the shopping list for the week, and **syncs both ways with Google Calendar** (move or delete a meal there and the plan follows) or shows up as a subscribed calendar. **Prep sessions** turn the week's meals into one batch-prep list.
 - **Homes**: create a home or join one with a code. **Home managers** run members and settings; **server admins** see everyone.
 - **Strong sign-in** that's safe to put on the internet: passwords (scrypt), **two-factor codes** with recovery codes, **passkeys**, **Google** (OIDC), invite-only sign-up, rate limiting, a list of signed-in devices you can sign out, and **pairing codes** for tablets. Name-only quick sign-in only works from your home network.
@@ -75,7 +75,7 @@ All settings are environment variables. The full list, and how to put the app sa
 
 ## Backups
 
-The server backs up its database every night and before every upgrade, into `backups/` in the data folder. Download them from **Settings → Server admin**. See [docs/settings.md](docs/settings.md#backups) for restoring.
+The server backs up its database every night and before every upgrade, into `backups/` in the data folder. Download them from **Settings → Server**. See [docs/settings.md](docs/settings.md#backups) for restoring.
 
 ## More
 

@@ -73,7 +73,7 @@ export function Deals() {
       {mine && !mine.available && (
         <p className="small muted">
           Live prices and automatic sale-matching use the free Kroger API (Kroger, Harris Teeter, Ralphs, Fred Meyer and more).
-          Add Kroger keys to the server and pick your store in <Link to="/settings">Settings</Link>. Walmart, Food Lion, BJ's and Sam's Club don't offer public price APIs, so they open in their own sites.
+          Add Kroger keys to the server and pick your store in <Link to="/settings/connections">Settings</Link>. Walmart, Food Lion, BJ's and Sam's Club don't offer public price APIs, so they open in their own sites.
         </p>
       )}
     </div>

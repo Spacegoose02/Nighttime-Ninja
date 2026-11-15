@@ -4,7 +4,7 @@ import { api } from '../api.ts';
 import { useApp, useLoad } from '../state.tsx';
 import { RaccoonAvatar } from '../components/Raccoon.tsx';
 
-interface AuthConfig { google: boolean; local: boolean; passwords: boolean; passkeys: boolean; signup: 'first' | 'open' | 'invite' | 'closed' }
+interface AuthConfig { sso?: { id: string; name: string; kind: string }[]; google: boolean; local: boolean; passwords: boolean; passkeys: boolean; signup: 'first' | 'open' | 'invite' | 'closed' }
 type Mode = 'signin' | 'register' | 'pair' | 'quick' | 'mfa';
 
 const SIGNIN_ERRORS: Record<string, string> = {
@@ -12,6 +12,10 @@ const SIGNIN_ERRORS: Record<string, string> = {
   invite: 'This server is invite-only. Enter a join code from a home first, then sign in with Google.',
   closed: 'New accounts are turned off on this server. Ask the admin.',
   disabled: 'That account is turned off. Ask the admin.',
+  notlinked: "That sign-in isn't linked to an account here yet. Sign in another way and link it under Settings → Sign-in and security, or ask the admin to link it for you.",
+  taken: 'That sign-in is linked to a different account. Ask the admin.',
+  failed: "That sign-in didn't go through. Try again.",
+  unreachable: "Couldn't reach the sign-in server. Try again in a minute, or ask the admin.",
 };
 
 export function Login() {
@@ -67,6 +71,11 @@ export function Login() {
     location.href = '/api/auth/google';
   });
 
+  const sso = (id: string) => run(async () => {
+    if (f.joinCode.trim()) await api('/api/auth/invite', { body: { code: f.joinCode } });
+    location.href = `/api/auth/sso/${encodeURIComponent(id)}`;
+  });
+
   const canRegister = cfg && cfg.signup !== 'closed';
   const needsCode = cfg?.signup === 'invite';
 
@@ -86,6 +95,7 @@ export function Login() {
               <input placeholder="Password" type="password" value={f.password} onChange={set('password')} autoComplete="current-password" />
               <button disabled={busy || !f.username || !f.password}>Sign in</button>
             </form>
+            {cfg?.sso?.map((p) => <button key={p.id} onClick={() => sso(p.id)} disabled={busy}>Sign in with {p.name}</button>)}
             {cfg?.google && <button onClick={google} disabled={busy}>Sign in with Google</button>}
             <div className="row" style={{ justifyContent: 'center' }}>
               {canRegister && <button className="ghost" onClick={() => setMode('register')}>Create an account</button>}
@@ -106,6 +116,7 @@ export function Login() {
             <input placeholder="Password (10+ characters)" type="password" value={f.password} onChange={set('password')} autoComplete="new-password" />
             <button className="primary" disabled={busy || !f.username || f.password.length < 10 || (needsCode && !f.joinCode)}>Create account</button>
             {cfg?.google && (needsCode ? !!f.joinCode : true) && <button type="button" onClick={google} disabled={busy}>Use Google instead</button>}
+            {(needsCode ? !!f.joinCode : true) && cfg?.sso?.map((p) => <button key={p.id} type="button" onClick={() => sso(p.id)} disabled={busy}>Use {p.name} instead</button>)}
             {cfg?.signup !== 'first' && <button type="button" className="ghost" onClick={() => setMode('signin')}>Back to sign in</button>}
           </form>
         )}

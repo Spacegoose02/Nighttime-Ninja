@@ -1,379 +1,96 @@
-import { useEffect, useRef, useState } from 'react';
-import { useUrlState } from '../urlState.ts';
-import { LANGUAGES, language, setLanguage, t } from '../i18n.ts';
-import { fontChoice, setFontChoice, setTextSize, textSize } from '../devicePrefs.ts';
-import { REGIONS } from '../regions.ts';
-import { Link } from 'react-router-dom';
-import { useDialogs } from '../components/Dialog.tsx';
-import { forgetDevice } from '../offline.ts';
-import { api, type HomeDetail } from '../api.ts';
-import { useApp, useLoad } from '../state.tsx';
-import { AVATARS, AVATAR_LABELS, RaccoonAvatar } from '../components/Raccoon.tsx';
-import { PICTURE_AVATARS } from '../avatars.ts';
+// Settings: one page per tab, each at its own address (/settings/profile, /settings/sign-in...), grouped into
+// You, Home and Server admin. Search finds the right tab by what's on it.
+import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { Navigate, NavLink, Route, Routes, useLocation } from 'react-router-dom';
+import { t } from '../i18n.ts';
+import { useApp } from '../state.tsx';
 import { VersionCard } from '../components/UpdateBanner.tsx';
 import { SecurityCard } from './Security.tsx';
-import { Admin } from './settings/Admin.tsx';
+import { AdminServer, AdminUsers } from './settings/Admin.tsx';
 import { PlacesAndCategories } from './settings/Labels.tsx';
 import { KitchenTools } from './settings/KitchenTools.tsx';
-import { DietsAndAllergies } from './settings/Diets.tsx';
 import { Reminders } from './settings/Reminders.tsx';
-import { CalendarSync } from './settings/CalendarSync.tsx';
-import { DenDuty } from './settings/DenDuty.tsx';
+import { Appearance, LinkedAccounts, Profile } from './settings/You.tsx';
+import { HomeConnections, HomeData, HomeGeneral } from './settings/HomePages.tsx';
+import { SignInSettings } from './settings/SignIn.tsx';
 
-const THEMES = [
-  { id: 'auto', name: 'Match my device', swatch: 'linear-gradient(135deg, #2f7d4f 50%, #0f1612 50%)' },
-  { id: 'forest', name: 'Forest', swatch: '#2f7d4f' },
-  { id: 'midnight', name: 'Midnight', swatch: '#0f1612' },
-  { id: 'citrus', name: 'Citrus', swatch: '#e07a00' },
-  { id: 'raccoon', name: 'Raccoon', swatch: '#3a4046' },
-  { id: 'berry', name: 'Berry', swatch: '#8e2c7a' },
-  { id: 'ocean', name: 'Ocean', swatch: '#1f6fb2' },
-  { id: 'sunset', name: 'Sunset', swatch: '#d9480f' },
-  { id: 'lavender', name: 'Lavender', swatch: '#6741d9' },
-  { id: 'mint', name: 'Mint', swatch: '#0ca678' },
-  { id: 'arctic', name: 'Arctic', swatch: '#3b5bdb' },
-  { id: 'espresso', name: 'Espresso', swatch: '#3b2a20' },
-  { id: 'neon', name: 'Neon', swatch: '#a3e635' },
-  { id: 'sweettea', name: 'Sweet Tea', swatch: '#b7791f' },
-  { id: 'peach', name: 'Peach Cobbler', swatch: '#f08c5a' },
-  { id: 'pistachio', name: 'Pistachio', swatch: '#8aad3a' },
-  { id: 'blueberry', name: 'Blueberry', swatch: '#4c4fc4' },
-  { id: 'castiron', name: 'Cast Iron', swatch: '#2a2a2a' },
-  { id: 'bourbon', name: 'Bourbon', swatch: '#8a5a2b' },
-  { id: 'contrast', name: 'High contrast', swatch: 'linear-gradient(135deg, #000 50%, #fff 50%)' },
+interface Tab { path: string; label: string; group: 'you' | 'home' | 'admin'; words: string; page: () => ReactNode }
+
+const TABS: Tab[] = [
+  { path: 'profile', label: 'Profile', group: 'you', words: 'name avatar picture pair tablet phone device sign out', page: () => <Profile /> },
+  { path: 'appearance', label: 'Look and feel', group: 'you', words: 'theme colour color dark measurements units metric us cups language text size font', page: () => <Appearance /> },
+  { path: 'security', label: 'Sign-in and security', group: 'you', words: 'password two-factor 2fa passkey devices sessions tinyauth link sso single sign-on', page: () => <><LinkedAccounts /><SecurityCard /></> },
+  { path: 'reminders', label: 'Reminders', group: 'you', words: 'notifications push expiring meals shopping', page: () => <Reminders /> },
+  { path: 'home', label: 'Home', group: 'home', words: 'name currency pages hide invite join code people members manager diets allergies', page: () => <HomeGeneral /> },
+  { path: 'kitchen', label: 'Kitchen', group: 'home', words: 'places categories pantry locations tools equipment gear', page: () => <><PlacesAndCategories /><KitchenTools /></> },
+  { path: 'connections', label: 'Connections', group: 'home', words: 'google calendar stores kroger den duty home assistant mcp ai tokens api automations', page: () => <HomeConnections /> },
+  { path: 'data', label: 'Download and delete', group: 'home', words: 'export download json paprika backup delete home', page: () => <HomeData /> },
+  { path: 'sign-in', label: 'Sign-in', group: 'admin', words: 'tinyauth oidc openid sso single sign-on accounts signup invite quick sign-in authelia pocket id', page: () => <SignInSettings /> },
+  { path: 'users', label: 'Users', group: 'admin', words: 'people accounts admin temp password 2fa turn off delete link tinyauth homes', page: () => <AdminUsers /> },
+  { path: 'server', label: 'Server', group: 'admin', words: 'ai claude model web search usage cost backups', page: () => <AdminServer /> },
+  { path: 'about', label: 'About', group: 'you', words: 'version updates license', page: () => <><VersionCard /><p className="small muted">Nighttime Ninja is open source under the MIT license.</p></> },
 ];
 
-function Profile() {
-  const { me, refresh, toast } = useApp();
-  const [name, setName] = useState(me!.user.name);
-  const [pair, setPair] = useState<string | null>(null);
-  const update = async (body: object) => { await api('/api/me', { method: 'PATCH', body }); await refresh(); };
-
-  return (
-    <div className="card stack">
-      <h2>{t('You')}</h2>
-      <form className="row" onSubmit={async (e) => { e.preventDefault(); await update({ name }); toast('Saved'); }}>
-        <input aria-label="Your name" value={name} onChange={(e) => setName(e.target.value)} style={{ flex: 1 }} />
-        <button>Save name</button>
-      </form>
-      {me!.user.email && <p className="small muted" style={{ margin: 0 }}>Signed in with Google as {me!.user.email}</p>}
-      <h3>{t('Avatar')}</h3>
-      <div className="avatar-grid">
-        {[...PICTURE_AVATARS.map((p) => ({ id: p.id, label: p.label })), ...AVATARS.map((a) => ({ id: a, label: AVATAR_LABELS[a] }))].map((a) => (
-          <button key={a.id} className={`avatar-pick${me!.user.avatar === a.id ? ' on' : ''}`} onClick={() => update({ avatar: a.id })}>
-            <RaccoonAvatar variant={a.id} size={64} title={a.label} />
-            <span>{a.label}</span>
-          </button>
-        ))}
-      </div>
-      <h3>{t('Theme')}</h3>
-      <div className="chips">
-        {THEMES.map((t) => (
-          <button key={t.id} className={`chip${me!.user.theme === t.id ? ' on' : ''}`} onClick={() => update({ theme: t.id })}>
-            <span style={{ width: 18, height: 18, borderRadius: 99, background: t.swatch, display: 'inline-block', border: '2px solid #fff' }} /> {t.name}
-          </button>
-        ))}
-      </div>
-      <h3>{t('Measurements')}</h3>
-      <div className="chips">
-        {[['us', 'US (cups, oz, °F)'], ['metric', 'Metric (g, ml)'], ['original', 'As written']].map(([v, l]) => (
-          <button key={v} className={`chip${me!.user.units === v ? ' on' : ''}`} onClick={() => update({ units: v })}>{l}</button>
-        ))}
-      </div>
-      <DeviceComfort />
-      <h3>Tablets and phones</h3>
-      <p className="small muted" style={{ margin: 0 }}>Sign in on a kitchen tablet or the app without typing your Google password: get a code here, then choose “I have a pairing code” on the other device.</p>
-      <div className="row">
-        <button onClick={async () => setPair((await api<{ code: string }>('/api/auth/pair-code', { body: {} })).code)}>📱 Pair a device</button>
-        {pair && <span style={{ fontSize: '1.6rem', fontWeight: 800, letterSpacing: '0.25em' }}>{pair}</span>}
-        {pair && <span className="small muted">valid for 10 minutes</span>}
-      </div>
-      <div className="row">
-        <span className="spacer" />
-        <button className="danger" onClick={async () => { await api('/api/auth/logout', { body: {} }); await forgetDevice(); location.href = '/'; }}>Sign out</button>
-      </div>
-    </div>
-  );
-}
-
-function HomeSettings() {
-  const { me, base, homeId, setHome, refresh, toast } = useApp();
-  const dialogs = useDialogs();
-  const [home, reload] = useLoad<HomeDetail>(base);
-  const [stores] = useLoad<{ stores: { id: string; name: string }[]; krogerApi: boolean }>('/api/stores');
-  const [tokens, reloadTokens] = useLoad<{ id: string; name: string; last_used_at: string | null }[]>(home?.role === 'manager' ? `${base}/tokens` : null, [home?.role]);
-  const [newToken, setNewToken] = useState<string | null>(null);
-  const [zip, setZip] = useState('');
-  const [locations, setLocations] = useState<{ id: string; name: string; address: string }[] | null>(null);
-  if (!home) return null;
-  const isManager = home.role === 'manager';
-  const patch = async (body: object) => { await api(base, { method: 'PATCH', body }); await reload(); };
-  const calendar = home.calendarUrl ? `${location.origin}${home.calendarUrl}` : null;
-
-  return (
-    <div className="card stack">
-      <div className="row">
-        <h2 style={{ flex: 1, margin: 0 }}>Home</h2>
-        {me!.homes.length > 1 && (
-          <select aria-label="Current home" value={homeId ?? ''} onChange={(e) => setHome(e.target.value)} style={{ width: 'auto' }}>
-            {me!.homes.map((h) => <option key={h.id} value={h.id}>{h.name}</option>)}
-          </select>
-        )}
-        <Link className="btn" to="/home/new">＋ Add or join a home</Link>
-      </div>
-      {isManager ? (
-        <form className="row" onSubmit={async (e) => { e.preventDefault(); await patch({ name: (e.currentTarget.elements.namedItem('hn') as HTMLInputElement).value }); await refresh(); toast('Renamed'); }}>
-          <input name="hn" aria-label="Home name" defaultValue={home.name} style={{ flex: 1 }} />
-          <button>Rename</button>
-        </form>
-      ) : <p style={{ margin: 0 }}><strong>{home.name}</strong> <span className="muted">(you're a member)</span></p>}
-
-      <CurrencyPicker value={home.settings.currency ?? 'USD'} disabled={!isManager} onPick={async (currency) => { await patch({ currency }); await refresh(); toast(t('Saved')); }} />
-      <h3>{t('Pages')}</h3>
-      <p className="small muted" style={{ margin: 0 }}>{t("Hide what this home doesn't use. They come back here any time.")}</p>
-      <div className="chips">
-        {OPTIONAL_PAGES.map((p) => {
-          const on = !(home.settings.hiddenPages ?? []).includes(p.to);
-          const hidden = home.settings.hiddenPages ?? [];
-          return (
-            <button key={p.to} disabled={!isManager} aria-pressed={on} className={`chip${on ? ' on' : ''}`}
-              onClick={async () => { await patch({ hiddenPages: on ? [...hidden, p.to] : hidden.filter((x) => x !== p.to) }); await refresh(); }}>{t(p.label)}</button>
-          );
-        })}
-      </div>
-
-      <h3>Invite people</h3>
-      <div className="row">
-        <span>Join code:</span>
-        <strong style={{ fontSize: '1.4rem', letterSpacing: '0.15em' }}>{home.joinCode}</strong>
-        {isManager && <button onClick={async () => { await api(`${base}/join-code`, { body: {} }); await reload(); }}>New code</button>}
-      </div>
-
-      <h3>People</h3>
-      <div className="list">
-        {home.members.map((m) => (
-          <div key={m.id} className="list-item">
-            <RaccoonAvatar variant={m.avatar} size={40} />
-            <span style={{ flex: 1 }}>{m.name}{m.id === me!.user.id && ' (you)'}</span>
-            {isManager ? (
-              <select aria-label={`Role for ${m.name}`} value={m.role} style={{ width: 'auto' }} onChange={async (e) => {
-                try { await api(`${base}/members/${m.id}`, { method: 'PATCH', body: { role: e.target.value } }); } catch (err) { toast((err as Error).message); }
-                await reload();
-              }}>
-                <option value="manager">Home manager</option>
-                <option value="member">Member</option>
-              </select>
-            ) : <span className="pill">{m.role === 'manager' ? 'Home manager' : 'Member'}</span>}
-            {(isManager || m.id === me!.user.id) && (
-              <button className="ghost danger" onClick={async () => {
-                if (!(await dialogs.confirm(m.id === me!.user.id ? 'Leave this home?' : `Remove ${m.name}?`, { okLabel: m.id === me!.user.id ? 'Leave' : 'Remove', danger: true }))) return;
-                try { await api(`${base}/members/${m.id}`, { method: 'DELETE' }); } catch (err) { toast((err as Error).message); return; }
-                if (m.id === me!.user.id) { await refresh(); } else await reload();
-              }}>{m.id === me!.user.id ? 'Leave' : 'Remove'}</button>
-            )}
-          </div>
-        ))}
-      </div>
-
-      <DietsAndAllergies home={home} reload={reload} />
-
-      <h3>Google Calendar</h3>
-      <p className="small muted" style={{ margin: 0 }}>In Google Calendar choose Other calendars → ＋ → From URL, and paste this link. Your meal plan shows up and stays in sync.</p>
-      {calendar && (
-        <div className="row">
-          <input readOnly aria-label="Calendar link" value={calendar} onFocus={(e) => e.target.select()} style={{ flex: 1 }} />
-          <button onClick={() => { void navigator.clipboard?.writeText(calendar); toast('Copied'); }}>Copy</button>
-          {isManager && <button onClick={async () => { await api(`${base}/calendar-token`, { body: {} }); await reload(); toast('Old link turned off'); }}>Reset link</button>}
-        </div>
-      )}
-      <CalendarSync isManager={isManager} />
-
-      <h3>Stores</h3>
-      <div className="chips">
-        {stores?.stores.map((s) => {
-          const on = home.settings.stores.includes(s.id);
-          return (
-            <button key={s.id} disabled={!isManager} className={`chip${on ? ' on' : ''}`}
-              onClick={() => patch({ stores: on ? home.settings.stores.filter((x) => x !== s.id) : [...home.settings.stores, s.id] })}>{s.name}</button>
-          );
-        })}
-      </div>
-      {stores?.krogerApi && isManager && (
-        <div className="stack">
-          <span className="small muted">Kroger store for live prices: {home.settings.krogerLocationId ?? 'not set'}</span>
-          <form className="row" onSubmit={async (e) => { e.preventDefault(); setLocations(await api(`/api/deals/kroger/locations?zip=${zip}`)); }}>
-            <input placeholder="ZIP code" value={zip} onChange={(e) => setZip(e.target.value)} inputMode="numeric" style={{ maxWidth: 160 }} />
-            <button>Find stores</button>
-          </form>
-          {locations?.map((l) => (
-            <button key={l.id} className="ghost" style={{ justifyContent: 'flex-start' }} onClick={async () => { await patch({ krogerLocationId: l.id, zipCode: zip }); setLocations(null); }}>
-              {l.name}: {l.address}
-            </button>
-          ))}
-        </div>
-      )}
-
-      {isManager && (
-        <>
-          <h3>Home Assistant, AI assistants and automations</h3>
-          <p className="small muted" style={{ margin: 0 }}>
-            Create a token, then see the project docs for <a href="https://spacegoose02.github.io/Nighttime-Ninja/home-assistant.html" target="_blank" rel="noreferrer">Home Assistant</a> or
-            {' '}<a href="https://spacegoose02.github.io/Nighttime-Ninja/mcp.html" target="_blank" rel="noreferrer">AI assistants such as Claude (MCP)</a>.
-          </p>
-          <p className="small" style={{ margin: 0 }}>API address for this home: <code style={{ wordBreak: 'break-all' }}>{location.origin}{base}</code></p>
-          <p className="small" style={{ margin: 0 }}>MCP address for AI assistants: <code style={{ wordBreak: 'break-all' }}>{location.origin}/api/mcp</code></p>
-          <form className="row" onSubmit={async (e) => {
-            e.preventDefault();
-            const el = e.currentTarget.elements.namedItem('tn') as HTMLInputElement;
-            setNewToken((await api<{ token: string }>(`${base}/tokens`, { body: { name: el.value } })).token);
-            el.value = '';
-            await reloadTokens();
-          }}>
-            <input name="tn" placeholder="Token name, e.g. Home Assistant" style={{ flex: 1 }} required />
-            <button>Create token</button>
-          </form>
-          {newToken && <div className="card" style={{ background: 'var(--surface-2)' }}><strong>Copy this now, it won't be shown again:</strong><br /><code style={{ wordBreak: 'break-all' }}>{newToken}</code></div>}
-          {tokens?.map((t) => (
-            <div key={t.id} className="row">
-              <span style={{ flex: 1 }}>{t.name} <span className="small muted">{t.last_used_at ? `last used ${t.last_used_at}` : 'never used'}</span></span>
-              <button className="ghost danger" onClick={async () => { await api(`${base}/tokens/${t.id}`, { method: 'DELETE' }); await reloadTokens(); }}>Revoke</button>
-            </div>
-          ))}
-          <h3>Backup</h3>
-          <div className="row">
-            <a className="btn" href={`${base}/export`}>⬇️ Download everything (JSON)</a>
-            <a className="btn" href={`${base}/export/paprika`} title="Opens in Paprika, Mealie and Tandoor">⬇️ Recipes for another app (Paprika file)</a>
-            <button className="danger" onClick={async () => {
-              if (await dialogs.prompt(`Type the home name to delete it forever: ${home.name}`, '', { okLabel: 'Delete forever', danger: true, mustType: home.name }) !== home.name) return;
-              await api(base, { method: 'DELETE' });
-              await refresh();
-            }}>Delete home</button>
-          </div>
-        </>
-      )}
-    </div>
-  );
-}
-
-/** Language, text size and font: saved on this device only. */
-function DeviceComfort() {
-  const [size, setSize] = useState(textSize());
-  const [font, setFont] = useState(fontChoice());
-  return (
-    <>
-      <h3>{t('On this device')}</h3>
-      <div className="row">
-        <span className="small muted" style={{ minWidth: 90 }}>{t('Language')}</span>
-        <div className="chips">
-          {LANGUAGES.map((l) => <button key={l.id} className={`chip${language() === l.id ? ' on' : ''}`} aria-pressed={language() === l.id} onClick={() => setLanguage(l.id)}>{l.name}</button>)}
-        </div>
-      </div>
-      <div className="row">
-        <span className="small muted" style={{ minWidth: 90 }}>{t('Text size')}</span>
-        <div className="chips">
-          {([['normal', t('Normal')], ['large', t('Large')], ['xl', t('Extra large')]] as const).map(([v, l]) => (
-            <button key={v} className={`chip${size === v ? ' on' : ''}`} aria-pressed={size === v} onClick={() => { setTextSize(v); setSize(v); }}>{l}</button>
-          ))}
-        </div>
-      </div>
-      <div className="row">
-        <span className="small muted" style={{ minWidth: 90 }}>{t('Font')}</span>
-        <div className="chips">
-          {([['standard', t('Standard')], ['readable', t('Easy to read')]] as const).map(([v, l]) => (
-            <button key={v} className={`chip${font === v ? ' on' : ''}`} aria-pressed={font === v} onClick={() => { setFontChoice(v); setFont(v); }}>{l}</button>
-          ))}
-        </div>
-      </div>
-    </>
-  );
-}
-
-/** Settings → Home: the money this home pays in. */
-function CurrencyPicker({ value, disabled, onPick }: { value: string; disabled: boolean; onPick: (c: string) => void }) {
-  const codes = [...new Set(REGIONS.map((r) => r.currency))].sort();
-  if (!codes.includes(value)) codes.unshift(value);
-  return (
-    <label className="row">
-      <span style={{ fontWeight: 600 }}>{t('Currency')}</span>
-      <select value={value} disabled={disabled} onChange={(e) => onPick(e.target.value)} style={{ width: 'auto' }}>
-        {codes.map((c) => <option key={c} value={c}>{c}</option>)}
-      </select>
-    </label>
-  );
-}
-
-const OPTIONAL_PAGES = [
-  { to: '/plan', label: 'Meal Plan' }, { to: '/chef', label: 'Chef Gordy' }, { to: '/mixologist', label: 'Mixologist' },
-  { to: '/deals', label: 'Deals' }, { to: '/feed', label: 'Feed' },
-];
-
-const SECTIONS = [
+const GROUPS = [
   { key: 'you', label: 'You' },
   { key: 'home', label: 'Home' },
-  { key: 'kitchen', label: 'Kitchen' },
-  { key: 'server', label: 'Server admin', admin: true },
+  { key: 'admin', label: 'Server admin' },
 ] as const;
+
+// Old addresses (/settings?section=home) from bookmarks, the setup wizard and Google Calendar's way back.
+const OLD_SECTIONS: Record<string, string> = { you: 'profile', home: 'home', kitchen: 'kitchen', server: 'users' };
+
+function Start() {
+  const { search } = useLocation();
+  const q = new URLSearchParams(search);
+  if (q.get('calendar')) return <Navigate to={`/settings/connections${search}`} replace />;
+  return <Navigate to={`/settings/${OLD_SECTIONS[q.get('section') ?? ''] ?? 'profile'}`} replace />;
+}
 
 export function Settings() {
   const { me } = useApp();
-  const [tab, setTab] = useUrlState('section', 'all');
-  const [q, setQ] = useUrlState('q', '');
-  const box = useRef<HTMLDivElement>(null);
-  const [none, setNone] = useState(false);
-  // Search hides every card that doesn't mention the words, across all sections.
+  const [q, setQ] = useState('');
+  const { pathname } = useLocation();
+  const nav = useRef<HTMLElement>(null);
+  // On a phone the tabs scroll sideways: keep the open one in view whenever the page changes.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: pathname is the trigger, not a value used inside.
   useEffect(() => {
-    const filter = () => {
-      const cards = [...(box.current?.querySelectorAll<HTMLElement>('[data-section] > *') ?? [])];
-      const words = q.trim().toLowerCase().split(/\s+/).filter(Boolean);
-      let shown = 0;
-      for (const c of cards) {
-        const hit = words.every((w) => (c.textContent ?? '').toLowerCase().includes(w));
-        if (c.hidden === hit) c.hidden = !hit;
-        if (hit) shown++;
-      }
-      setNone(!!words.length && !shown);
-    };
-    filter();
-    // Cards fill in as their data loads; filter those too.
-    const watch = new MutationObserver(filter);
-    if (box.current) watch.observe(box.current, { childList: true, subtree: true, characterData: true });
-    return () => watch.disconnect();
-  }, [q, tab]);
-  const show = (key: string) => !!q || tab === 'all' || tab === key;
-  const sections = SECTIONS.filter((x) => !('admin' in x) || me?.user.isAdmin);
+    nav.current?.querySelector<HTMLElement>('.settings-tab.on')?.scrollIntoView?.({ block: 'nearest', inline: 'center' });
+  }, [pathname]);
+  const isAdmin = !!me?.user.isAdmin;
+  const tabs = TABS.filter((x) => x.group !== 'admin' || isAdmin);
+  const words = q.trim().toLowerCase().split(/\s+/).filter(Boolean);
+  const shown = words.length ? tabs.filter((x) => words.every((w) => `${t(x.label)} ${x.label} ${x.words}`.toLowerCase().includes(w))) : tabs;
   return (
-    <div className="stack" style={{ maxWidth: 960 }} ref={box}>
+    <div className="stack settings-page">
       <div className="topbar"><h1>{t('Settings')}</h1></div>
-      <div className="settings-nav">
-        <input type="search" value={q} onChange={(e) => setQ(e.target.value)} placeholder={t('Search settings')} aria-label={t('Search settings')} />
-        <div className="chips scroll-x" role="tablist" aria-label="Settings sections">
-          <button role="tab" aria-selected={tab === 'all'} className={`chip${tab === 'all' && !q ? ' on' : ''}`} onClick={() => { setQ(''); setTab('all'); }}>{t('All')}</button>
-          {sections.map((x) => (
-            <button key={x.key} role="tab" aria-selected={tab === x.key} className={`chip${tab === x.key && !q ? ' on' : ''}`} onClick={() => { setQ(''); setTab(x.key); }}>{t(x.label)}</button>
-          ))}
+      <div className="settings-layout">
+        <nav className="settings-tabs" aria-label={t('Settings')} ref={nav}>
+          <input type="search" value={q} onChange={(e) => setQ(e.target.value)} placeholder={t('Search settings')} aria-label={t('Search settings')} />
+          {!shown.length && <p className="small muted" style={{ margin: 0 }}>{t('No setting mentions “{q}”.', { q })}</p>}
+          <div className="settings-tab-row">
+            {GROUPS.map((g) => {
+              const list = shown.filter((x) => x.group === g.key);
+              if (!list.length) return null;
+              return (
+                <div key={g.key} className="settings-group">
+                  <span className="settings-group-label">{t(g.label)}</span>
+                  {list.map((x) => (
+                    <NavLink key={x.path} to={`/settings/${x.path}`} className={({ isActive }) => `settings-tab${isActive ? ' on' : ''}`} onClick={() => setQ('')}>{t(x.label)}</NavLink>
+                  ))}
+                </div>
+              );
+            })}
+          </div>
+        </nav>
+        <div className="settings-content stack">
+          <Routes>
+            <Route index element={<Start />} />
+            {tabs.map((x) => <Route key={x.path} path={x.path} element={<><h2 className="settings-title">{t(x.label)}</h2>{x.page()}</>} />)}
+            <Route path="*" element={<Navigate to="/settings/profile" replace />} />
+          </Routes>
         </div>
       </div>
-      {none && <div className="card muted">{t('No setting mentions “{q}”.', { q })}</div>}
-      <section data-section="you" className="stack" hidden={!show('you')}>
-        <Profile />
-        <Reminders />
-        <SecurityCard />
-      </section>
-      <section data-section="home" className="stack" hidden={!show('home')}>
-        <HomeSettings />
-        <PlacesAndCategories />
-        <DenDuty />
-      </section>
-      <section data-section="kitchen" className="stack" hidden={!show('kitchen')}>
-        <KitchenTools />
-        <VersionCard />
-      </section>
-      {me?.user.isAdmin && (
-        <section data-section="server" className="stack" hidden={!show('server')}>
-          <Admin />
-        </section>
-      )}
-      <p className="small muted">Nighttime Ninja is open source under the MIT license.</p>
     </div>
   );
 }

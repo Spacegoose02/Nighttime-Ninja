@@ -3,7 +3,45 @@ title: Single sign-on (Tinyauth)
 nav_order: 6.5
 ---
 
-# Single sign-on with a reverse proxy (Tinyauth and friends)
+# Single sign-on (Tinyauth and friends)
+
+There are two ways to use Tinyauth (or Authelia, Authentik, Pocket ID...) with Nighttime Ninja:
+
+- **A sign-in button (OpenID Connect).** People choose **Sign in with Tinyauth** on the sign-in page. Set up in the app, no restart, works in the phone and desktop apps, and people can still use passwords and passkeys. Recommended.
+- **The whole site behind the proxy (forward-auth).** The proxy signs everyone in before they reach the app. See [further down](#single-sign-on-with-a-reverse-proxy).
+
+## Tinyauth sign-in button (OpenID Connect)
+
+Needs Tinyauth v4 or newer, and `PUBLIC_URL` set to the address people really use (the redirect address is built from it).
+
+1. In Nighttime Ninja, open **Settings → Sign-in** as an admin. The **Tinyauth** card shows the redirect address to register, for example `https://kitchen.example.com/api/auth/sso/tinyauth/callback`.
+2. In Tinyauth, create an OIDC client (for example named `nighttime-ninja`) and add that redirect address to it, then restart Tinyauth. With environment variables:
+
+   ```
+   TINYAUTH_OIDC_CLIENTS_NIGHTTIME-NINJA_CLIENTID=<the client id>
+   TINYAUTH_OIDC_CLIENTS_NIGHTTIME-NINJA_CLIENTSECRET=<the client secret>
+   TINYAUTH_OIDC_CLIENTS_NIGHTTIME-NINJA_TRUSTEDREDIRECTURIS=https://kitchen.example.com/api/auth/sso/tinyauth/callback
+   ```
+
+3. Back in **Settings → Sign-in**, paste Tinyauth's address (its `APP_URL`, e.g. `https://auth.example.com`), the client ID and the client secret, and choose **Turn on Tinyauth sign-in**. **Test connection** checks Nighttime Ninja can reach it.
+
+Keep the client secret out of git, screenshots and chat: it lives only in Tinyauth's config and in Nighttime Ninja's database, where it's stored encrypted with the session secret and never sent back to the browser.
+
+### Linking accounts
+
+Someone signing in with Tinyauth lands in the account linked to their Tinyauth account:
+
+- **People link their own account:** sign in the usual way, open **Settings → Sign-in and security**, and choose **Link Tinyauth**. After a trip to Tinyauth and back it says *linked as …*. **Unlink** is there too, as long as you still have a password or passkey.
+- **Admins link anyone:** **Settings → Users → Linked sign-in**, type the person's Tinyauth username and choose **Link**. The next time that Tinyauth user signs in they land in that account (and the link is confirmed). Tinyauth links always match by username, because Tinyauth's subject changes if the client ID does.
+- **Nobody linked yet:** with *Make an account for anyone who signs in with it* turned on, a new Tinyauth user gets an account (or is linked to an account with the same verified email). Left off (the default), unlinked people are turned away on invite-only servers unless they typed a home's join code first, and on closed servers.
+
+A Tinyauth-linked account can't be used through name-only quick sign-in. If the account has two-factor turned on, Nighttime Ninja still asks for the code. Removing the Tinyauth setup warns you first if someone could only sign in with it.
+
+### Other OpenID Connect providers
+
+**Settings → Sign-in → Other single sign-on → Add a provider** works the same way for Authelia, Authentik, Pocket ID, Keycloak or Zitadel. The redirect address is `PUBLIC_URL/api/auth/sso/<name>/callback`, shown before you save. For these, admin links by username only match until the person first signs in; after that the provider's subject is used.
+
+## Single sign-on with a reverse proxy
 
 Besides passwords, passkeys and Google, Nighttime Ninja can let your **reverse proxy** sign people in: Tinyauth, Authelia, Authentik's proxy outpost, oauth2-proxy and so on. The proxy checks who someone is and passes their username in a header. Nighttime Ninja trusts that header **only on requests that come straight from your proxy's address**.
 

@@ -81,7 +81,7 @@ All settings are environment variables. The full list, and how to put the app sa
 
 ## Backups
 
-The server backs up its database every night and before every upgrade, into `backups/` in the data folder. Download them from **Settings → Server admin**. See [docs/settings.md](settings.md#backups) for restoring.
+The server backs up its database every night and before every upgrade, into `backups/` in the data folder. Download them from **Settings → Server**. See [docs/settings.md](settings.md#backups) for restoring.
 
 ## More
 

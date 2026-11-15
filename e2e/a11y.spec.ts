@@ -4,7 +4,9 @@ import { signUp } from './helpers.ts';
 
 // Automated accessibility checks on the main pages. They catch missing labels, low contrast, broken ARIA and the like,
 // so fixes stay fixed. Serious and critical problems fail the build.
-const PAGES = ['/', '/inventory', '/recipes', '/shopping', '/plan', '/settings'];
+const PAGES = ['/', '/inventory', '/recipes', '/shopping', '/plan', '/settings',
+  // Every Settings tab; the first account is the server admin, so the admin tabs are checked too.
+  ...['appearance', 'security', 'reminders', 'home', 'kitchen', 'connections', 'data', 'sign-in', 'users', 'server', 'about'].map((t) => `/settings/${t}`)];
 
 async function audit(page: Page, where: string) {
   const { violations } = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa']).analyze();

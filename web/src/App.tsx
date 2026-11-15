@@ -163,7 +163,7 @@ export function App() {
             <Route path="/chef" element={<Chef />} />
             <Route path="/deals" element={<Deals />} />
             <Route path="/feed" element={<Feed />} />
-            <Route path="/settings" element={<Settings />} />
+            <Route path="/settings/*" element={<Settings />} />
             <Route path="/home/new" element={<HomeSetup inline />} />
             <Route path="*" element={<div className="card">{t('That page wandered off.')} <NavLink to="/">{t('Go home')}</NavLink></div>} />
           </Routes>

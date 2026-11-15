@@ -12,10 +12,10 @@ import { t } from '../i18n.ts';
 export interface Command { id: string; label: string; hint?: string; icon?: IconName; emoji?: string; run: () => void | Promise<void> }
 
 const SETTINGS: [string, string][] = [
-  ['Theme and avatar', 'you'], ['Measurements (US or metric)', 'you'], ['Reminders', 'you'], ['Password, two-factor and passkeys', 'you'],
-  ['Pair a tablet or phone', 'you'], ['Invite people to the home', 'home'], ['Stores', 'home'], ['Google Calendar', 'home'],
-  ['Diets and allergies', 'home'], ['Pantry places and categories', 'home'], ['Kitchen tools', 'kitchen'], ['Download everything', 'home'],
-  ['Backups', 'server'], ['Claude model and web search', 'server'], ['People on this server', 'server'],
+  ['Theme and avatar', 'appearance'], ['Measurements (US or metric)', 'appearance'], ['Reminders', 'reminders'], ['Password, two-factor and passkeys', 'security'],
+  ['Pair a tablet or phone', 'profile'], ['Invite people to the home', 'home'], ['Stores', 'connections'], ['Google Calendar', 'connections'],
+  ['Diets and allergies', 'home'], ['Pantry places and categories', 'kitchen'], ['Kitchen tools', 'kitchen'], ['Download everything', 'data'],
+  ['Backups', 'server'], ['Claude model and web search', 'server'], ['People on this server', 'users'], ['Tinyauth sign-in', 'sign-in'],
 ];
 
 /** Scores how well text matches: whole-word starts beat matches in the middle. 0 = no match. */
@@ -49,7 +49,7 @@ export function CommandBar({ pages, onClose }: { pages: { to: string; label: str
     for (const p of pages) all.push({ id: `p${p.to}`, label: t(p.label), hint: t('Page'), icon: p.ico, run: go(p.to), score: matchScore(t(p.label), text) && matchScore(t(p.label), text) + 1 });
     for (const r of recipes ?? []) all.push({ id: `r${r.id}`, label: r.title, hint: t('Recipe'), icon: 'recipes', run: go(`/recipes/${r.id}`), score: Math.max(matchScore(r.title, text), matchScore(r.tags.join(' '), text) - 1) });
     for (const i of items ?? []) all.push({ id: `i${i.id}`, label: i.name, hint: `${t('Pantry')} · ${i.location}`, emoji: i.icon ?? guessItem(i.name).icon, run: go(`/inventory?q=${encodeURIComponent(i.name)}`), score: matchScore(i.name, text) });
-    for (const [label, section] of SETTINGS) all.push({ id: `s${label}`, label: t(label), hint: t('Settings'), icon: 'settings', run: go(`/settings?section=${section}`), score: matchScore(t(label), text) });
+    for (const [label, section] of SETTINGS) all.push({ id: `s${label}`, label: t(label), hint: t('Settings'), icon: 'settings', run: go(`/settings/${section}`), score: matchScore(t(label), text) });
     const found = text ? all.filter((c) => c.score > 0).sort((a, b) => b.score - a.score || a.label.localeCompare(b.label)).slice(0, 12) : all.filter((c) => c.hint === t('Page'));
     if (!text) return found;
     const actions: Command[] = [
