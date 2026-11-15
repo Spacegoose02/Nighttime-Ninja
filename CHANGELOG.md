@@ -2,6 +2,14 @@
 
 Every release, newest first. The full notes for each one are on its [GitHub release page](https://github.com/Spacegoose02/Nighttime-Ninja/releases).
 
+## [0.19.0](https://github.com/Spacegoose02/Nighttime-Ninja/releases/tag/v0.19.0) - 2026-11-15
+
+A tidier Settings, and a "Sign in with Tinyauth" button.
+
+- **Settings in tabs:** each tab has its own page (`/settings/profile`, `/settings/sign-in`, ...), grouped into You, Home and Server admin, with a side menu on tablets and a scrolling tab row on phones. Old `/settings?section=` links still land in the right place.
+- **Sign in with Tinyauth:** a server admin sets it up in Settings → Sign-in. The page shows the redirect URI to add in Tinyauth, takes the issuer, client ID and secret (stored sealed, never sent back), and can test the connection. Authelia, Pocket ID, Authentik and other OpenID Connect providers work the same way. See docs/single-sign-on.md.
+- **Account linking:** link your own account in Settings → Sign-in and security, or an admin links anyone by Tinyauth username in Settings → Users.
+
 ## [0.18.0](https://github.com/Spacegoose02/Nighttime-Ninja/releases/tag/v0.18.0) - 2026-11-14
 
 Linking up with the family's other apps.
