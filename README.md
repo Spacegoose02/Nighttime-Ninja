@@ -31,7 +31,7 @@
 - **Strong sign-in** that's safe to put on the internet: passwords (scrypt), **two-factor codes** with recovery codes, **passkeys**, **Google** (OIDC), invite-only sign-up, rate limiting, a list of signed-in devices you can sign out, and **pairing codes** for tablets. Name-only quick sign-in only works from your home network.
 - **US measurements**: metric amounts and °C are shown as cups, ounces, pounds and °F (or switch to metric).
 - **Deals**: live prices and sales from the Kroger API, plus one-tap search, weekly ads and coupons for Walmart, Food Lion, Kroger, BJ's, Sam's Club and more.
-- **Chef Gordy**: an AI cook (Claude) that plans your week from what you have, answers cooking questions with web sources, and saves recipes when you ask.
+- **Chef Gordy**: an AI cook (Claude) that plans your week from what you have, answers cooking questions with web sources, reads your recipe book (only your household's), and saves recipes when you ask.
 - **Mixologist**: chat with an AI bartender (Claude) that knows what's in your bar and pantry, an **Idea Zone** that turns a drink style into recipes you can make now (or adds the one or two missing bottles to your list), your saved cocktails, and a bar measurement converter and batch scaler.
 - **Feed**: follow cooks' YouTube channels, blogs or any RSS feed and watch new videos in the app.
 - **Home Assistant**: token-based API with a summary sensor and a shopping-list service.
