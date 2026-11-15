@@ -2,6 +2,12 @@
 
 Every release, newest first. The full notes for each one are on its [GitHub release page](https://github.com/Spacegoose02/Nighttime-Ninja/releases).
 
+## [0.20.0](https://github.com/Spacegoose02/Nighttime-Ninja/releases/tag/v0.20.0) - 2026-11-15
+
+Chef Gordy knows your recipe book.
+
+- **Chef Gordy reads the recipe book:** in chat, Gordy can now search the household's saved recipes and open one, along with your notes, rating and what's in the pantry. He only sees the current home's recipes.
+
 ## [0.19.0](https://github.com/Spacegoose02/Nighttime-Ninja/releases/tag/v0.19.0) - 2026-11-15
 
 A tidier Settings, and a "Sign in with Tinyauth" button.
