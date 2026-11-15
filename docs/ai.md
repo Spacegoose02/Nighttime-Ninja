@@ -17,7 +17,7 @@ If both are set, your own server is used.
 
 ## Using Claude
 
-- `ANTHROPIC_MODEL` picks the default model (`claude-opus-5-5`). Admins can switch models in **Settings → Server admin → AI helpers**.
+- `ANTHROPIC_MODEL` picks the default model (`claude-opus-5-5`). Admins can switch models in **Settings → Server → AI helpers**.
 - Gordy and Rocco can search the web (up to 3 searches a reply, with sources listed under the answer). Admins can turn that off in the same place.
 - `AI_MESSAGES_PER_HOUR` caps how many AI requests one person can send in an hour (default `30`; `0` turns it off).
 
@@ -46,4 +46,4 @@ Things to know:
 
 ## What it costs
 
-**Settings → Server admin → AI helpers** shows this month's AI requests and an estimate of what they cost, by model, worked out from Claude's list prices. Your Anthropic bill is the final word. Your own server is counted at no cost.
+**Settings → Server → AI helpers** shows this month's AI requests and an estimate of what they cost, by model, worked out from Claude's list prices. Your Anthropic bill is the final word. Your own server is counted at no cost.

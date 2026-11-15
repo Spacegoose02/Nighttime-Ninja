@@ -257,6 +257,7 @@ export function homeRoutes(app: FastifyInstance, db: DatabaseSync): void {
       SELECT u.id, u.name, u.username, u.email, u.is_admin, u.disabled, u.totp_enabled, u.created_at,
         (u.password_hash IS NOT NULL) AS has_password, (u.google_sub IS NOT NULL) AS has_google,
         (SELECT COUNT(*) FROM passkeys p WHERE p.user_id = u.id) AS passkeys,
+        (SELECT GROUP_CONCAT(o.name, ', ') FROM oidc_links l JOIN oidc_providers o ON o.id = l.provider_id WHERE l.user_id = u.id) AS sso,
         (SELECT COUNT(*) FROM home_members m WHERE m.user_id = u.id) AS homes
       FROM users u ORDER BY u.created_at`).all();
     const homes = db.prepare(`

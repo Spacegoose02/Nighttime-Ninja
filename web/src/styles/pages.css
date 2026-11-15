@@ -62,8 +62,27 @@
 .tonight-cover { width: 56px; height: 56px; flex: none; border-radius: var(--radius-m); display: grid; place-items: center; font-size: 1.8rem; overflow: hidden; text-decoration: none; }
 .tonight-cover img { width: 100%; height: 100%; object-fit: cover; }
 
-/* Settings: search and section tabs stay at the top. */
-.settings-nav { position: sticky; top: 0; z-index: 5; background: var(--bg); display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-2) 0; }
+.settings-page { max-width: 1100px; }
+/* Settings: tabs down the side on a tablet or bigger, a scrolling row of tabs on a phone. */
+.settings-layout { display: flex; flex-direction: column; gap: var(--space-3); }
+.settings-tabs { display: flex; flex-direction: column; gap: var(--space-2); position: sticky; top: 0; z-index: 5; background: var(--bg); padding: var(--space-2) 0; }
+.settings-tab-row { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 2px; }
+.settings-group { display: contents; }
+.settings-group-label { display: none; }
+.settings-tab { flex: 0 0 auto; padding: 8px 14px; border-radius: 999px; border: 1px solid var(--border); color: var(--text); text-decoration: none; white-space: nowrap; font-weight: 600; }
+.settings-tab:hover { background: var(--surface-2); }
+.settings-tab.on { background: var(--primary); color: var(--on-primary); border-color: transparent; }
+.settings-content { min-width: 0; flex: 1; }
+.settings-title { margin: 0; }
+.table-scroll { overflow-x: auto; }
+@media (min-width: 900px) {
+  .settings-layout { flex-direction: row; align-items: flex-start; }
+  .settings-tabs { width: 230px; flex: 0 0 230px; top: var(--space-3); padding: 0; }
+  .settings-tab-row { flex-direction: column; overflow: visible; gap: 0; }
+  .settings-group { display: flex; flex-direction: column; gap: 2px; margin-bottom: var(--space-3); }
+  .settings-group-label { display: block; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); padding: 0 12px 4px; font-weight: 700; }
+  .settings-tab { border: none; border-radius: 10px; padding: 10px 12px; }
+}
 
 /* On a tablet or bigger, the ingredients stay in view while you scroll the steps. */
 @media (min-width: 900px) {

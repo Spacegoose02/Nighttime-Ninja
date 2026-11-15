@@ -122,7 +122,8 @@ export function createUser(db: DatabaseSync, u: { name: string; username?: strin
 /** Accounts protected by a password, Google, two-factor or a passkey can never be used through name-only sign-in. */
 function isQuickAccount(db: DatabaseSync, u: User): boolean {
   return !u.password_hash && !u.google_sub && !u.forward_user && !u.email && !u.totp_enabled
-    && !db.prepare('SELECT 1 FROM passkeys WHERE user_id = ?').get(u.id);
+    && !db.prepare('SELECT 1 FROM passkeys WHERE user_id = ?').get(u.id)
+    && !db.prepare('SELECT 1 FROM oidc_links WHERE user_id = ?').get(u.id);
 }
 
 /** Resolves the caller from the session cookie, a bearer session, or a home API token. */
@@ -274,6 +275,8 @@ export function publicUser(u: User) {
 export function registerAuthRoutes(app: FastifyInstance, db: DatabaseSync): void {
   app.get('/api/auth/config', async (req) => ({
     google: !!config.google,
+    // Single sign-on buttons (Tinyauth and other OpenID Connect providers an admin added).
+    sso: (db.prepare('SELECT id, name, kind FROM oidc_providers WHERE show_on_login = 1 ORDER BY created_at').all() as Row[]),
     // Signed in by the reverse proxy: Sign out here does nothing, sign out at the proxy.
     forwardAuth: !!config.forwardAuth,
     local: localLoginAllowed(db, req),

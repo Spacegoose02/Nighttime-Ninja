@@ -51,7 +51,7 @@ test('sign in, set up a home, shop for something into the pantry, and scan a bar
   // A page that loads on demand, reached through More.
   await tabs.getByRole('button', { name: 'More' }).click();
   await page.getByRole('dialog', { name: 'More' }).getByRole('link', { name: /Settings/ }).click();
-  await expect(page.getByRole('heading', { name: 'You' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Profile' })).toBeVisible();
 
   // Scanning: the camera's barcode lands in a new pantry item.
   await page.goto('/inventory');

@@ -410,6 +410,34 @@ const MIGRATIONS: string[] = [
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
   );
   `,
+  // Single sign-on with OpenID Connect (Tinyauth, Authelia, Pocket ID...), set up by an admin in Settings → Sign-in.
+  // A link ties one person to one account at a provider: by the provider's subject once they've signed in, or by the
+  // provider username an admin typed before that. The client secret is sealed with the session secret.
+  `
+  CREATE TABLE oidc_providers (
+    id TEXT PRIMARY KEY,
+    kind TEXT NOT NULL DEFAULT 'generic',
+    name TEXT NOT NULL,
+    issuer TEXT NOT NULL,
+    client_id TEXT NOT NULL,
+    client_secret TEXT NOT NULL,
+    scopes TEXT NOT NULL DEFAULT '',
+    auto_create INTEGER NOT NULL DEFAULT 0,
+    show_on_login INTEGER NOT NULL DEFAULT 1,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+  CREATE TABLE oidc_links (
+    provider_id TEXT NOT NULL REFERENCES oidc_providers(id) ON DELETE CASCADE,
+    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    subject TEXT,
+    username TEXT COLLATE NOCASE,
+    email TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    PRIMARY KEY (provider_id, user_id)
+  );
+  CREATE UNIQUE INDEX oidc_links_subject ON oidc_links(provider_id, subject);
+  CREATE UNIQUE INDEX oidc_links_username ON oidc_links(provider_id, username);
+  `,
 ];
 
 export function openDb(dataDir: string): DatabaseSync {

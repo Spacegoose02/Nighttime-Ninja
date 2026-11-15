@@ -338,14 +338,14 @@ export function calendarSyncRoutes(app: FastifyInstance, db: DatabaseSync): void
     const raw = req.cookies[COOKIE];
     const un = raw ? req.unsignCookie(raw) : null;
     reply.clearCookie(COOKIE, { path: '/' });
-    if (!un?.valid || !un.value) return reply.redirect('/settings?calendar=expired');
+    if (!un?.valid || !un.value) return reply.redirect('/settings/connections?calendar=expired');
     const saved = JSON.parse(un.value) as { verifier: string; state: string; homeId: string; userId: string };
     const q = req.query as { code?: string; state?: string; error?: string };
-    if (q.error || !q.code) return reply.redirect('/settings?calendar=cancelled');
-    if (q.state !== saved.state) return reply.redirect('/settings?calendar=expired');
+    if (q.error || !q.code) return reply.redirect('/settings/connections?calendar=cancelled');
+    if (q.state !== saved.state) return reply.redirect('/settings/connections?calendar=expired');
     // Still a manager of that home?
     const role = db.prepare('SELECT role FROM home_members WHERE home_id = ? AND user_id = ?').get(saved.homeId, saved.userId) as Row | undefined;
-    if (role?.role !== 'manager' && !db.prepare('SELECT 1 FROM users WHERE id = ? AND is_admin = 1').get(saved.userId)) return reply.redirect('/settings?calendar=expired');
+    if (role?.role !== 'manager' && !db.prepare('SELECT 1 FROM users WHERE id = ? AND is_admin = 1').get(saved.userId)) return reply.redirect('/settings/connections?calendar=expired');
 
     try {
       const tokens = await tokenRequest({ grant_type: 'authorization_code', code: q.code, redirect_uri: redirectUri(), code_verifier: saved.verifier });
@@ -363,10 +363,10 @@ export function calendarSyncRoutes(app: FastifyInstance, db: DatabaseSync): void
         .run(saved.homeId, saved.userId, seal(String(tokens.refresh_token)), String(cal?.id), nowIso());
     } catch (err) {
       req.log.warn({ err }, 'Connecting Google Calendar failed');
-      return reply.redirect('/settings?calendar=failed');
+      return reply.redirect('/settings/connections?calendar=failed');
     }
     syncHome(db, saved.homeId).catch((err) => req.log.warn({ err }, 'Google Calendar sync failed'));
-    return reply.redirect('/settings?calendar=connected');
+    return reply.redirect('/settings/connections?calendar=connected');
   });
 
   app.post('/api/homes/:homeId/gcal/sync', async (req) => {

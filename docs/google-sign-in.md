@@ -17,7 +17,7 @@ Once Google is set up, name-only sign-in turns off unless you set `ALLOW_LOCAL_L
 
 ## Tablets and the apps
 
-Google blocks sign-in inside embedded app browsers. On a tablet or in the Android/Windows app, sign in with a **pairing code** instead: on a device that's already signed in, open **Settings → Pair a device**, then choose **I have a pairing code** on the tablet.
+Google blocks sign-in inside embedded app browsers. On a tablet or in the Android/Windows app, sign in with a **pairing code** instead: on a device that's already signed in, open **Settings → Profile → Pair a device**, then choose **I have a pairing code** on the tablet.
 
 ## Google Calendar
 
@@ -25,7 +25,7 @@ There are two ways to see the meal plan in Google Calendar.
 
 ### Two-way sync
 
-With Google set up (the steps above), a home manager can connect Google Calendar in **Settings → Home → Google Calendar**. Nighttime Ninja makes a calendar of its own called "*Home name* meals" and keeps it in step with the plan:
+With Google set up (the steps above), a home manager can connect Google Calendar in **Settings → Connections → Google Calendar**. Nighttime Ninja makes a calendar of its own called "*Home name* meals" and keeps it in step with the plan:
 
 - Every meal from a week ago to two months ahead is an event. Breakfast is at 8:00, lunch at 12:00, a snack at 15:00 and dinner at 18:00, in the server's time zone (`TZ`).
 - Move an event to another day or time and the meal moves. The time picks the meal: before 11:00 is breakfast, before 15:00 lunch, before 17:00 a snack, and later is dinner. All-day events count as dinner.
@@ -46,4 +46,4 @@ If the OAuth consent screen is in testing, add the calendar permission (`.../aut
 
 ### A calendar link (one way)
 
-The meal plan is also published as a private calendar link, which works without setting up Google. In **Settings → Home**, copy the calendar link, then in Google Calendar choose **Other calendars → ＋ → From URL**. Google refreshes subscribed calendars every few hours. **Reset link** turns off the old address if it ever leaks.
+The meal plan is also published as a private calendar link, which works without setting up Google. In **Settings → Connections**, copy the calendar link, then in Google Calendar choose **Other calendars → ＋ → From URL**. Google refreshes subscribed calendars every few hours. **Reset link** turns off the old address if it ever leaks.

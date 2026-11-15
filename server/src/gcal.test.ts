@@ -109,7 +109,7 @@ test('Google Calendar: connect, sync both ways, disconnect', async () => {
     const state = to.searchParams.get('state')!;
     const flow = go.cookies.find((c) => c.name === 'nn_gcal')!;
     const back = await app.inject({ method: 'GET', url: `/api/gcal/callback?code=the-code&state=${state}`, headers: { cookie: `${cookie}; nn_gcal=${flow.value}` } });
-    assert.equal(back.headers.location, '/settings?calendar=connected');
+    assert.equal(back.headers.location, '/settings/connections?calendar=connected');
     await gcal.syncHome(db, home.id);
     // The refresh token isn't stored as plain text.
     assert.ok(!JSON.stringify(db.prepare('SELECT * FROM gcal_links').all()).includes('rt-secret'));
@@ -174,7 +174,7 @@ test('Google Calendar: a callback without the right state is turned away', async
   try {
     const app = await buildApp(openMemoryDb(), { serveWeb: false });
     const r = await app.inject({ method: 'GET', url: '/api/gcal/callback?code=x&state=y' });
-    assert.equal(r.headers.location, '/settings?calendar=expired');
+    assert.equal(r.headers.location, '/settings/connections?calendar=expired');
     await app.close();
   } finally {
     config.google = saved;

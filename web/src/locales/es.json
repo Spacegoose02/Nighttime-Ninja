@@ -7,7 +7,6 @@
   "Added {item} to the list": "{item} añadido a la lista",
   "Added {recipes} recipes and {items} pantry items to try things out": "Se añadieron {recipes} recetas y {items} productos de despensa para probar",
   "Aisle order": "Orden de pasillos",
-  "All": "Todo",
   "Amount": "Cantidad",
   "Ask Gordy": "Pregunta a Gordy",
   "Ask Gordy for an idea": "Pídele una idea a Gordy",
@@ -174,5 +173,17 @@
   "Yes": "Sí",
   "Answered this week": "Respondidas esta semana",
   "Yes, on {list}": "Sí, en {list}",
-  "Requests": "Solicitudes"
+  "Requests": "Solicitudes",
+  "Profile": "Perfil",
+  "Look and feel": "Apariencia",
+  "Sign-in and security": "Inicio de sesión y seguridad",
+  "Reminders": "Recordatorios",
+  "Connections": "Conexiones",
+  "Download and delete": "Descargar y eliminar",
+  "Sign-in": "Inicio de sesión",
+  "Users": "Usuarios",
+  "Server": "Servidor",
+  "About": "Acerca de",
+  "Your name": "Tu nombre",
+  "Email": "Correo"
 }
