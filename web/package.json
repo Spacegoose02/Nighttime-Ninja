@@ -14,18 +14,18 @@
   "dependencies": {
     "@fontsource/atkinson-hyperlegible": "5.3.0",
     "@simplewebauthn/browser": "^14.0.0",
-    "barcode-detector": "3.2.3",
-    "lucide-react": "1.72.0",
+    "barcode-detector": "3.2.4",
+    "lucide-react": "1.74.0",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
     "react-router-dom": "^7.18.5",
-    "zxing-wasm": "3.1.6"
+    "zxing-wasm": "3.1.7"
   },
   "devDependencies": {
-    "@capacitor/android": "^8.6.0",
+    "@capacitor/android": "^8.6.2",
     "@capacitor/assets": "^4.0.0",
-    "@capacitor/cli": "^8.6.0",
-    "@capacitor/core": "^8.5.3",
+    "@capacitor/cli": "^8.6.2",
+    "@capacitor/core": "^8.6.2",
     "@testing-library/dom": "^10.4.2",
     "@testing-library/react": "^16.3.3",
     "@types/react": "^19.3.0",
